@@ -1,0 +1,352 @@
+# Component.py
+from Skill import *
+
+class Component:
+    """所有元件的基底類別"""
+    def __init__(self):
+        self.owner = None  # 被掛載者（通常是 Character 或 Item）
+    def on_attach(self, owner):
+        """當元件被加入到 host 上時呼叫"""
+        self.owner = owner
+    def update(self):
+        """每 frame 執行的邏輯"""
+        pass
+    def override_attack_intent(self, intent: str) -> str | None:
+        """
+        給元件機會改寫目前的攻擊意圖。
+        回傳新意圖字串（例如 'pickup_item'），或 None 表示不修改。
+        """
+        return None
+
+    def is_within_range(self, box1, box2, max_dist=0.5):
+        # 可加入中心點距離的計算
+        cx1 = (box1['x1'] + box1['x2']) / 2
+        cy1 = (box1['y1'] + box1['y2']) / 2
+        cx2 = (box2['x1'] + box2['x2']) / 2
+        cy2 = (box2['y1'] + box2['y2']) / 2
+        dist = ((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) ** 0.5
+        return dist <= max_dist
+
+class ComponentHost:
+    """可掛載 Component 的物件基底（如角色、道具）"""
+    def __init__(self):
+        self.components = {}
+        # 用於給scene註冊物件並查詢
+        self.scene = None
+        self.side = None
+        self.tags = []
+        self.type = None
+        #<==
+        #紀錄是否被拿取的狀態!
+        self.held_by = None
+        self.thrown_by = None
+        #給storyScriptRunner使用
+        self.external_control = None
+
+    #劇情演出用
+    def clear_autonomous_behavior(self):
+        self.held_by = None
+        self.thrown_by = None
+
+    def set_external_control(self, ctrl_dict):
+        """設定劇情用的外部控制"""
+        self.external_control = ctrl_dict
+        if hasattr(self, "set_rigid"):
+            self.set_rigid(ctrl_dict.get("duration", 30))  # 若角色支援硬直則設置
+
+    def update_by_external_control(self):
+        if not self.external_control:
+            return
+        ctrl = self.external_control
+        act = ctrl.get('action')
+
+        if act == 'move' and hasattr(self, 'x') and hasattr(self, 'y'):
+            target_x, target_y = ctrl['to']
+            dx = target_x - self.x
+            dy = target_y - self.y
+            dist = (dx ** 2 + dy ** 2) ** 0.5
+            if dist < 0.1:
+                self.external_control = None
+                return
+            move_rate = ctrl.get('speed', 0.05)
+            self.x += dx / dist * move_rate
+            self.y += dy / dist * move_rate
+            if hasattr(self, 'facing') and dx != 0:
+                self.facing = DirState.RIGHT if dx > 0 else DirState.LEFT
+            if hasattr(self, 'state'):
+                self.state = MoveState.WALK
+        elif act == 'attack' and hasattr(self, 'attack'):
+            self.attack(ctrl['skill'])
+            self.external_control = None
+        elif act == 'knockback' and hasattr(self, 'combat_state'):
+            self.combat_state = CombatState.KNOCKBACK
+            self.knockback_vel_x = ctrl.get('vx', 0.0)
+            self.knockback_vel_z = ctrl.get('vz', 0.0)
+            self.external_control = None
+        elif act == 'set_z' and hasattr(self, 'z'):
+            self.z = ctrl.get('value', 0)
+            self.external_control = None
+        elif act == 'disappear':
+            if hasattr(self, 'scene'):
+                self.scene.mark_for_removal(self)
+            self.external_control = None
+
+    def add_component(self, name, component: Component):
+        """加入一個元件（用 name 做識別鍵）"""
+        self.components[name] = component
+        component.on_attach(self)
+    def get_component(self, name):
+        return self.components.get(name)
+    def remove_component(self, name):
+        if name in self.components:
+            del self.components[name]
+    def update_components(self):
+        for component in self.components.values():
+            component.update()
+    def override_attack_intent(self, intent: str) -> str:
+        """讓所有元件有機會改寫攻擊意圖"""
+        for component in self.components.values():
+            print(f'ComponentHost 的 override_attack_intent')
+            new_intent = component.override_attack_intent(intent)
+            if new_intent:
+                return new_intent
+        return intent
+    def on_picked_up(self, holder):
+        print(f'{self.name} 呼叫 on_pick_up, holder={holder.name}')
+        self.held_by = holder
+        self.x = holder.x
+        self.y = holder.y
+        self.jump_z = holder.jump_z
+    # def on_thrown(self):
+    #     print('aaaaaaaaaaaaaaaaaaaaaaaaaa')
+    #     self.held_by = None
+
+    def get_swing_attack_data(self, attacker):
+        # fallback 預設：回傳 None，讓開發者知道需要自行實作
+        raise NotImplementedError(f"{self.__class__.__name__} 沒有實作 get_swing_attack_data()")
+    def get_throw_attack_data(self, attacker):
+        # fallback 預設：回傳 None，讓開發者知道需要自行實作
+        raise NotImplementedError(f"{self.__class__.__name__} 沒有實作 get_throw_attack_data()")
+
+class HoldableComponent(Component):
+    def __init__(self, owner):
+        super().__init__()
+        self.owner=owner
+        self.target_item = None  # 暫存接觸中的 item
+        self.held_object = None
+
+    def override_attack_intent(self, intent: str):
+        # attack_intent = z/x/c_attack, 對應到招式表
+        obj_name = ''
+        if self.held_object:
+            obj_name = self.held_object.name
+        print(f'HoldableComponent 的 override_attack_intent====={intent}====({obj_name})')
+
+        if self.held_object:
+            print(f'手上持有{self.held_object.name}')
+            if intent == "z_attack":
+                return "swing_item"
+            elif intent == "x_attack":
+                return "throw_item"
+        elif intent == "z_attack" and self.find_nearby_item():
+            return "pickup_item"
+        return intent
+
+    def update(self):
+        if self.owner.is_able_hold_item() and self.held_object:
+            #持有者無法控制
+            print(f'HoldableComponent 的 update 的 無法持有武器')
+            if self.held_object:
+                self.held_object.held_by = None
+            self.held_object = None
+        if self.held_object and not self.held_object.is_holdable():
+            #物品不給繼續拿著
+            print(f'HoldableComponent 的 update 的 放棄拾取 {self.held_object.name}')
+            self.held_object.held_by = None
+            self.held_object = None
+
+
+    def handle_action(self, attack_intent):
+        print(f'HoldableComponent 的 handle_action : attack_intent = {attack_intent} target_item ={self.target_item}')
+        if attack_intent == "pickup_item" and self.target_item:
+            self.held_object = self.target_item
+            self.target_item = None
+            print(f"[INFO] {self.owner.name} 撿起了 {self.held_object.name}")
+        elif self.held_object:
+            if attack_intent == "swing_item":
+                self.held_object.swing_attack(self.owner)
+            elif attack_intent == "throw_item":
+                self.held_object.throw(self.owner)
+                self.held_object = None
+
+    def find_nearest(self, unit_list):
+        self_loc = (self.owner.x, self.owner.y)
+        min_dist = max(self.owner.map_w, self.owner.map_h)
+        tar_item = None
+        for unit in unit_list:
+            u_dist = (abs(unit.x - self_loc[0])+ abs(unit.y - self_loc[1]))
+            if u_dist < min_dist:
+                tar_item = unit
+                min_dist = u_dist
+        return tar_item
+    
+    def find_nearby_item(self) -> bool:
+        """
+        檢查 owner 是否接觸到可撿物件。
+        搜尋 owner.scene_items 中具有 get_interact_box 的物件，
+        且若該物件具有 is_pickable() 方法，也需為 True。
+        成功時設定 self.target_item。
+        """
+
+
+
+        def print_unit_list(unit_list):
+            return
+        
+        unit = self.owner
+        result = False
+        if not hasattr(unit, "scene_items"):
+            print("[DEBUG] owner 未設定 scene_items，無法尋找可撿物品")
+            return False
+        my_box = unit.get_interact_box()
+        if not my_box:
+            print("[DEBUG] 無法取得自身的 interact_box")
+            return False
+        available_units =unit.scene.get_all_units()
+        unit_names = [u.name for u in available_units]
+        #print(f'')
+        nearby_units = []
+        for item in available_units:
+            if item is self.owner:
+                continue  # ✅ 跳過自己（避免自己撿自己）
+            # 確保目標物件具有可互動區域
+            if not hasattr(item, "get_interact_box"):
+                continue
+            item_box = item.get_interact_box()
+            if item_box is None:
+                continue
+            # 如果 item 實作 is_pickable 且返回 False，就跳過
+            if hasattr(item, "is_pickable") and not item.is_pickable():
+                continue
+            # 檢查是否碰撞
+            if self.is_overlap(my_box, item_box):
+                nearby_units.append(item)
+
+        if len(nearby_units) > 0:
+            print('{}'.format([u.name for u in nearby_units]))
+            #手邊有東西
+            item = self.find_nearest(nearby_units)
+            self.target_item = item
+            result = True
+
+        item_name = ''
+        if result:
+            item_name = self.target_item.name
+        print(f'HoldableComponent 的 find_nearby_item 可互動物件:{unit_names} 尋找可拾取物件:{result}:{item_name}')
+        # 若無任何可撿物件，清空 target
+        if result == False:
+            self.target_item = None
+        return result
+
+    def is_overlap(self, box1, box2) -> bool:
+        """簡單 AABB 判斷"""
+        return (
+            box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1'] and
+            box1['y1'] <= box2['y2'] and box1['y2'] >= box2['y1']
+        )
+
+    def try_pickup(self):
+        """實際執行撿起行為"""
+        print(f'HoldableComponent 的 try_pickup')
+        if self.target_item:
+            #如果有找到目標
+            self.held_object = self.target_item
+            self.held_object.held_by = self.owner  # 🟢 讓 item 知道它被誰拿著
+            print(f"[LOG] {self.owner.name} 撿起了 {self.held_object.name}")
+
+            if hasattr(self.owner, "on_picked_up"):
+                self.held_object.on_picked_up(self.owner)
+            self.target_item = None
+        else:
+            print(f"[WARN] 嘗試撿取但附近沒有目標物")
+
+Z_TORRENCE = 10.0
+class HoldFlyLogicMixin:
+    #被拾取/被投擲共通邏輯
+
+
+    def update_hold_fly_position(self):
+        hit_someone = False
+        if self.held_by:
+            self.on_held_location()
+        elif self.flying:
+            self.x += self.vel_x
+            print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
+            hit_someone = self.on_fly_z()
+        return hit_someone
+    def on_held_location(self):
+        # 若被持有，位置跟隨持有者（偏移值可以視覺調整）
+        # print('Rock 的 update')
+        self.x = self.held_by.x + 0.2
+        self.y = self.held_by.y
+        self.z = self.held_by.z
+        self.jump_z = self.held_by.jump_z + self.held_by.height  # 顯得浮起來
+        self.vz = 0
+        self.flying = False  # 🟢 強制退出拋出狀態
+        self.hitting = []
+        #print(f'{self.name} (x={self.x}, y={self.y}, z={self.z}, jump_z={self.jump_z}, jump_z_vel = {self.jump_z_vel}')
+        #print('on_held_location')
+    def on_fly_z(self):
+        # 飛行中邏輯
+        hit_someone = False
+        self.vz -= self.weight
+        self.jump_z += self.vz
+        #print(f'{self.name} jump_z = {self.jump_z}')
+        for unit in self.scene.get_units_with_type('character'):
+            if hasattr(self, 'ignore_side') and hasattr(unit, 'side'):
+                if unit.side in self.ignore_side:
+                    continue
+            if unit == self or unit in self.hitting:
+                continue
+            if unit.is_alive():
+                if self.check_collision(unit):
+                    self.on_hit_unit(unit)
+                    print(f'{unit.name} 被飛行物體 {self.name} 打中!')
+                    #unit.take_damage(attacker=self,attack_data=attack_data_dict[AttackType.THROW_CRASH])
+
+                    hit_someone = True
+                    if self.thrown_by and self.thrown_by.attack_state and self.thrown_by.attack_state.data.attack_type in THROW_ATTACKS:
+                        unit.on_hit(self.thrown_by, self.thrown_by.attack_state.data)
+                        print(f'{self.name} 的 thrown_by {self.thrown_by} 的 attack_state.data.attack_type {self.thrown_by.attack_state.data.attack_type}')
+                    elif self.attacker_attack_data:
+                        unit.on_hit(self.thrown_by, self.attacker_attack_data)
+                        print(f'{self.name} 的 thrown_by {self.thrown_by}, attack_data {self.attacker_attack_data}')
+                    self.hitting.append(unit)
+                    if hasattr(self, 'breakthrough') and not self.breakthrough:
+                        self.down_to_ground()
+                        break  # 如果沒有貫通, 命中後結束飛行
+        if self.jump_z <= 0:
+            self.down_to_ground()
+        return hit_someone
+    def down_to_ground(self):
+        self.jump_z = 0
+        self.vz = 0
+        self.flying = False
+        self.jump_z_vel = 0
+        print(f"[LOG] {self.name} 落地了")
+    def check_collision(self, target):
+        my_box = self.get_interact_box()
+        their_box = target.get_hurtbox()
+        if (my_box['x1'] <= their_box['x2'] and my_box['x2'] >= their_box['x1'] and
+                my_box['y1'] <= their_box['y2'] and my_box['y2'] >= their_box['y1']):
+            # do z judgement
+            if my_box['z1'] <= their_box['z2']+Z_TORRENCE and my_box['z2']+Z_TORRENCE >= their_box['z1']:
+                print(f'{self.name} 碰撞 {target.name}')
+                return True
+            else:
+                print('z miss! {}-{} V.S. {}-{} '.format(my_box['z1'],my_box['z2'],their_box['z1'],their_box['z2']))
+        return False
+    def on_hit_unit(self, target):
+        print(f"[HIT] {self.name} 命中了 {target.name}")
+        #觸發敵我雙方的命中行為
+

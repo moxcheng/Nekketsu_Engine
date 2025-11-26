@@ -1,0 +1,1783 @@
+import pygame
+from Config import *
+#from enum import Enum, auto
+from State_enum import *
+from Skill import *
+from Component import ComponentHost, HoldFlyLogicMixin
+
+DEBUG = True
+
+def suspend(info=''):
+    print(f"🟡 暫停中，{info}...")
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN:
+                waiting = False
+
+        # 避免 CPU 吃滿（加一點等待）
+        pygame.time.delay(100)
+
+def is_box_overlap(box1, box2):
+    return (
+        box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1'] and
+        box1['y1'] <= box2['y2'] and box1['y2'] >= box2['y1'] and
+        box1['z1'] <= box2['z2'] and box1['z2'] >= box2['z1']
+    )
+
+KEY_TO_ACTION = {
+    pygame.K_z: "z_attack",
+    pygame.K_x: "x_attack",
+    pygame.K_c: "c_attack"
+}
+
+def check_state(self):
+    m_state, a_state = None, None
+    if self.state:
+        m_state=self.state.name
+    if self.attack_state:
+        a_state = self.attack_state.name
+    suspend(f'{self.name}, MoveState={m_state} AttackState={a_state}')
+
+#貼圖管理類別
+class SpriteAnimator:
+    def __init__(self, image_path, frame_width=96, frame_height=96):
+        self.sheet = pygame.image.load(image_path).convert_alpha()
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.frames = self.slice_sheet()
+
+        # 定義每種狀態的 frame index list
+        self.anim_map = {
+            "stand": [0],
+            "walk": [1, 2, 3],
+            "punch": [4, 5, 6],
+            "bash": [7],
+            "jump": [8],
+            "flykick": [9],
+            "kick":[10,11],
+            "on_fly":[12],
+            "slash": [13, 14, 15],
+            "on_hit": [16],
+            "weak": [17],
+            "down": [18],
+            "dead": [19],
+            'swing': [20,21],
+            'throw': [22,23]
+        }
+
+    def slice_sheet(self):
+        sheet_w, sheet_h = self.sheet.get_size()
+        cols = sheet_w // self.frame_width
+        rows = sheet_h // self.frame_height
+        frames = []
+        for row in range(rows):
+            for col in range(cols):
+                x = col * self.frame_width
+                y = row * self.frame_height
+                frame = self.sheet.subsurface((x, y, self.frame_width, self.frame_height))
+                frames.append(frame)
+        return frames
+
+    def get_frame(self, state_name, frame_index):
+        anim = self.anim_map.get(state_name)
+        if anim:
+            return self.frames[anim[frame_index % len(anim)]]
+        return self.frames[0]  # fallback to stand
+
+    def get_frame_by_index(self, frame_global_index):
+        if 0 <= frame_global_index < len(self.frames):
+            return self.frames[frame_global_index]
+        return self.frames[0]
+
+    def get_frame_by_map_index(self, state_name, frame_map_index=0):
+        anim = self.anim_map.get(state_name)
+        if anim:
+            return self.frames[anim[frame_map_index]]
+        return self.frames[0]  # fallback to stand
+
+
+
+
+class CharacterBase(ComponentHost, HoldFlyLogicMixin):
+    def __init__(self, x, y, map_info, z=0):
+        super().__init__()
+        self.x = x
+        self.y = y
+        self.jump_z = 0
+        self.width = 1.5
+        self.height = 2.5
+
+        self.terrain = map_info[0]
+        self.map_w = map_info[1]
+        self.map_h = map_info[2]
+        self.z = self.get_tile_z(x, y)
+
+        self.color = (0,0,0)
+        # 受創系統
+        self.combat_state = CombatState.NORMAL
+        self.combat_timer = 0
+        self.hit_count = 0.0
+        self.max_hits_before_weak = 3.0
+        self.recovery_rate = 0.01
+        self.max_hp=100
+        self.health = self.max_hp
+        self.z = z  # 如有需要強制指定 z 值
+        self.hit = False
+        self.hit_timer = 0  #受創"持續時間"的timer
+        self.jump_z_vel = 0
+        self.rigid_timer = 0
+        self.invincible_timer = 0   #無敵timer
+        self.super_armor_timer = 0  #鋼鐵timer
+        self.falling_timer = 0
+        self.dead_timer = 0 #死亡消失時間
+        #擊飛時變數
+        self.knockback_vel_x = 0
+        self.knockback_vel_z = 0
+
+        
+        self.state = MoveState.STAND
+        self.last_intent = {'direction': None, 'horizontal': None}
+        self.current_frame = 0
+        self.facing = DirState.RIGHT
+        self.combat_timer_max = 1  # 預設非 0，避免除以 0，會隨狀態切換更新
+        #攻擊狀態
+        self.attack_state = None
+
+        #基本招式表
+        self.attack_table = {'z_attack':{'default': AttackType.PUNCH},
+                             'x_attack':{'default': AttackType.KICK},
+                             'c_attack':{},
+                             'swing_item':{'default': AttackType.SWING},
+                             'throw_item':{'default': AttackType.THROW}}
+
+        self.name = 'Base'
+        self.attack_intent = None
+
+        self.scene = None
+
+        self.weight = 0.05 # 作為投擲用物件
+        self.flying = False
+        self.held_by = None
+        self.throw_damage = 15   #投擲物件傷害
+        self.swing_damage = 10
+        self.throw_power = 0.5  #投擲基本力量
+        
+
+        self.jump_key_block = False #避免長按連續跳躍
+        self.jump_intent_trigger = False
+        self.jumpping_flag = False #避免重覆計算跳躍
+
+        #增加動畫支援
+        #self.animator = SpriteAnimator("Character_white_20frame_96.png")  # 載入素材
+        self.animator = None
+        self.anim_frame = 0
+        self.anim_timer = 0
+        self.anim_speed = 8  # 幀更新頻率
+        self.anim_walk_cnt = 0
+
+        self.falling_y_offset = 0   #掉落時調整動畫位置
+
+        self.on_hit_timer = 0
+        self.has_stand = False
+        self.stand_image = None
+
+        self.side = 'netural'   #為了製造飛行道具
+        self.money = 10
+        self.get_burning = False
+        self.burn_frames = []
+
+        # 燃燒貼圖初始化
+        sheet = pygame.image.load("burn_4frame.png").convert_alpha()
+        frame_w = sheet.get_width() // 4
+        frame_h = sheet.get_height()
+        for i in range(4):
+            frame = sheet.subsurface((i * frame_w, 0, frame_w, frame_h))
+            self.burn_frames.append(frame)
+
+    def update_burning_flag(self):
+        if self.get_burning and not self.is_jump():
+            self.get_burning = False
+
+    def clear_autonomous_behavior(self):
+        self.flying = False
+        self.held_by = None
+        self.attack_intent = None
+        self.knockback_vel_x = 0
+        self.knockback_vel_z = 0
+        self.attack_intent = None
+        self.hit = False
+    
+    # def update_anim(self):
+    #     self.anim_timer += 1
+    #     if self.anim_timer >= self.anim_speed:
+    #         self.anim_timer = 0
+    #         self.anim_frame += 1
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        if self.animator:
+            cal_func = self.draw_anim
+        else:
+            cal_func = self.draw_block
+        return cal_func(win, cam_x, cam_y, tile_offset_y)
+
+    def draw_debug_info(self, win, px, py):
+        # 🧠 顯示於角色上方文字
+        font = pygame.font.SysFont("consolas", 14)
+        st = ''
+        if self.is_falling():
+            st = st + 'Fal '
+        if self.is_jump():
+            st = st + 'Jmp '
+        if self.is_knockbacking():
+            st = st + 'Kbk '
+        if self.is_invincible():
+            st = st + 'Inv '
+        if self.is_locked():
+            st = st + 'Lck '
+        if self.is_on_hit():
+            st = st + 'Hit '
+
+        debug_lines = [
+            f"M:{self.state.name} C:{self.combat_state.name}",
+            f"Z:{self.z:.1f} Jz:{self.jump_z:.1f}",
+            f"Flag:{st} Rt({self.rigid_timer}) Ct({self.combat_timer})"
+        ]
+
+        for i, line in enumerate(debug_lines):
+            text_surf = font.render(line, True, (255, 255, 0))
+            win.blit(text_surf, (px, py - 28 - i * 16))  # 每行往上推一點
+
+    def draw_anim(self, win, cam_x, cam_y, tile_offset_y):
+
+        # 更新動畫 frame（每隔 anim_speed frame 換一次圖）
+        self.anim_timer += 1
+        if self.anim_timer >= self.anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
+
+        # 狀態轉換為動畫名
+        # print(f'[draw_anim] {self.name} combat_state = {self.combat_state.name} move_state = {self.state.name}', end='\r')
+
+        if self.get_burning:
+            anim_name = "burn"
+        elif self.combat_state == CombatState.DEAD:
+            anim_name = "dead"
+        elif self.combat_state == CombatState.DOWN:
+            if self.is_jump() or self.held_by:
+                #print(f'{self.name} is_jump {self.is_jump()} ({self.jump_z}/{self.jump_z_vel:.2f}), held_by {self.held_by}')
+                anim_name = 'on_fly'
+            else:
+                anim_name = "down"
+        elif self.combat_state == CombatState.WEAK:
+            anim_name = "weak"
+        elif self.is_on_hit():
+            anim_name = "on_hit"
+        elif self.is_knockbacking():
+            anim_name = "on_fly"
+        elif self.attack_state:
+            if hasattr(self.attack_state.data, 'attack_type'):
+                if self.attack_state.data.attack_type == AttackType.BASH:
+                    anim_name = "bash"
+                elif self.attack_state.data.attack_type == AttackType.SLASH:
+                    anim_name = 'slash'
+                elif self.attack_state.data.attack_type == AttackType.KICK:
+                    anim_name = 'kick'
+                elif self.attack_state.data.attack_type == AttackType.FLY_KICK:
+                    anim_name = 'flykick'
+                elif self.attack_state.data.attack_type in SWING_ATTACKS:
+                    anim_name = 'swing'
+                elif self.attack_state.data.attack_type in THROW_ATTACKS:
+                    anim_name = 'throw'
+                else:
+                    anim_name = "punch"
+        elif self.combat_state == CombatState.KNOCKBACK:
+            anim_name = 'on_fly'
+        elif self.state == MoveState.JUMP or self.state == MoveState.FALL:
+            anim_name = "jump"
+            # if self.state == MoveState.FALL:
+            #     #self.stop_print_info()
+            #     print(f'{self.name} fall_timer = {self.falling_timer}')
+        elif self.state == MoveState.WALK:
+            anim_name = "walk"
+        elif self.state == MoveState.RUN:
+            anim_name = 'run'
+        else:
+            anim_name = "stand"
+
+        # 取得動畫 frame 圖像
+        if anim_name in ['punch', 'slash', 'kick', 'swing', 'throw']:
+            # 多格
+            f_idx = self.attack_state.frame_index
+            if f_idx >= len(self.attack_state.data.frame_map):
+                print('illegal frame index')
+                f_idx = -1
+            #print(f'{self.name}: [{anim_name}], attack_state {self.attack_state.data.attack_type.name} frame {self.attack_state.data.frame_map[f_idx]}({f_idx})')
+
+            frame = self.animator.get_frame_by_map_index(anim_name, self.attack_state.data.frame_map[f_idx])
+        elif anim_name == 'burn':
+            # 👇 繪製燃燒效果（如果標記為 get_burning）
+            burn_idx = (self.current_frame % 16) // 4  # 0~3，每幀持續4 frame
+            resize_burn_frames = []
+            #
+            for f in self.burn_frames:
+                sw = f.get_width()
+                sh = f.get_height()
+                resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
+            frame = resize_burn_frames[burn_idx]
+            #print(f'anim_name = Burn frame {burn_idx}!')
+        elif anim_name in ['flykick', 'on_hit', 'on_fly', 'bash']:
+            # 單格
+            #print(f'anim: {anim_name}')
+            frame = self.animator.get_frame_by_map_index(anim_name)
+        elif anim_name == 'walk':
+            self.anim_walk_cnt += 1
+            walk_frame_idx = int(self.anim_walk_cnt / 15) % 2
+            frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
+        elif anim_name == 'run':
+            self.anim_walk_cnt += 1
+            walk_frame_idx = int(self.anim_walk_cnt / 5) % 2
+            frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
+
+        else:
+            frame = self.animator.get_frame(anim_name, self.anim_frame)
+
+        # 若角色面向左側，進行左右翻轉
+        if self.facing == DirState.LEFT:
+            frame = pygame.transform.flip(frame, True, False)
+
+        # 計算畫面座標
+        px = int(self.x * TILE_SIZE) - cam_x
+        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        falling_z_offset = 0
+        if self.is_falling():
+            falling_z_offset = self.falling_y_offset * Z_FALL_OFSSET
+        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+        # print(f'terrain_z_offset={terrain_z_offset:.2f} falling_z_offset={falling_z_offset:.2f} py={py}')
+
+        # 劇情提示（血條與命中特效等）
+        self.draw_combat_bar(win, px, py)
+        self.draw_hp_bar(win, px, py)
+
+
+
+
+
+        if DEBUG:
+            self.draw_debug_info(win, px, py)
+            # DEBUG: 角色腳下的圓形定位點（用於碰撞、踩地感）
+        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cy = int((self.map_h - (
+                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+        pygame.draw.circle(win, (0, 0, 0), (cx, base_cy), 3)
+        # DEBUG: 繪製 hitbox
+        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
+        # win.blit(frame, (px, py))
+        frame_rect = frame.get_rect()
+        draw_x = cx - frame_rect.width // 2
+        draw_y = cy - frame_rect.height
+        if self.has_stand:
+            stand_x = draw_x - 35 if self.facing == DirState.RIGHT else draw_x + 35
+            stand_y = draw_y - 20
+            stand_img = self.stand_image.copy()  # 複製一份來修改 alpha
+            # 設定透明度（0~255），例如 128 為半透明
+            stand_img.set_alpha(160)
+            # 如果角色向左，替身也要翻轉
+            if self.facing == DirState.LEFT:
+                stand_img = pygame.transform.flip(stand_img, True, False)
+            win.blit(stand_img, (stand_x, stand_y))
+        # 根據死亡狀態處理特效：閃爍 + 半透明
+        if self.combat_state == CombatState.DEAD:
+            if (self.dead_timer // 30) % 2 == 0:  # 每 30 frame 閃一次 (0.5 秒)
+                dead_frame = frame.copy()
+                dead_frame.set_alpha(128)  # 半透明
+                win.blit(dead_frame, (draw_x, draw_y))
+        else:
+            win.blit(frame, (draw_x, draw_y))
+        #win.blit(frame, (draw_x, draw_y))
+
+        # print(f'{self.name} draw debug {self.current_frame}')
+        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
+
+
+
+    def draw_block(self, win, cam_x, cam_y, tile_offset_y):
+        px = int(self.x * TILE_SIZE) - cam_x
+        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        py = int((
+                             self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+
+        # 狀態導向繪製
+
+        if self.combat_state == CombatState.DOWN:
+            self.draw_down(win, px, py)
+        elif self.combat_state == CombatState.DEAD:
+            self.draw_dead(win, px, py)
+        elif self.combat_state == CombatState.KNOCKBACK:
+            self.draw_knockback(win, px, py)
+        elif self.combat_state == CombatState.WEAK:
+            self.draw_weak(win, px, py)
+        elif self.hit and (self.hit_timer // 4) % 2 == 0:
+            # 閃爍效果：每 4 frame 出現一次
+            self.draw_stand(win, px, py)
+            self.draw_hit(win, px, py)
+        else:
+            self.draw_stand(win, px, py)
+
+        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        pygame.draw.circle(win, (0, 0, 0), (cx, cy), 3)
+
+        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0))
+
+        step_info = '-'
+        step_dir = self.last_intent.get("direction") or self.step_direction
+        if step_dir in [DirState.LEFT, DirState.RIGHT]:
+            if self.recently_stepped(step_dir, self.current_frame):
+                step_info = f"{step_dir.name}"
+        self.draw_combat_bar(win, px, py)
+        self.draw_hp_bar(win, px, py)
+    def draw_hurtbox(self, win, cam_x, cam_y, tile_offset_y, terrain_z_offset=0):
+        # === 顯示 hurtbox ===
+        hurtbox = self.get_hurtbox()
+        hx1 = int(hurtbox['x1'] * TILE_SIZE) - cam_x
+        hy1 = int((self.map_h - hurtbox['y2']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        hx2 = int(hurtbox['x2'] * TILE_SIZE) - cam_x
+        hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+
+        pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)
+
+    def scene_items(self):
+        if hasattr(self, 'scene'):
+            return self.scene.get_all_interactables()
+        return []
+
+    def resolve_attack_table(self):
+        attack = None
+        if self.attack_intent:
+            #z x c attack種類
+            #atk_table = self.attack_table[self.attack_intent]
+            #1.3d 改為可能接受component修改意圖
+            
+            real_intent = self.override_attack_intent(self.attack_intent)
+            print(f'意圖:{self.attack_intent} -> {real_intent}')
+            if real_intent == 'pickup_item':
+                self.get_component("holdable").try_pickup()
+                return real_intent
+            # elif real_intent == 'swing_item' and self.get_component("holdable").held_object:
+            #     #觸發物品屬性的swing
+            #     self.get_component("holdable").held_object.swing_attack(self)
+            #     return real_intent
+            # elif real_intent == 'throw_item' and self.get_component("holdable").held_object:
+            #     self.get_component("holdable").held_object.throw_attck(self)
+            #     return real_intent
+            atk_table = self.attack_table.get(real_intent, {})            
+            attack = atk_table.get('default', None)
+            #if self.z > 0 and 'jump' in atk_table:
+            if self.jump_z > 0:
+                #suspend(f'aaaaa self.z={self.z}')
+                attack = atk_table.get('jump', None)
+            elif self.state==MoveState.RUN and 'run' in atk_table:
+                attack = atk_table.get('run', None)
+        return attack
+
+
+    def get_tile_z(self, x, y):
+        if 0 <= int(x) < self.map_w and 0 <= int(y) < self.map_h:
+            return self.terrain[int(y), int(x)]
+        return None
+
+    def is_jump(self):
+        return self.jump_z > 0 or self.jump_z_vel != 0
+
+    def set_rigid(self, duration):
+        self.rigid_timer = max(self.rigid_timer, duration)
+
+    def is_locked(self):
+        return self.rigid_timer > 0 or self.combat_state == CombatState.DOWN
+    def is_on_hit(self):
+        return self.on_hit_timer > 0
+    def is_invincible(self):
+        return self.invincible_timer > 0
+    def is_knockbacking(self):
+        return abs(self.knockback_vel_x) > 0.01 or self.knockback_vel_z > 0.01
+    def is_falling(self):
+        return self.falling_timer > 0
+    def is_alive(self):
+        return self.health > 0
+    def is_able_hold_item(self):
+        return self.combat_state == CombatState.WEAK or self.combat_state == CombatState.DOWN
+
+    def is_pickable(self):
+        return self.combat_state == CombatState.DOWN and not self.held_by
+    def is_holdable(self):
+        #檢查自身條件是否能繼續持有
+        return self.combat_state == CombatState.DOWN
+
+    def into_weak_state(self):
+        self.combat_state = CombatState.WEAK
+        self.combat_timer = 90
+        self.combat_timer_max = 90
+        self.set_rigid(90)
+    def into_down_state(self):
+        self.combat_state = CombatState.DOWN
+        self.invincible_timer = 40
+        self.combat_timer = 180
+        self.combat_timer_max = 180
+        self.hit_count = 0.0
+        self.set_rigid(180)
+        self.state = MoveState.STAND
+    def into_dead_state(self):
+        self.combat_state = CombatState.DEAD
+        self.invincible_timer = 240
+        self.dead_timer = 240
+        self.hit_count=100
+        print(f'{self.name} 死亡')
+    def into_normal_state(self):
+        self.combat_state = CombatState.NORMAL
+        self.hit = False
+        self.hit_timer = 0
+        self.hit_count = 0.0
+        print(f'{self.name} 回到正常')
+
+    def check_ground_contact(self):
+        # 🧠 檢查腳底對應的 tile z 值
+        #print(f'{self.name} falling {self.falling_timer}')
+        if self.falling_timer > 1:
+            return
+        tx = int(self.x + self.width / 2)
+        ty = int(self.y + self.height * 0.1)
+        below_z = self.get_tile_z(tx, ty)
+
+        #如果是空中攻擊, 清除狀態
+        if self.attack_state and isinstance(self.attack_state, FlyKickAttackState):
+            self.attack_state = None
+            self.state = MoveState.STAND
+
+        # if below_z is not None:
+        #     if self.z >= below_z and self.jump_z <= 0:
+                # ✅ 已達地面，停止下落
+        print(f'{self.name} 落地')
+        self.jump_z = 0
+        self.jump_z_vel = 0
+        self.knockback_vel_z = 0
+        self.z = below_z
+        self.state = MoveState.STAND
+        self.set_rigid(10)
+        self.color = self.default_color
+        self.falling_timer = 0
+        self.falling_y_offset = 0
+    def check_and_trigger_fall(self, dx, dy, move_rate):
+        new_x = self.x + dx * move_rate
+        new_y = self.y + dy * move_rate
+
+        foot_x = new_x + self.width / 2
+        foot_y = new_y + self.height * 0.1
+        nx, ny = int(foot_x), int(foot_y)
+        target_z = self.get_tile_z(nx, ny)
+        if target_z is None:
+            return False
+        if abs(target_z - self.z) >= 2 and target_z < self.z:
+            self.jump_z = 1.5*abs(target_z - self.z)
+            self.jump_z_vel = -0.1 #掉落時浮空用判定
+            self.vel_xy = (dx * 0.3, dy * 0.3)
+            self.falling_timer = abs(target_z - self.z)*15 #根據段差來設置掉落時間, 1z=15frame
+            self.falling_y_offset = 0
+            return True
+        return False
+
+
+    def update_physics_only(self):
+        if self.knockback_vel_z != 0:
+            self.jump_z += self.knockback_vel_z
+            self.knockback_vel_z = self.knockback_vel_z - 0.05  # 重力加速度
+
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.knockback_vel_z = 0
+        # ✅ 若正在跳躍中，僅更新跳躍高度與落下，不進行碰撞判定
+        if self.jump_z != 0 and not self.held_by:
+            #排除被拿著的狀態
+            self.jump_z += self.jump_z_vel
+            self.jump_z_vel -= 0.05  # ✅ 注意這裡保持一致，不要重複扣太快
+
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.jump_z_vel = 0
+        # ✅ 處理垂直跳躍或擊飛
+
+
+        # ✅ 處理水平擊退
+        if self.super_armor_timer <= 0:
+            #鋼體不擊退
+            if self.knockback_vel_x != 0:
+                self.x += self.knockback_vel_x
+                self.knockback_vel_x *= 0.25  # 摩擦力衰減
+                if abs(self.knockback_vel_x) < 0.01:
+                    self.knockback_vel_x = 0
+
+
+
+    def draw_combat_bar(self, win, px, py):
+        if self.combat_state == CombatState.NORMAL:
+            return
+
+        # 設定 combat bar 長度與顏色
+        width = int(self.width * TILE_SIZE)
+        height = 5
+        ratio = self.combat_timer / self.combat_timer_max
+
+        if self.combat_state == CombatState.WEAK:
+            color = (255, 255, 0)
+        elif self.combat_state == CombatState.DOWN:
+            color = (150, 0, 0)
+        else:
+            color = (100, 100, 100)
+
+        # 如果是 down 狀態，改畫在右側橫向縮短，避免重疊倒地姿勢
+        if self.combat_state == CombatState.DOWN:
+            bar_x = px + width + 4
+            bar_y = py + int(self.height * TILE_SIZE * 0.5)
+            bar_h = int(self.height * TILE_SIZE * 0.5)
+            bar_w = 5
+            fill_h = int(bar_h * ratio)
+            pygame.draw.rect(win, (50, 50, 50), (bar_x, bar_y, bar_w, bar_h))
+            pygame.draw.rect(win, color, (bar_x, bar_y + bar_h - fill_h, bar_w, fill_h))
+        else:
+            # 一般狀態畫在角色上方
+            bar_x = px
+            bar_y = py - 8
+            pygame.draw.rect(win, (50, 50, 50), (bar_x, bar_y, width, height))
+            pygame.draw.rect(win, color, (bar_x, bar_y, int(width * ratio), height))
+
+    def update_hit_timer(self):
+        if self.hit_timer > 0:
+            self.hit_timer -= 1
+            if self.hit_timer == 0:
+                self.hit = False
+
+    def update_combat_state(self):
+        #print(f"[DEBUG] {self.name} update_combat_state> hit_count: {self.hit_count}")
+        if self.combat_state == CombatState.DEAD:
+            return
+        if self.combat_state == CombatState.DOWN:
+            #self.combat_timer -= 1
+            if self.combat_timer <= 0:
+                # print(f"{self.__class__.__name__} recovered from {self.combat_state}!")
+                # self.combat_state = CombatState.NORMAL
+                # self.hit = False
+                # self.hit_timer = 0
+                # self.hit_count = 0.0
+                self.into_normal_state()
+                self.invincible_timer = 30
+                return True
+            return False
+        if self.combat_state == CombatState.WEAK:
+            #self.combat_timer -= 1
+            if self.combat_timer <= 0:
+                self.into_normal_state()
+                return False
+        if self.combat_state == CombatState.KNOCKBACK:
+            if self.knockback_vel_x <= 0 and self.knockback_vel_z <= 0 and self.jump_z <= 0 and self.super_armor_timer <= 0:
+                self.into_down_state()
+
+
+        # 若為 normal 狀態，逐步減少 hit count
+        if self.hit_count > 0:
+            self.hit_count -= self.recovery_rate
+            if self.hit_count < 0:
+                self.hit_count = 0
+
+        return True
+
+    def get_swing_attack_data(self, attacker):
+        duration = 30
+        if self.rigid_timer < 30:
+            duration = self.rigid_timer
+        if duration <= 12:
+            return None
+        return AttackData(
+            attack_type=AttackType.SWING,
+            duration=duration,
+            trigger_frame=12,
+            recovery=16,
+            hitbox_func=item_hitbox,
+            damage=lambda _: self.throw_damage if hasattr(self, 'swing_damage') else 11,
+            knock_back_distance=1.2,
+            effects=[AttackEffect.FORCE_DOWN],
+            frame_map = [0] * 12 + [1] * (duration - 12),  # 必須與duration等長
+        )
+    def get_throw_attack_data(self, attacker):
+        duration = 30
+        if self.rigid_timer < 30:
+            duration = self.rigid_timer
+        if duration <= 16:
+            return None
+        return AttackData(
+            attack_type=AttackType.THROW,
+            duration=duration,
+            trigger_frame=16,
+            recovery=16,
+            hitbox_func=item_hitbox,
+            effects=[AttackEffect.SHORT_STUN],
+            damage=lambda _: self.throw_damage if hasattr(self, 'throw_damage') else 7,
+            knock_back_distance=1.2,
+            knock_up_height= 0.2,
+            frame_map = [0] * 16 + [1] * (duration - 16),  # 必須與duration等長
+        )
+
+    def get_knock_direction(self, attacker, attack_data):
+        if attacker is None:
+            # 無明確來源（如全畫面）→ 用角色自己 facing
+            return -1 if self.facing == DirState.RIGHT else 1
+
+        dx = self.x - attacker.x
+
+        # 避免誤差，設定一個最小距離門檻
+        if abs(dx) > 1e-3:
+            return 1 if dx > 0 else -1
+
+        # 若 dx 幾乎 0，改用 attacker 的 facing 或 direction（若有）
+        if hasattr(attacker, "facing"):
+            return 1 if attacker.facing == DirState.LEFT else -1
+        elif hasattr(attack_data, "direction"):
+            return 1 if attack_data.direction == DirState.LEFT else -1
+
+        # fallback
+        return -1
+    
+    def resolve_combat_state_on_hit(self, attack_data):
+        #處理虛弱狀態
+        effects = attack_data.effects
+        if self.super_armor_timer > 0:
+            #鋼體時不改變戰鬥狀態
+            return
+        # if AttackEffect.FORCE_DOWN in effects:
+        #     self.into_down_state()
+        #force down用knock_back取代
+        if AttackEffect.FORCE_WEAK in effects:
+            self.into_weak_state()
+        else:
+            # 普通攻擊後的邏輯
+            #print(f'{self.name} CombatState {self.combat_state.name}')
+            if self.combat_state == CombatState.NORMAL:
+                self.hit_count += 1
+                if self.hit_count >= self.max_hits_before_weak:
+                    self.into_weak_state()
+            elif self.combat_state == CombatState.WEAK:
+                #weak中強制所有技能擊倒
+                if attack_data.knock_back_distance == 0 and attack_data.knock_up_height == 0:
+                    self.into_down_state()
+            elif self.combat_state == CombatState.DOWN:
+                print(f'{self.name} 被倒地追加!')
+
+    def apply_attack_effects(self, attacker, attack_data):
+        if self.invincible_timer > 0 or self.super_armor_timer > 0:
+            #無敵或鋼體時不接受特殊狀態
+            return
+        #處理攻擊特效
+        effects = attack_data.effects
+        # 其他特效依照 enum 加入即可
+        # if AttackEffect.FORCE_DOWN in effects:
+        #     self.into_down_state()
+        if AttackEffect.FORCE_WEAK in effects:
+            self.into_weak_state()
+
+        #擊退處理
+        if attack_data.knock_back_distance!= 0 or attack_data.knock_up_height != 0:
+            self.combat_state = CombatState.KNOCKBACK
+            #suspend(f'{self.name} 被擊退! {attack_data.knock_back_distance}/{attack_data.knock_up_height}')
+            if attack_data.knock_back_distance != 0:
+                direction = self.get_knock_direction(attacker, attack_data)
+                self.knockback_vel_x = direction * attack_data.knock_back_distance
+
+            if attack_data.knock_up_height != 0:
+                self.knockback_vel_z = attack_data.knock_up_height
+                self.jump_z = max(0.2, attack_data.knock_up_height * 0.05)
+                #self.falling = True
+
+
+        if AttackEffect.SHORT_STUN in effects:
+            self.set_rigid(ON_HIT_SHORT_STUN_TIME)
+            self.on_hit_timer = ON_HIT_SHORT_STUN_TIME
+        if AttackEffect.BURN in effects:
+            print(f'{self.name} burning!!!!  burning!!!! burning!!!')
+            self.get_burning = True
+
+    def take_damage(self, attacker, attack_data):
+        #damage = getattr(attack_data, 'damage', 5)
+        damage = attack_data.get_damage(attacker)
+        #根據敵我進行傷害加成
+        self.health -= damage
+        if self.health <= 0:
+            self.health = 0
+            self.into_dead_state()
+        # 顯示傷害數字
+        if self.scene:
+            self.scene.add_floating_text(self.x + self.width / 2, self.y + self.height, f"-{damage}", self.map_h, color=(255, 0, 0))
+        return f'{self.name} 受到 {damage}, 剩餘HP: {self.health}'
+
+    def on_hit(self, attacker, attack_data):
+        # 無敵檢查
+        st = f'{attacker.name} 的 {attack_data.attack_type.name} 命中 {self.name} '
+        if self.jump_z > 0:
+            st = st + '(空中)'
+        if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
+            print(f'{st} (無敵!)')
+            return False
+
+        # 鋼體檢查
+        if self.super_armor_timer > 0:
+            print(f'{st} (鋼體!)')
+
+        # 基本命中狀態
+        self.hit = True
+        self.hit_timer = 20
+
+        if attacker.attack_state:
+            #attacker.attack_state.has_hit = True
+            attacker.attack_state.has_hit.append(self)
+        damage_st = self.take_damage(attacker, attack_data)
+        st = st + f' {damage_st}'
+        # CombatState 處理
+        if self.combat_state != CombatState.DEAD:
+            self.resolve_combat_state_on_hit(attack_data)
+        # 特效處理
+            self.apply_attack_effects(attacker, attack_data)
+        if self.attack_state:
+            print(f'[on_hit] {self.name} 的 {self.attack_state.data.attack_type.name} 攻擊被中斷')
+            self.attack_state = None
+            self.state = MoveState.STAND
+        #print(st)
+        return True
+
+    def update_common_timer(self):
+        self.current_frame += 1
+        if self.rigid_timer > 0:
+            self.rigid_timer -= 1
+        if self.invincible_timer > 0:
+            self.invincible_timer -= 1
+        if self.super_armor_timer > 0:
+            self.super_armor_timer -= 1
+        if self.falling_timer > 0:
+            self.falling_timer -= 1
+            self.falling_y_offset += Z_FALL_OFSSET
+        if self.on_hit_timer > 0:
+            self.on_hit_timer -= 1
+        if self.combat_timer > 0:
+            self.combat_timer -= 1
+        # 每禎遞減攻擊計時器
+        #死亡消失
+        if self.combat_state == CombatState.DEAD:
+            self.dead_timer -=1
+            #print(f'{self.name} dead state discount {self.dead_timer}')
+            if self.dead_timer <= 0:
+                print(f'{self.name} 消失')
+                if self.money > 0:
+                    loot = self.drop_loot()
+                    if loot:
+                        print(f'{self.name} 掉落 {loot.money}元')
+                if self.scene:
+                    #self.scene.unregister_unit(self)
+                    self.scene.mark_for_removal(self)
+
+        if self.attack_state:
+            self.attack_state.update()
+
+
+
+
+    def update_common_interactable_unit(self, unit):
+        return
+    # def update_on_flying(self):
+    #
+    #     if self.flying:
+    #         self.x += self.vel_x
+    #         self.jump_z += self.jump_z_vel
+    #         self.jump_z_vel -= self.weight  # 模擬重力
+    #         below_z = self.get_tile_z(int(self.x), int(self.y))
+    #         print(f'{self.name} 飛行中')
+    #         if below_z is not None and self.jump_z <= below_z:
+    #             self.jump_z = below_z
+    #             self.jump_z_vel = 0
+    #             self.flying = False  # ✅ 落地後關閉飛行
+    #             print(f'{self.name} 落地了')
+    #             #<--
+        #還沒實作
+    def update_common_opponent(self, opponent=None):
+        #受創狀態判定
+        self.update_combat_state()
+        self.update_hit_timer()
+        
+        #123456
+        if self.attack_state:
+            #print(f'update_common_opponent: [({self.current_frame}){self.attack_state.timer}] self.attack_state={self.attack_state} ({self.x:.2f}, {self.y:.2f})')
+            # self.attack_state.update()
+            #attack_state的timer update只能進行一次! 必須在外面
+            if self.attack_state and not self.attack_state.is_active():
+                #suspend(f'{self.attack_state.data.attack_type.name}收招')
+                self.set_rigid(self.attack_state.data.recovery)
+                self.attack_state = None
+                self.state = MoveState.STAND
+                self.mode = MoveState.STAND
+
+        #命中計時器
+        #命中判定123456
+        if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
+            if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
+                if self not in opponent.attack_state.has_hit:
+                    if self.held_by is None:
+                        #避免打到自己
+                        self.on_hit(opponent, opponent.attack_state.data)
+
+        # 若正在攻擊期間
+        #
+        if self.attack_state:
+            if self.is_jump():
+                # 空中攻擊時允許 X 軸移動與跳躍物理
+                dx = self.last_intent.get('dx')*0.2
+                dir = self.last_intent.get('direction')
+                self.x += dx
+
+            # 更新跳躍與落下（物理效果）
+            #self.update_physics_only()
+            #回傳狀態, 攻擊中不處理移動輸入
+            return False
+        else:
+            return True
+
+    def draw_hit_box(self, win, cam_x, cam_y, tile_offset_y, color, terrain_z_offset=0):
+        #符合條件的才畫
+        if self.attack_state and (self.attack_state.should_trigger_hit() or len(self.attack_state.has_hit) > 0):
+            hitbox = self.get_hitbox()
+            hx = int(hitbox['x1'] * TILE_SIZE) - cam_x
+            hy = int((self.map_h - hitbox['y2']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+            hw = int((hitbox['x2'] - hitbox['x1']) * TILE_SIZE)
+            hh = int((hitbox['y2'] - hitbox['y1']) * TILE_SIZE)
+            pygame.draw.rect(win, color, (hx, hy, hw, hh), 2)
+
+    def draw_stand(self, win, px, py):
+        pygame.draw.rect(win, self.color, (px, py, int(self.width * TILE_SIZE), int(self.height * TILE_SIZE)))
+
+    def draw_weak(self, win, px, py):
+        pygame.draw.rect(win, (255, 255, 100), (px, py, int(self.width * TILE_SIZE), int(self.height * TILE_SIZE)))
+
+    def draw_down(self, win, px, py):
+        color=(100, 0, 0)
+        if self.is_invincible():
+            color = (150, 0, 0)
+        pygame.draw.ellipse(win, color, (
+            px, py + int(self.height * TILE_SIZE * 0.5),
+            int(self.width * TILE_SIZE),
+            int(self.height * TILE_SIZE * 0.5)
+        ))
+    def draw_dead(self, win, px, py):
+        if (self.dead_timer // 10) % 2 == 0:
+            self.draw_down(win, px, py)
+        # 額外效果：可以加紅色閃爍、爆炸動畫等
+
+    def draw_knockback(self, win, px, py):
+        #suspend('knockback!')
+        pygame.draw.rect(win, (255, 180, 0), (px, py, int(self.width * TILE_SIZE), int(self.height * TILE_SIZE)))
+
+    def draw_hit(self, win, px, py):
+        """在角色目前姿態上繪製紅色邊框，表示受擊狀態（非實心）"""
+        if self.combat_state == CombatState.DOWN:
+            # 倒地狀態 → 畫橢圓紅框
+            box = pygame.Rect(
+                px,
+                py + int(self.height * TILE_SIZE * 0.5),
+                int(self.width * TILE_SIZE),
+                int(self.height * TILE_SIZE * 0.5)
+            )
+            pygame.draw.ellipse(win, (255, 0, 0), box, width=2)
+        else:
+            # 正常站立 → 畫矩形紅框
+            box = pygame.Rect(
+                px,
+                py,
+                int(self.width * TILE_SIZE),
+                int(self.height * TILE_SIZE)
+            )
+            pygame.draw.rect(win, (255, 0, 0), box, width=2)
+    def get_hitbox(self):
+        if self.attack_state:
+            xy_hitbox =self.attack_state.get_hitbox(self.x+self.width/2, self.y, self.facing, self)
+            
+            xy_hitbox['z1'] = self.z+self.jump_z
+            xy_hitbox['z2'] = self.z+self.jump_z+self.height
+            if self.attack_state.is_fly_attack:
+                xy_hitbox['z1'] = self.z
+            return xy_hitbox
+            #return self.attack_state.get_hitbox(self.x+self.width/2, self.y, self.facing)
+
+        return None
+    def get_hurtbox(self):
+        return {'x1': self.x, 'x2':self.x+self.width, 'y1':self.y, 'y2':self.y+self.height, 'z1':self.z+self.jump_z, 'z2':self.z+self.jump_z+self.height}
+
+    def get_interact_box(self):
+        #物件互動使用(非傷害)
+        return {
+            'x1': self.x - 0.5,
+            'x2': self.x + self.width - 0.5,
+            'y1': self.y,
+            'y2': self.y + self.height*0.5,
+            'z1': self.jump_z,
+            'z2': self.jump_z+self.height
+        }
+
+    def stop_print_info(self):
+        st = f'{self.name} ({self.x}, {self.y}, {self.z}) JUMP {self.jump_z}\n'
+        st = st + f'move_state [{self.state.name}] combat_state [{self.combat_state.name}] attack_state'
+
+        if self.attack_state:
+            st = st + f'[{attack_state.data.attack_type.name}]'
+        else:
+            st = st + 'None '
+        st = st + f'\nFlags: is_knockbacking[{self.is_knockbacking()}] is_falling[{self.is_falling()}] is_locked[{self.is_locked()}] flying[{self.flying}]'
+        suspend(st)
+
+    def handle_input(self, intent):
+        #所有無法操控狀態
+        block_movement = False
+        #if self.attack_state and not self.attack_state.is_active():
+        # intent_info = 'dx {}, dy {},'.format(intent['dx'],intent['dy'])
+        # flags = f'{self.combat_state.name}, knockback{self.is_knockbacking()},falling{self.is_falling()},is_locked{self.is_locked()},flying{self.flying}'
+        # if self.name == 'player':
+        #     print(f'CharacterBase({self.name})[handle input] [{self.current_frame}] move_state={self.state.name} block_movement={block_movement} attack_state {self.attack_state} {flags}', flush=True)
+        if intent['action'] == 'throw_item':
+            self.stop_print_info()
+        if self.attack_state:
+            #return
+            block_movement=True
+        if self.combat_state == CombatState.DOWN or self.combat_state == CombatState.DEAD:
+            return
+        if self.is_knockbacking() or self.is_falling() or self.is_locked():
+            return
+        if self.flying:
+            return
+
+
+
+        if not block_movement:
+            #攻擊中限制移動
+            self.last_intent = intent
+            if intent['direction'] in [DirState.LEFT, DirState.RIGHT]:
+                self.facing = intent['direction']
+            #初始狀態: 站
+            self.state = MoveState.STAND
+            dx, dy = intent['dx'], intent['dy']
+            if intent['jump'] and self.jump_z == 0 and not self.jumpping_flag:
+                self.jump_z_vel = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
+                self.jump_z = 0.1
+                self.color = self.jump_color
+                self.jumpping_flag = True
+
+            move_rate = 0.4 if intent['horizontal'] == MoveState.RUN else 0.2
+            new_x = self.x + dx * move_rate
+            new_y = self.y + dy * move_rate
+            #掉落檢查
+            if self.check_and_trigger_fall(dx, dy, move_rate):
+                return
+
+            prev_x, prev_y = self.x, self.y
+            foot_x = new_x + self.width / 2
+            foot_y = new_y + self.height * 0.1
+            nx, ny = int(foot_x), int(foot_y)
+            target_z = self.get_tile_z(nx, ny)
+            if abs(target_z - self.z) <= 1 or (self.jump_z > 0 and self.z + self.jump_z >= target_z):
+                self.x, self.y = new_x, new_y
+                if self.jump_z > 0:
+                    self.z = target_z
+                else:
+                    self.z = target_z
+
+            moved = (self.x != prev_x or self.y != prev_y)
+            if moved and not self.is_falling():
+                self.state = intent['horizontal'] if intent['horizontal'] in [MoveState.WALK, MoveState.RUN,
+                                                                              MoveState.STEP] else MoveState.WALK
+
+        intent_act =intent.get('action')
+        if intent_act == 'pickup_item':
+            for comp in self.components.values():
+                if hasattr(comp, "handle_action"):
+                    comp.handle_action('pickup_item')
+                    self.attack_intent = None
+        elif intent_act is not None:
+            #打出對應招式
+            print('{} 出招 {}'.format(self.name, intent['action']))
+            self.attack(intent['action'])
+            print(f'[{self.current_frame}]{self.name}打出{self.attack_state.data.attack_type.name}')
+
+            #self.set_rigid(self.attack_state.data.duration / 4) #攻擊硬直
+            self.attack_intent = None  # ✅ 清除
+
+    def set_attack_by_skill(self, skill):
+        atk_data = attack_data_dict[skill]
+        if atk_data.can_use(self):
+            if skill in SWING_ATTACKS:
+                item = self.get_component("holdable").held_object
+                if item:
+                    self.attack_state = SwingAttackState(self, item)  # 會在初始化時載入AttackData.SWING的相關資料
+                    if self.attack_state is not None:
+                        self.state = MoveState.ATTACK
+            elif skill in THROW_ATTACKS:
+                item = self.get_component("holdable").held_object
+                if item:
+                    self.attack_state = ThrowAttackState(self, item)
+                    if self.attack_state is not None:
+                        self.state = MoveState.ATTACK
+            elif skill in FLY_ATTACKS:
+                self.attack_state = FlyAttackState(self, atk_data)
+                self.state = MoveState.ATTACK
+            elif skill in FLYING_OBJECT_ATTACKS:
+                if skill == AttackType.FIREBALL:
+                    object = self.create_flying_object('fireball')
+                elif skill == AttackType.BULLET:
+                    object = self.create_flying_object('bullet')
+                else:
+                    return
+                self.attack_state = ThrowAttackState(self, object)
+                # 把attack_data備份起來, 這樣在character收招後仍然有有效資料
+                object.attacker_attack_data = self.attack_state.data
+                if self.attack_state is not None:
+                    self.state = MoveState.ATTACK
+            else:
+                self.attack_state = AttackState(self, atk_data)
+                self.state = MoveState.ATTACK
+        # if self.attack_state:
+        #     print(f'[set_attack_by_skill] {self.name} attack_state = {self.attack_state.data.attack_type.name}')
+
+    def draw_hp_bar(self, win, px, py):
+        # max_hp = 100
+        # bar_width = int(self.width * TILE_SIZE)
+        # hp_ratio = self.health / max_hp
+        # hp_color = (200, 0, 0)
+        # bg_color = (50, 50, 50)
+        # bar_height = 4
+        # bar_y = py - 14  # 高於角色頭部
+        # pygame.draw.rect(win, bg_color, (px, bar_y, bar_width, bar_height))
+        # pygame.draw.rect(win, hp_color, (px, bar_y, int(bar_width * hp_ratio), bar_height))
+        # 若死亡則不顯示血條
+        if self.combat_state == CombatState.DEAD:
+            return
+
+        bar_width = int(self.width * TILE_SIZE)
+        bar_height = 4
+        bar_y = py - 14  # 血條在角色頭上方
+
+        # 🟥 計算比例（最大值避免為 0）
+        max_hp = getattr(self, "max_hp", 100)
+        max_hp = max(max_hp, 1)  # 防止除以 0
+        hp_ratio = self.health / max_hp
+
+        # 🎨 顏色樣式根據角色類型切換
+        if hasattr(self, 'name') and self.name == 'player':
+            hp_color = (200, 0, 0)  # 玩家 → 紅色
+            bg_color = (50, 0, 0)
+            border_color = (255, 200, 200)
+        else:
+            hp_color = (255, 215, 0)  # 敵人
+            bg_color = (0, 0, 50)
+            border_color = (200, 200, 255)
+
+        # 🖌️ 繪製背景與血量條
+        pygame.draw.rect(win, bg_color, (px, bar_y, bar_width, bar_height))
+        pygame.draw.rect(win, hp_color, (px, bar_y, int(bar_width * hp_ratio), bar_height))
+        pygame.draw.rect(win, border_color, (px, bar_y, bar_width, bar_height), 1)
+    def create_flying_object(self, item_to_create='fireball'):
+        from Items import Fireball, Bullet
+        rebuild_map_info = [self.terrain, self.map_w, self.map_h]
+        flying_object = None
+        create_func = None
+        if item_to_create == 'fireball':
+            create_func = Fireball
+        elif item_to_create == 'bullet':
+            create_func = Bullet
+        if create_func:
+            flying_object = create_func(self.x, self.y, rebuild_map_info, owner=self)
+            self.scene.register_unit(flying_object, side=self.side, tags=['item', 'temp_object'], type='item')
+        return flying_object
+    def drop_loot(self):
+        from Items import Coin  # 假設你有 Coin 類別
+        if self.scene:
+            coin = Coin(self.x, self.y, [self.terrain, self.map_w, self.map_h])
+            coin.money = self.money
+            self.scene.register_unit(coin, side='netural', tags=['item'], type='item')
+            return coin
+        return None
+
+
+
+class Player(CharacterBase):
+    def __init__(self, x, y, map_info, material):
+        super().__init__(x, y, map_info)
+        self.key_buffer = {dir: None for dir in [DirState.LEFT, DirState.RIGHT]}
+        self.step_pending = {dir: -9999 for dir in [DirState.LEFT, DirState.RIGHT]}
+        self.color = (255, 100, 100)
+        self.jump_color = (0, 220, 0)
+        self.fall_color = (0, 140, 0)
+        self.default_color = (255, 100, 100)
+        self.key_down_frame = {}
+        self.last_step_frame = {}
+        self.step_active_until_frame = {}
+        self.step_direction = None
+        self.running_dir = None
+        self.name='player'
+        self.side = 'player_side'
+        # self.attack_map = {
+        #     "z_attack": lambda: AttackType.BASH if self.state == MoveState.RUN else AttackType.PUNCH,
+        #     "x_attack": lambda: AttackType.KICK,
+        #     "c_attack": lambda: AttackType.SLASH
+        # }
+        self.attack_table = {'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH},
+                             'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK},
+                             'c_attack':{'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
+                             'swing_item':{'default': AttackType.SWING},
+                             'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}}
+
+        #self.animator = SpriteAnimator("Character_white_24frame_96.png")  # 載入素材
+        self.animator = SpriteAnimator(material)  # 載入素材
+        self.stand_image = pygame.image.load("the_world.png").convert_alpha()
+
+
+        #for dir in ['left', 'right', 'up', 'down']:
+        for dir in DirState:
+            self.key_down_frame[dir] = None
+            self.last_step_frame[dir] = -9999
+
+    def recently_stepped(self, direction, current_frame):
+        last_frame = self.last_step_frame.get(direction)
+        return last_frame is not None and current_frame - last_frame <= STEP_EFFECT_FRAME
+
+    def input_intent(self, keys):
+        #左右key判定
+        dir_h = (keys[pygame.K_RIGHT] - keys[pygame.K_LEFT])
+        dir_v = (keys[pygame.K_UP] - keys[pygame.K_DOWN])
+        direction = None
+        if dir_h > 0:
+            direction = DirState.RIGHT
+        elif dir_h < 0:
+            direction = DirState.LEFT
+        elif dir_v > 0:
+            direction = DirState.DOWN
+        elif dir_v < 0:
+            direction = DirState.UP
+
+        horizontal = MoveState.STAND
+        #STEP/WALK/RUN判定
+        if direction in [DirState.LEFT, DirState.RIGHT]:
+            if self.running_dir == direction:
+                horizontal = MoveState.RUN
+            elif self.recently_stepped(direction, self.current_frame):
+                horizontal = MoveState.RUN
+                self.running_dir = direction
+            elif self.step_pending.get(direction, -1) >= self.current_frame:
+                horizontal = MoveState.STEP
+            else:
+                horizontal = MoveState.WALK
+        else:
+            horizontal = MoveState.STAND
+
+        attack_type = None
+        if self.attack_intent:
+            #attack_intent = z/x/c_attack, 對應到招式表
+            attack_type = self.resolve_attack_table()
+            self.attack_intent = None
+
+        jump_intent = None
+        if self.jump_intent_trigger:
+            #suspend('JUMP!')
+            jump_intent = True
+            self.jump_intent_trigger = False
+
+
+
+        return {
+            'horizontal': horizontal,
+            'direction': direction,
+            "dx": dir_h * 0.5,            # 實際位移
+            "dy": dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
+            'jump': jump_intent,
+            'action': attack_type,
+        }
+
+    def on_key_down(self, key):
+        if self.combat_state == CombatState.DOWN or self.combat_state == CombatState.WEAK:
+            return  # 倒地或weak無法攻擊
+        # 攻擊期間不接受其他輸入:取消攻擊
+        # if self.state == MoveState.ATTACK:
+        #     return
+
+
+        if key in KEY_TO_ACTION:
+            print(f'{KEY_TO_ACTION[key]} trigger')
+            self.attack_intent = KEY_TO_ACTION[key]
+
+        # 左右鍵記錄按下時間
+        if key == pygame.K_LEFT:
+            self.key_down_frame[DirState.LEFT] = self.current_frame
+        elif key == pygame.K_RIGHT:
+            self.key_down_frame[DirState.RIGHT] = self.current_frame
+
+        if key == pygame.K_SPACE and not self.jump_key_block:
+            self.jump_key_block = True
+            self.jump_intent_trigger = True
+
+    def on_key_up(self, key):
+        dir_map = {
+            pygame.K_LEFT: DirState.LEFT,
+            pygame.K_RIGHT: DirState.RIGHT
+        }
+        direction = dir_map.get(key, None)
+        if direction:
+            down_frame = self.key_down_frame.get(direction)
+            if down_frame is not None:
+                hold = self.current_frame - down_frame
+                if 1 <= hold <= STEP_PRESS_MAX_FRAME:
+                    self.step_pending[direction] = self.current_frame + STEP_STATE_DURATION
+                    self.step_direction = direction
+                    self.last_step_frame[direction] = self.current_frame
+                    self.step_active_until_frame[direction] = self.current_frame + STEP_STATE_DURATION
+                if direction == self.running_dir:
+                    self.running_dir = None
+        if key == pygame.K_SPACE:
+            self.jump_key_block = False
+
+    def attack(self, skill):
+        if self.attack_state:
+            if self.attack_state.can_cancel_to(skill):
+                print(f"[Cancel] {self.attack_state.data.attack_type.name} → {skill.name}")
+                self.attack_state = AttackState(self, attack_data_dict[skill])  # 取消當前招式
+            else:
+                print(f"[Block] 無法取消 {self.attack_state.data.attack_type.name} → {skill.name}")
+                return  # ❌ 無法取消，忽略攻擊
+        else:
+            #如果是none=沒設定過攻擊
+            self.set_attack_by_skill(skill)
+
+        if self.name == 'player' and self.attack_state is not None and self.attack_state.data is not None and self.attack_state.data.attack_type == AttackType.SLASH:
+            self.scene.say(self, 'Tiger UpperCut!', duration=90)
+
+
+    def handle_input(self, keys):
+        intent = self.input_intent(keys)
+        if self.name=='ally':
+            st = 'ALLLLLLLLY  [{}] intent [dx{}, dy{}, jump{}, action{}'.format(self.current_frame, intent['dx'],intent['dy'],intent['jump'],intent['action'])
+            print(st, flush=True)
+
+
+        super().handle_input(intent)
+
+
+    def handle_movement(self):
+        # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
+        for dir in self.step_pending:
+            if self.step_pending[dir] < self.current_frame:
+                self.step_pending[dir] = -9999
+        if self.is_falling():
+            self.jump_z += self.jump_z_vel
+            self.x += self.vel_xy[0] * 0.2
+            self.y += self.vel_xy[1] * 0.2
+            self.color = self.fall_color
+            self.check_ground_contact()
+
+        if self.jump_z != 0:
+            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
+            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
+            self.jump_z += self.jump_z_vel
+            self.jump_z_vel -= 0.05
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.jump_z_vel = 0
+                self.color = self.default_color
+                self.jumpping_flag = False
+        for dir, end_frame in self.step_pending.items():
+            if self.current_frame <= end_frame and self.state == MoveState.STAND:
+                self.state = MoveState.STEP
+
+
+    #這是player的update
+    def update(self):
+        self.update_common_timer()
+        if self.external_control:
+            self.update_by_external_control()
+            return
+
+        if self.held_by:
+            print(f'{self.name} 被持有 {self.held_by.name}')
+        if self.health < 50:
+            self.has_stand = True
+        if self.held_by:
+            self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+        #處理失控的飛行狀態
+        if self.combat_state == CombatState.DEAD:
+            print(f'{self.name} 死亡! 遊戲結束')
+            return
+
+        enemys = self.scene.get_units_by_side('enemy_side')
+        neturals = self.scene.get_units_by_side('netural')
+        # attack_timer的update僅限一次!
+        for enemy in enemys:
+            self.update_common_opponent(enemy)
+        for unit in neturals:
+            self.update_common_interactable_unit(unit)
+        self.update_physics_only()
+        self.handle_movement()
+        self.update_burning_flag()
+
+
+
+class Ally(CharacterBase):
+    def __init__(self, x, y, z, map_info, material):
+        super().__init__(x, y, map_info)
+        self.attack_cooldown = 0  # 攻擊冷卻倒數
+        self.attack_cooldown_duration = 240  # 冷卻時間（可調整）
+        self.default_color = (100, 100, 255)
+        self.jump_color = (100, 150, 255)
+        self.fall_color = (50, 100, 255)
+        self.summon_sickness = 300
+        self.name = 'ally'
+        self.combo_count = 0
+        self.combos = [AttackType.BULLET, AttackType.SLASH]
+        self.dummy = False
+        #self.animator = SpriteAnimator("takina1_24frame_96.png")  # 載入素材
+        self.animator = SpriteAnimator(material)  # 載入素材
+        self.stand_image = None
+        self.side = 'player_side'
+
+    # ally的update
+    def update(self):
+        self.update_common_timer()
+        if self.external_control:
+            self.update_by_external_control()
+            return
+        if self.current_frame < self.summon_sickness:
+            return
+
+        # 關閉AI
+        # return
+
+        self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+
+        if self.combat_state == CombatState.DEAD:
+            return
+        enemys = self.scene.get_units_by_side('enemy_side')
+        #neturals = self.scene.get_units_by_side('netural')
+        enemy_target = None
+        min_dist = 10000
+        for enemy in enemys:
+            dx = enemy.x - self.x
+            dy = enemy.y - self.y
+            dist = (dx ** 2 + dy ** 2) ** 0.5
+            if dist < min_dist:
+                enemy_target = enemy
+                min_dist = dist
+            if not self.update_common_opponent(enemy):
+                # 不能動作的狀態
+                return
+
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+        if enemy_target:
+            intent = self.decide_intent(enemy_target)
+            self.handle_input(intent)
+        self.update_physics_only()
+        self.handle_movement()
+        self.update_burning_flag()
+
+
+    def decide_intent(self, target):
+        intent = {
+            'direction': self.facing,
+            'horizontal': MoveState.STAND,
+            'dx': 0,
+            'dy': 0,
+            'jump': False,
+            'action': None
+        }
+        if self.dummy:
+            return intent
+
+        if self.attack_state or not self.is_alive():
+            return intent
+
+        # 分開邏輯模組處理
+        ai_jump_logic(self, target, intent)
+        ai_attack_logic(self, target, intent, act='support')
+        ai_move_logic(self, target, intent, far_speed = 0.5, near_speed = 0.3)
+        return intent
+
+    def attack(self, skill):
+        # 123456
+        if self.state == MoveState.ATTACK:
+            return
+        if self.attack_state:
+            return
+        else:
+            # 如果是none=沒設定過攻擊
+            self.set_attack_by_skill(skill)
+
+    def handle_movement(self):
+        # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
+        if self.is_falling():
+            self.jump_z += self.jump_z_vel
+            self.x += self.vel_xy[0] * 0.2
+            self.y += self.vel_xy[1] * 0.2
+            self.color = self.fall_color
+            self.check_ground_contact()
+        if self.jump_z != 0 and not self.held_by:
+            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
+            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
+            self.jump_z += self.jump_z_vel
+            self.jump_z_vel -= 0.05
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.jump_z_vel = 0
+                self.color = self.default_color
+
+def ai_move_logic(unit, target, intent, far_speed = 0.5, near_speed=0.3):
+    if unit.attack_state or unit.is_locked() or unit.state == MoveState.ATTACK:
+        #攻擊時不移動
+        return
+    dx = target.x - unit.x
+    dy = target.y - unit.y
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+
+    if dist > 10.0:
+        move_speed = 1  # approach fast
+    elif dist > 4.0:
+        move_speed = 0.5  # approach slow
+    elif dist > 2.0:
+        move_speed = far_speed
+    elif dist > 1.0:
+        move_speed = near_speed
+    else:
+        move_speed = 0.0  # keep distance
+
+    move_dx = 0.5 if dx > 0.2 else -0.5 if dx < -0.2 else 0
+    move_dy = 0.5 if dy > 0.2 else -0.5 if dy < -0.2 else 0
+    intent['dx'] = move_dx * move_speed
+    intent['dy'] = move_dy * move_speed
+
+    if intent['dx'] > 0:
+        intent['direction'] = DirState.RIGHT
+        intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
+    elif intent['dx'] < 0:
+        intent['direction'] = DirState.LEFT
+        intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
+
+def ai_jump_logic(unit, target, intent):
+    dx = target.x - unit.x
+    dy = target.y - unit.y
+    dz = abs((target.z) - (unit.z))
+
+    tile_x = int(unit.x + (0.4 if dx > 0 else -0.4))
+    tile_y = int(unit.y + (0.4 if dy > 0 else -0.4))
+    next_tile_z = unit.get_tile_z(tile_x, tile_y)
+
+    if unit.jump_z == 0 and next_tile_z is not None:
+        dz_to_next_tile = next_tile_z - unit.z
+        if dz >= 2 and dz_to_next_tile >= 2:
+            intent['jump'] = True
+            intent['dx'] = dx
+            intent['dy'] = dy
+            intent['direction'] = DirState.RIGHT if dx > 0 else DirState.LEFT
+            intent['horizontal'] = MoveState.STAND
+            print(f'{unit.name} 試圖跳躍!')
+
+def ai_attack_logic(unit, target, intent, act='support'):
+    dx = target.x - unit.x
+    dy = target.y - unit.y
+    dz = abs((target.z) - (unit.z))
+    dist = (dx ** 2 + dy ** 2) ** 0.5
+    if act == 'support':
+        if dy < 0.5 and dz < 1.5 and unit.attack_cooldown <= 0:
+            if dist > 1:
+                intent['action'] = AttackType.BULLET
+            else:
+                intent['action'] = AttackType.SLASH
+            unit.attack_cooldown = unit.attack_cooldown_duration
+            unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
+            unit.attack_cooldown = unit.attack_cooldown_duration
+    else:
+        attack_range = 1.5
+        if dist <= attack_range and dz < 1.0:
+            if unit.attack_cooldown <= 0:
+                intent['action'] = unit.combos[int(unit.combo_count) % len(unit.combos)]
+                unit.combo_count += 1
+                unit.attack_cooldown = unit.attack_cooldown_duration
+                unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
+
+class Enemy(CharacterBase):
+    def __init__(self, x, y, z, map_info, material):
+        super().__init__(x, y, map_info)
+        self.attack_cooldown = 0  # 攻擊冷卻倒數
+        self.attack_cooldown_duration = 60  # 冷卻時間（可調整）
+        self.default_color=(100,100,255)
+        self.jump_color=(100,150,255)
+        self.fall_color=(50, 100, 255)
+        self.summon_sickness = 300
+        self.name='enemy'
+        self.combo_count = 0
+        self.combos = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackType.SLASH]
+        self.dummy = False
+        #self.animator = SpriteAnimator("Character_red_24frame_96.png")  # 載入素材
+        self.animator = SpriteAnimator(material)  # 載入素材
+        self.stand_image = pygame.image.load("star_p.png").convert_alpha()
+        self.side = 'enemy_side'
+        self.money = 10 #loot
+
+
+    #enemy的update
+    def update(self):
+
+        self.update_common_timer()
+        if self.external_control:
+            self.update_by_external_control()
+            return
+        if self.current_frame < self.summon_sickness:
+            #開場發呆
+            return
+        #關閉AI
+        #return
+        #替身測試
+        if self.health < 50:
+            self.has_stand = True
+        
+        self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+
+        if self.combat_state == CombatState.DEAD:
+            return
+        players = self.scene.get_units_by_side('player_side')
+        neturals = self.scene.get_units_by_side('netural')
+        for player in players:
+            if not self.update_common_opponent(player):
+                #不能動作的狀態
+                return
+
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+        intent = self.decide_intent(players[0])
+        self.handle_input(intent)
+        self.update_physics_only()
+        self.handle_movement()
+        self.update_burning_flag()
+
+
+
+    def decide_intent(self, target):
+        intent = {
+            'direction': self.facing,
+            'horizontal': MoveState.STAND,
+            'dx': 0,
+            'dy': 0,
+            'jump': False,
+            'action': None
+        }
+        if self.dummy:
+            return intent
+
+        if self.attack_state or not self.is_alive():
+            return intent
+
+        # 分開邏輯模組處理
+        ai_jump_logic(self, target, intent)
+        ai_attack_logic(self, target, intent, act='Enemy')
+        ai_move_logic(self, target, intent, far_speed=0.2, near_speed=0.1)
+
+
+
+        return intent
+
+    def attack(self, skill):
+        # 123456
+        if self.state == MoveState.ATTACK:
+            return
+        if self.attack_state:
+            return
+        else:
+            #如果是none=沒設定過攻擊
+            self.set_attack_by_skill(skill)
+
+
+    def handle_movement(self):
+        # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
+        if self.is_falling():
+            self.jump_z += self.jump_z_vel
+            self.x += self.vel_xy[0] * 0.2
+            self.y += self.vel_xy[1] * 0.2
+            self.color = self.fall_color
+            self.check_ground_contact()
+        if self.jump_z != 0 and not self.held_by:
+            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
+            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
+            self.jump_z += self.jump_z_vel
+            self.jump_z_vel -= 0.05
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.jump_z_vel = 0
+                self.color = self.default_color
+
+class BigEnemy(Enemy):
+    def __init__(self, x, y, z, map_info, material, big_ratio=2.0):
+        super().__init__(x, y, z, map_info, material)
+
+        # 1) 放大碰撞尺寸
+        self.width = self.width * big_ratio
+        self.height = self.height * big_ratio
+
+        # 2) 視覺區別 (顏色或其他旗標)
+        self.default_color = (200, 80, 20)
+        self.jump_color = (220, 140, 40)
+        self.fall_color = (180, 80, 30)
+
+        # 3) 能力值強化
+        #   - 血量大幅提升
+        #   - money 掉更多
+        base_max_hp = getattr(self, "max_hp", 100)
+        self.max_hp = base_max_hp * 3
+        self.health = self.max_hp
+
+        base_money = getattr(self, "money", 10)
+        self.money = base_money * 5
+
+        # 攻擊冷卻更長，顯得笨重但危險
+        self.attack_cooldown_duration = max(
+            15,
+            int(self.attack_cooldown_duration * 1.8)
+        )
+        self.attack_cooldown = 0
+
+        # 召喚後僵直時間（或開場不動秒數）可以調整
+        self.summon_sickness = 10
+
+        # 4) 調整動畫貼圖大小
+        #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface
+        if hasattr(self, "animator") and self.animator and hasattr(self.animator, "frames"):
+            scaled_frames = []
+            for f in self.animator.frames:
+                sw = f.get_width()
+                sh = f.get_height()
+                scaled_frames.append(pygame.transform.scale(f, (sw * big_ratio, sh * big_ratio)))
+            self.animator.frames = scaled_frames
+
+            # 如果 animator 有 frame_width/height 屬性就同步更新
+            if hasattr(self.animator, "frame_width"):
+                self.animator.frame_width *= big_ratio
+            if hasattr(self.animator, "frame_height"):
+                self.animator.frame_height *= big_ratio
+
+        # 5) 改招式組合（可依你遊戲平衡調）
+        self.combos = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
+
+        # 6) metadata / 辨識
+        self.name = 'big_enemy'
+        self.side = 'enemy_side'
+
+

@@ -1,0 +1,46 @@
+from enum import Enum, auto
+
+#Character enumes
+class MoveState(Enum):
+    STAND = auto()
+    WALK = auto()
+    RUN = auto()
+    STEP = auto()
+    JUMP = auto()
+    FALL = auto()
+    ATTACK = auto()
+
+class CombatState(Enum):
+    NORMAL = auto()
+    WEAK = auto()
+    DOWN = auto()
+    KNOCKBACK = auto()
+    DEAD = auto()
+
+class DirState(Enum):
+    RIGHT = auto()
+    LEFT = auto()
+    UP = auto()
+    DOWN = auto()
+
+#Skill enumes
+class AttackType(Enum):
+    SLASH=auto()
+    PUNCH=auto()
+    KICK=auto()
+    FLY_KICK=auto()
+    BASH=auto()
+    SWING=auto()    #揮舞武器
+    THROW=auto()    #投擲武器
+    THROW_CRASH=auto()  #飛行道具碰撞傷害
+    FIREBALL=auto()
+    BULLET=auto()
+#攻擊特效
+class AttackEffect(Enum):
+    FORCE_DOWN = auto()        # 強制倒地
+    FORCE_WEAK = auto()  # 強制倒地
+    # KNOCK_BACK = auto()        # 擊退   使用data中的knock_back_distance取代
+    # KNOCK_UP = auto()          # 擊飛   使用data中的knock_up_height取代
+    SHORT_STUN = auto()              # 暫時無法動作
+    IGNORE_INVINCIBLE = auto() # 無視無敵時間
+    BURN = auto()

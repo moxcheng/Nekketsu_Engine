@@ -1,0 +1,338 @@
+from Component import ComponentHost, HoldFlyLogicMixin
+from Config import TILE_SIZE
+import pygame
+from State_enum import *
+from Skill import *
+
+
+class Item(ComponentHost, HoldFlyLogicMixin):
+    def __init__(self, name, x, y, map_info, weight=0.1):
+        super().__init__()
+        self.name = name
+        self.x = x
+        self.y = y
+        self.width = 1
+        self.height = 1
+        self.weight = weight
+        self.jump_z_vel = 0
+        self.jump_z = 0  # 可選：讓 item 可以「拋起」
+        self.color = (150, 150, 150)  # 預設灰色
+        self.timer = 0
+        self.flying = False
+        self.breakthrough = False
+        self.attack_state = None
+        self.swing_damage = 2
+        
+
+
+        self.terrain = map_info[0]
+        self.map_w = map_info[1]
+        self.map_h = map_info[2]
+        self.hit_someone = False
+        self.attacker_attack_data = None
+
+    def clear_autonomous_behavior(self):
+        self.flying = False
+        self.breakthrough = False
+        self.attack_state = None
+        self.hit_someone = False
+        self.attacker_attack_data = None
+
+    def is_pickable(self):
+        #檢查是否能持有
+        return not self.held_by
+    def is_holdable(self):
+        #檢查自身條件是否能繼續持有
+        return True
+
+    def get_tile_z(self, x, y):
+        if 0 <= int(x) < self.map_w and 0 <= int(y) < self.map_h:
+            return self.terrain[int(y), int(x)]
+        return None
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        px = int((self.x + 0.5) * TILE_SIZE) - cam_
+        #py = int((self.map_h - self.y - 0.5) * TILE_SIZE - self.jump_z * 5) + tile_offset_y
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        w = int(self.width * TILE_SIZE)
+        h = int(self.height * TILE_SIZE)
+        pygame.draw.rect(win, self.color, (px, py, w, h))
+
+    # def swing_attack(self, attacker):
+    #     print(f"{attacker.name} 用 {self.name} 揮舞攻擊！")
+    # 
+    # def throw(self, attacker):
+    #     print(f"{attacker.name} 投擲了 {self.name}，受重力: {self.is_heavy}")
+    #     self.is_being_held = None
+    #     # 可向 scene_manager 添加拋出物件
+    def is_pickable(self):
+        return not self.held_by
+    def update(self):
+        if self.external_control:
+            self.update_by_external_control()
+            return
+        self.hit_someone = self.update_hold_fly_position() #從HoldFlyLogicMixin而來
+        self.z = self.get_tile_z(self.x, self.y)
+
+
+    def get_interact_box(self):
+        return {
+            'x1': self.x,
+            'x2': self.x + self.width,
+            'y1': self.y,
+            'y2': self.y + self.height,
+            'z1': self.jump_z,
+            'z2': self.jump_z + self.height
+        }
+
+    def get_swing_attack_data(self, attacker):
+        return AttackData(
+            attack_type=AttackType.SWING,
+            duration=32,
+            trigger_frame=12,
+            recovery=16,
+            hitbox_func=item_hitbox,
+            damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
+            effects=[AttackEffect.SHORT_STUN],
+            frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
+        )
+    def get_swing_attack_data(self, attacker):
+        return AttackData(
+            attack_type=AttackType.SWING,
+            duration=32,
+            trigger_frame=12,
+            recovery=16,
+            hitbox_func=item_hitbox,
+            damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
+            effects=[AttackEffect.SHORT_STUN],
+            frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
+        )
+    def get_throw_attack_data(self, attacker):
+        return AttackData(
+        attack_type=AttackType.THROW,
+        duration=32,
+        trigger_frame=16,
+        recovery=16,
+        hitbox_func=item_hitbox,
+        effects=[AttackEffect.SHORT_STUN],
+        damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 7,
+        frame_map = [0]*16 + [1]*16,   #必須與duration等長
+    )
+
+    def is_out_of_bounds(self):
+        return not (0 <= self.x < self.map_w and 0 <= self.y < self.map_h)
+
+
+class Rock(Item):
+    def __init__(self, x, y, map_info):
+        super().__init__(name="小石頭", x=x, y=y, map_info=map_info, weight=0.03)
+        self.width = 1
+        self.height = 1
+        self.vz = 0
+        self.color = (80, 80, 220)
+        self.fly_color = (40, 80, 220)
+        self.breakthrough = False
+        self.hitting = []
+        self.throw_damage = 7
+        self.swing_damge = 6
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        offset_x, offset_y = 0, 0
+        if self.held_by:
+            if self.held_by.facing == DirState.RIGHT:
+                offset_x = self.held_by.width*TILE_SIZE*0.6
+            elif self.held_by.facing == DirState.LEFT:
+                offset_x = 0
+
+        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
+        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+
+        color = self.color
+        if self.flying:
+            color = self.fly_color
+        pygame.draw.circle(win, color, (cx, cy), int(TILE_SIZE * 0.4))
+
+
+
+class Fireball(Item):
+    def __init__(self, x, y, map_info, owner=None):
+        super().__init__(name='火球', x=x, y=y, map_info=map_info, weight=0.0)
+        self.owner = owner
+        self.facing = owner.facing
+        self.speed = 0.3  # 自訂速度
+        self.timer = 90  # 最多存活幀數
+        self.width = 1
+        self.height = 1
+        self.vz = 0
+        self.breakthrough = False
+        self.hitting = []
+        self.throw_damage = 13
+        self.swing_damge = 0
+        self.raw_image = pygame.image.load("hadouken.png").convert_alpha()
+        self.image = self.raw_image
+        self.attacker_attack_data = None
+        self.ignore_side = [owner.side]
+        if self.facing == DirState.LEFT:
+            self.image = pygame.transform.flip(self.raw_image, True, False)
+        if self.owner:
+            #self.attacker_attack_data = self.owner.attack_state.data
+            self.x = self.owner.x + self.owner.width / 2
+            self.y = self.owner.y + self.owner.height / 2
+
+
+    def update(self):
+        super().update()
+        if self.hit_someone or self.is_out_of_bounds():
+            self.scene.mark_for_removal(self)
+
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y=0):
+        offset_x, offset_y = 0, 0
+        if self.held_by:
+            if self.held_by.facing == DirState.RIGHT:
+                offset_x = self.held_by.width*TILE_SIZE*0.6
+            elif self.held_by.facing == DirState.LEFT:
+                offset_x = 0
+        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
+        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        rect = self.image.get_rect(center=(cx, cy))
+        #print('fireball.draw')
+        win.blit(self.image, rect)
+        pygame.draw.rect(win, (255, 0, 0), rect, 1)
+
+    def get_throw_attack_data(self, attacker):
+        return AttackData(
+        attack_type=AttackType.THROW,
+        duration=32,
+        trigger_frame=16,
+        recovery=8,
+        hitbox_func=item_hitbox,
+        effects=[AttackEffect.SHORT_STUN],
+        damage=200,
+        frame_map = [0]*16 + [1]*16,   #必須與duration等長
+    )
+
+class Bullet(Item):
+    def __init__(self, x, y, map_info, owner=None):
+        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
+        self.owner = owner
+        self.facing = owner.facing
+        self.speed = 0.5  # 自訂速度
+        self.timer = 90  # 最多存活幀數
+        self.width = 1
+        self.height = 1
+        self.vz = 0
+        self.breakthrough = False
+        self.hitting = []
+        self.throw_damage = 5
+        self.swing_damge = 0
+        self.raw_image = pygame.image.load("bullet.png").convert_alpha()
+        self.image = self.raw_image
+        self.attacker_attack_data = None
+        self.ignore_side = [owner.side]
+        if self.facing == DirState.LEFT:
+            self.image = pygame.transform.flip(self.raw_image, True, False)
+        if self.owner:
+            #self.attacker_attack_data = self.owner.attack_state.data
+            self.x = self.owner.x + self.owner.width / 2
+            self.y = self.owner.y + self.owner.height / 2
+
+
+    def update(self):
+        super().update()
+        if self.hit_someone or self.is_out_of_bounds():
+            self.scene.mark_for_removal(self)
+
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y=0):
+        offset_x, offset_y = 0, 0
+        if self.held_by:
+            if self.held_by.facing == DirState.RIGHT:
+                offset_x = self.held_by.width*TILE_SIZE*0.6
+            elif self.held_by.facing == DirState.LEFT:
+                offset_x = 0
+        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
+        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        rect = self.image.get_rect(center=(cx, cy))
+        #print('fireball.draw')
+        win.blit(self.image, rect)
+        pygame.draw.rect(win, (255, 0, 0), rect, 1)
+
+    def get_throw_attack_data(self, attacker):
+        return AttackData(
+        attack_type=AttackType.THROW,
+        duration=48,
+        trigger_frame=16,
+        recovery=16,
+        hitbox_func=item_hitbox,
+        effects=[AttackEffect.SHORT_STUN],
+        knock_up_height = 0.1,
+        knock_back_distance=1.0,
+        damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 1,
+        frame_map = [0]*16 + [1]*32,   #必須與duration等長
+    )
+
+def is_box_overlap(box1, box2):
+    return (
+        box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1'] and
+        box1['y1'] <= box2['y2'] and box1['y2'] >= box2['y1'] and
+        box1['z1'] <= box2['z2'] and box1['z2'] >= box2['z1']
+    )
+
+class Coin(Item):
+    def __init__(self, x, y, map_info):
+        #        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
+        super().__init__(name='coin', x=x, y=y, map_info=map_info)
+        #self.name = 'coin'
+        self.sheet = pygame.image.load("Coin_4frame.png").convert_alpha()
+        self.frame_width = 96
+        self.frame_height = 96
+        self.num_frames = 4
+        self.frames = [
+            self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            for i in range(self.num_frames)
+        ]
+
+        self.width = 1
+        self.height = 1
+        self.timer = 600
+        self.money = 0
+        self.z = self.get_tile_z(x, y)
+        self.anim_timer = 0
+
+    def update(self):
+        self.anim_timer += 1
+        for unit in self.scene.get_units_by_name('player'):
+            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
+                print(f'{unit.name} 撿起{self.money}元！')
+                unit.money += self.money
+                self.scene.add_floating_text(x=unit.x + unit.width / 2,
+                        y=unit.y + unit.height,
+                        value=f'+{self.money}',
+                        map_h=self.map_h,
+                        color=(255, 215, 0))
+                self.scene.mark_for_removal(self)
+                break
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        # win.blit(frame, (px, py))
+
+
+
+        # 計算畫面位置
+        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+
+        cy = int((self.map_h - (
+                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - 0 + 0) - cam_y + tile_offset_y
+
+
+        # 每 15 frame 換一張，共 4 張動畫
+        frame_index = (self.anim_timer // 15) % self.num_frames
+        frame = self.frames[frame_index]
+        frame_rect = frame.get_rect()
+        draw_x = cx - frame_rect.width // 2
+        draw_y = cy - frame_rect.height
+
+        # 繪製當前幀
+        win.blit(frame, (draw_x, draw_y))
