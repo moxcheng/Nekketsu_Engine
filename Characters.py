@@ -53,7 +53,7 @@ class SpriteAnimator:
         # 定義每種狀態的 frame index list
         self.anim_map = {
             "stand": [0],
-            "walk": [1, 2, 3],
+            "walk": [1, 3, 2],
             "punch": [4, 5, 6],
             "bash": [7],
             "jump": [8],
@@ -82,22 +82,35 @@ class SpriteAnimator:
                 frames.append(frame)
         return frames
 
-    def get_frame(self, state_name, frame_index):
+    def get_frame(self, state_name, frame_index, flip_x = False, flip_y = False):
         anim = self.anim_map.get(state_name)
         if anim:
-            return self.frames[anim[frame_index % len(anim)]]
-        return self.frames[0]  # fallback to stand
+            frame = self.frames[anim[frame_index % len(anim)]]
+        else:
+            frame = self.frames[0]  # fallback to stand
+        # 2. 進行翻轉處理
+        if flip_x or flip_y:
+            frame = pygame.transform.flip(frame, flip_x, flip_y)
+        return frame
 
-    def get_frame_by_index(self, frame_global_index):
+    def get_frame_by_index(self, frame_global_index, flip_x = False, flip_y = False):
         if 0 <= frame_global_index < len(self.frames):
-            return self.frames[frame_global_index]
-        return self.frames[0]
-
-    def get_frame_by_map_index(self, state_name, frame_map_index=0):
+            frame = self.frames[frame_global_index]
+        else:
+            frame = self.frames[0]
+        if flip_x or flip_y:
+            frame = pygame.transform.flip(frame, flip_x, flip_y)
+        return frame
+    def get_frame_by_map_index(self, state_name, frame_map_index=0 , flip_x = False, flip_y = False):
         anim = self.anim_map.get(state_name)
         if anim:
-            return self.frames[anim[frame_map_index]]
-        return self.frames[0]  # fallback to stand
+            frame =self.frames[anim[frame_map_index]]
+        else:
+            frame = self.frames[0]  # fallback to stand
+        if flip_x or flip_y:
+            frame = pygame.transform.flip(frame, flip_x, flip_y)
+        return frame
+
 
 
 
@@ -172,7 +185,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.jumpping_flag = False #避免重覆計算跳躍
 
         #增加動畫支援
-        #self.animator = SpriteAnimator("Character_white_20frame_96.png")  # 載入素材
         self.animator = None
         self.anim_frame = 0
         self.anim_timer = 0
@@ -187,11 +199,14 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         self.side = 'netural'   #為了製造飛行道具
         self.money = 10
+        self.mp = 0
+        self.drop_mana_rate = 0.5
         self.get_burning = False
         self.burn_frames = []
+        self.high_jump = False
 
         # 燃燒貼圖初始化
-        sheet = pygame.image.load("burn_4frame.png").convert_alpha()
+        sheet = pygame.image.load("..\\Assets_Drive\\burn_4frame.png").convert_alpha()
         frame_w = sheet.get_width() // 4
         frame_h = sheet.get_height()
         for i in range(4):
@@ -231,6 +246,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             st = st + 'Fal '
         if self.is_jump():
             st = st + 'Jmp '
+        if self.high_jump:
+            st = st + 'Hjp'
         if self.is_knockbacking():
             st = st + 'Kbk '
         if self.is_invincible():
@@ -287,6 +304,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     anim_name = 'kick'
                 elif self.attack_state.data.attack_type == AttackType.FLY_KICK:
                     anim_name = 'flykick'
+                elif self.attack_state.data.attack_type == AttackType.METEOFALL:
+                    anim_name = 'meteofall'
                 elif self.attack_state.data.attack_type in SWING_ATTACKS:
                     anim_name = 'swing'
                 elif self.attack_state.data.attack_type in THROW_ATTACKS:
@@ -329,16 +348,19 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             frame = resize_burn_frames[burn_idx]
             #print(f'anim_name = Burn frame {burn_idx}!')
         elif anim_name in ['flykick', 'on_hit', 'on_fly', 'bash']:
-            # 單格
-            #print(f'anim: {anim_name}')
+            # 單格'
             frame = self.animator.get_frame_by_map_index(anim_name)
+        elif anim_name == 'meteofall':
+            # 單格'
+            frame = self.animator.get_frame_by_map_index('slash', 2, flip_y = True)
         elif anim_name == 'walk':
             self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 15) % 2
+            walk_frame_idx = int(self.anim_walk_cnt / 10) % 3
+            print(f'{self.name} walk {walk_frame_idx}')
             frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
         elif anim_name == 'run':
             self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 5) % 2
+            walk_frame_idx = int(self.anim_walk_cnt / 5) % 3
             frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
 
         else:
@@ -466,24 +488,30 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             
             real_intent = self.override_attack_intent(self.attack_intent)
             print(f'意圖:{self.attack_intent} -> {real_intent}')
-            if real_intent == 'pickup_item':
+            if real_intent == 'pickup_item' and not self.is_jump():
                 self.get_component("holdable").try_pickup()
                 return real_intent
-            # elif real_intent == 'swing_item' and self.get_component("holdable").held_object:
-            #     #觸發物品屬性的swing
-            #     self.get_component("holdable").held_object.swing_attack(self)
-            #     return real_intent
-            # elif real_intent == 'throw_item' and self.get_component("holdable").held_object:
-            #     self.get_component("holdable").held_object.throw_attck(self)
-            #     return real_intent
             atk_table = self.attack_table.get(real_intent, {})            
             attack = atk_table.get('default', None)
             #if self.z > 0 and 'jump' in atk_table:
             if self.jump_z > 0:
-                #suspend(f'aaaaa self.z={self.z}')
                 attack = atk_table.get('jump', None)
+                # [新增判斷] 如果是高跳 + 按著 Down 鍵，則使用 highjump 招式
+                # 檢查 self.last_intent['down_pressed'] 是否為 True (即按下 Down 鍵)
+                is_down_pressed = self.last_intent.get('down_pressed', False)
+                if self.high_jump and is_down_pressed:
+                    if 'highjump' in atk_table:
+                        attack=atk_table.get('highjump', None)
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
+        #處理技能的動量變化
+        #atk_data = attack_data_dict[attack]
+        # if atk_data.physical_change is not None:
+        #     for attr_name, value in atk_data.physical_change.items():
+        #         print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
+        #         ori_val = getattr(self, attr_name)
+        #         new_val = ori_val + value
+        #         setattr(self, attr_name, new_val)
         return attack
 
 
@@ -604,7 +632,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if self.jump_z != 0 and not self.held_by:
             #排除被拿著的狀態
             self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= 0.05  # ✅ 注意這裡保持一致，不要重複扣太快
+            self.jump_z_vel -= GRAVITY  # ✅ 注意這裡保持一致，不要重複扣太快
 
             if self.jump_z <= 0:
                 self.jump_z = 0
@@ -880,8 +908,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 print(f'{self.name} 消失')
                 if self.money > 0:
                     loot = self.drop_loot()
-                    if loot:
-                        print(f'{self.name} 掉落 {loot.money}元')
+                    print('{} 掉落 {} 的 {}'.format(self.name, loot['type'], loot['value']))
+
                 if self.scene:
                     #self.scene.unregister_unit(self)
                     self.scene.mark_for_removal(self)
@@ -1073,6 +1101,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.state = MoveState.STAND
             dx, dy = intent['dx'], intent['dy']
             if intent['jump'] and self.jump_z == 0 and not self.jumpping_flag:
+                if intent['horizontal'] == MoveState.RUN:
+                    self.high_jump = True
                 self.jump_z_vel = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
                 self.jump_z = 0.1
                 self.color = self.jump_color
@@ -1204,12 +1234,21 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.scene.register_unit(flying_object, side=self.side, tags=['item', 'temp_object'], type='item')
         return flying_object
     def drop_loot(self):
-        from Items import Coin  # 假設你有 Coin 類別
+        from Items import Coin, MagicPotion  # 假設你有 Coin 類別
+        #加入機率掉落
+        import random
         if self.scene:
+            prob = random.random()
+            if prob > self.drop_mana_rate:
+                potion = MagicPotion(self.x, self.y, [self.terrain, self.map_w, self.map_h])
+                potion.mana = 1
+                self.scene.register_unit(potion, side='netural', tags=['item'], type='item')
+                return {'type': 'MagicPotion', 'value': 1}
+        #掉落硬幣
             coin = Coin(self.x, self.y, [self.terrain, self.map_w, self.map_h])
             coin.money = self.money
             self.scene.register_unit(coin, side='netural', tags=['item'], type='item')
-            return coin
+            return {'type':'money', 'value':coin}
         return None
 
 
@@ -1235,15 +1274,14 @@ class Player(CharacterBase):
         #     "x_attack": lambda: AttackType.KICK,
         #     "c_attack": lambda: AttackType.SLASH
         # }
-        self.attack_table = {'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH},
+        self.attack_table = {'z_attack':{'default': AttackType.MAHAHPUNCH, 'run': AttackType.BASH, 'highjump': AttackType.METEOFALL},
                              'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK},
                              'c_attack':{'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
                              'swing_item':{'default': AttackType.SWING},
                              'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}}
 
-        #self.animator = SpriteAnimator("Character_white_24frame_96.png")  # 載入素材
         self.animator = SpriteAnimator(material)  # 載入素材
-        self.stand_image = pygame.image.load("the_world.png").convert_alpha()
+        self.stand_image = pygame.image.load("..\\Assets_Drive\\the_world.png").convert_alpha()
 
 
         #for dir in ['left', 'right', 'up', 'down']:
@@ -1296,8 +1334,7 @@ class Player(CharacterBase):
             jump_intent = True
             self.jump_intent_trigger = False
 
-
-
+        down_pressed = keys[pygame.K_DOWN]
         return {
             'horizontal': horizontal,
             'direction': direction,
@@ -1305,6 +1342,7 @@ class Player(CharacterBase):
             "dy": dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
             'jump': jump_intent,
             'action': attack_type,
+            'down_pressed': down_pressed, # <--- 新增
         }
 
     def on_key_down(self, key):
@@ -1361,7 +1399,8 @@ class Player(CharacterBase):
             #如果是none=沒設定過攻擊
             self.set_attack_by_skill(skill)
 
-        if self.name == 'player' and self.attack_state is not None and self.attack_state.data is not None and self.attack_state.data.attack_type == AttackType.SLASH:
+        if self.name == 'player' and self.attack_state is not None and self.attack_state is not ThrowAttackState and self.attack_state.data is not None \
+                and self.attack_state.data.attack_type == AttackType.SLASH:
             self.scene.say(self, 'Tiger UpperCut!', duration=90)
 
 
@@ -1397,6 +1436,7 @@ class Player(CharacterBase):
                 self.jump_z_vel = 0
                 self.color = self.default_color
                 self.jumpping_flag = False
+                self.high_jump=False
         for dir, end_frame in self.step_pending.items():
             if self.current_frame <= end_frame and self.state == MoveState.STAND:
                 self.state = MoveState.STEP
@@ -1419,7 +1459,8 @@ class Player(CharacterBase):
         if self.combat_state == CombatState.DEAD:
             print(f'{self.name} 死亡! 遊戲結束')
             return
-
+        if self.high_jump:
+            print('Player high jump!')
         enemys = self.scene.get_units_by_side('enemy_side')
         neturals = self.scene.get_units_by_side('netural')
         # attack_timer的update僅限一次!
@@ -1446,7 +1487,6 @@ class Ally(CharacterBase):
         self.combo_count = 0
         self.combos = [AttackType.BULLET, AttackType.SLASH]
         self.dummy = False
-        #self.animator = SpriteAnimator("takina1_24frame_96.png")  # 載入素材
         self.animator = SpriteAnimator(material)  # 載入素材
         self.stand_image = None
         self.side = 'player_side'
@@ -1627,9 +1667,8 @@ class Enemy(CharacterBase):
         self.combo_count = 0
         self.combos = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackType.SLASH]
         self.dummy = False
-        #self.animator = SpriteAnimator("Character_red_24frame_96.png")  # 載入素材
         self.animator = SpriteAnimator(material)  # 載入素材
-        self.stand_image = pygame.image.load("star_p.png").convert_alpha()
+        self.stand_image = pygame.image.load("..\\Assets_Drive\\star_p.png").convert_alpha()
         self.side = 'enemy_side'
         self.money = 10 #loot
 

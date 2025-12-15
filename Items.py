@@ -159,7 +159,7 @@ class Fireball(Item):
         super().__init__(name='火球', x=x, y=y, map_info=map_info, weight=0.0)
         self.owner = owner
         self.facing = owner.facing
-        self.speed = 0.3  # 自訂速度
+        self.speed = 0.1  # 自訂速度
         self.timer = 90  # 最多存活幀數
         self.width = 1
         self.height = 1
@@ -168,7 +168,7 @@ class Fireball(Item):
         self.hitting = []
         self.throw_damage = 13
         self.swing_damge = 0
-        self.raw_image = pygame.image.load("hadouken.png").convert_alpha()
+        self.raw_image = pygame.image.load("..\\Assets_Drive\\hadouken.png").convert_alpha()
         self.image = self.raw_image
         self.attacker_attack_data = None
         self.ignore_side = [owner.side]
@@ -226,7 +226,7 @@ class Bullet(Item):
         self.hitting = []
         self.throw_damage = 5
         self.swing_damge = 0
-        self.raw_image = pygame.image.load("bullet.png").convert_alpha()
+        self.raw_image = pygame.image.load("..\\Assets_Drive\\bullet.png").convert_alpha()
         self.image = self.raw_image
         self.attacker_attack_data = None
         self.ignore_side = [owner.side]
@@ -284,7 +284,7 @@ class Coin(Item):
         #        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
         super().__init__(name='coin', x=x, y=y, map_info=map_info)
         #self.name = 'coin'
-        self.sheet = pygame.image.load("Coin_4frame.png").convert_alpha()
+        self.sheet = pygame.image.load("..\\Assets_Drive\\Coin_4frame.png").convert_alpha()
         self.frame_width = 96
         self.frame_height = 96
         self.num_frames = 4
@@ -327,6 +327,58 @@ class Coin(Item):
                     self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - 0 + 0) - cam_y + tile_offset_y
 
 
+        # 每 15 frame 換一張，共 4 張動畫
+        frame_index = (self.anim_timer // 15) % self.num_frames
+        frame = self.frames[frame_index]
+        frame_rect = frame.get_rect()
+        draw_x = cx - frame_rect.width // 2
+        draw_y = cy - frame_rect.height
+
+        # 繪製當前幀
+        win.blit(frame, (draw_x, draw_y))
+
+class MagicPotion(Item):
+    def __init__(self, x, y, map_info):
+        #        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
+        super().__init__(name='coin', x=x, y=y, map_info=map_info)
+        #self.name = 'coin'
+        self.sheet = pygame.image.load("..\\Assets_Drive\\Potion_4frame.png").convert_alpha()
+        self.frame_width = 96
+        self.frame_height = 96
+        self.num_frames = 4
+        self.frames = [
+            self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            for i in range(self.num_frames)
+        ]
+
+        self.width = 1
+        self.height = 1
+        self.timer = 600
+        self.mana = 1
+        self.money=0
+        self.z = self.get_tile_z(x, y)
+        self.anim_timer = 0
+
+    def update(self):
+        self.anim_timer += 1
+        for unit in self.scene.get_units_by_name('player'):
+            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
+                print(f'{unit.name} 獲得{self.money}點mp！')
+                unit.mp += self.mana
+                self.scene.add_floating_text(x=unit.x + unit.width / 2,
+                        y=unit.y + unit.height,
+                        value=f'+{self.money}',
+                        map_h=self.map_h,
+                        color=(255, 215, 0))
+                self.scene.mark_for_removal(self)
+                break
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        # 計算畫面位置
+        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cy = int((self.map_h - (
+                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - 0 + 0) - cam_y + tile_offset_y
         # 每 15 frame 換一張，共 4 張動畫
         frame_index = (self.anim_timer // 15) % self.num_frames
         frame = self.frames[frame_index]

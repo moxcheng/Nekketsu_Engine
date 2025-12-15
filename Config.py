@@ -2,7 +2,8 @@
 # === 設定 ===
 WIDTH, HEIGHT = 800, 600
 TILE_SIZE = 40
-FPS = 30
+FPS = 45
+GRAVITY = 0.05
 
 WHITE = (255, 255, 255)
 RED = (255, 100, 100)

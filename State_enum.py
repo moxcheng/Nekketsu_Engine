@@ -35,6 +35,8 @@ class AttackType(Enum):
     THROW_CRASH=auto()  #飛行道具碰撞傷害
     FIREBALL=auto()
     BULLET=auto()
+    MAHAHPUNCH=auto()
+    METEOFALL=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地
@@ -44,3 +46,4 @@ class AttackEffect(Enum):
     SHORT_STUN = auto()              # 暫時無法動作
     IGNORE_INVINCIBLE = auto() # 無視無敵時間
     BURN = auto()
+    DROP_MAGIC_POTION = auto()

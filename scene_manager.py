@@ -276,8 +276,8 @@ import pygame
 
 def get_cjk_font(size=20, prefer='jp'):
     font_path = {
-        'jp': 'fonts/NotoSansJP-Regular.ttf',
-        'tc': 'fonts/NotoSansTC-Regular.ttf'
+        'jp': '..\\Assets_Drive\\fonts\\NotoSansJP-Regular.ttf',
+        'tc': '..\\Assets_Drive\\fonts\\NotoSansTC-Regular.ttf'
     }
     return pygame.font.Font(font_path.get(prefer, 'jp'), size)
 

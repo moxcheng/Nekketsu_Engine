@@ -24,6 +24,18 @@ def draw_center_text(win, text, font, color=(255, 255, 255), outline_color=(0, 0
         win.blit(outline, (x + dx, y + dy))
     win.blit(surf, (x, y))
 # ==========================================
+def draw_ui(win, player, font, color=(255, 255, 255), outline_color=(0, 0, 0)):
+    """在畫面中央印一行字（加簡單外框避免吃背景顏色）"""
+    text = 'HP:{}/{} MP:{} GOLD:{}'.format(player.health, player.max_hp, player.mp, player.money)
+    surf = font.render(text, True, color)
+    outline = font.render(text, True, outline_color)
+    x = (WIDTH - surf.get_width()) // 8
+    y = (HEIGHT - surf.get_height()) *7// 8
+
+    # 簡單外框
+    for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
+        win.blit(outline, (x + dx, y + dy))
+    win.blit(surf, (x, y))
 
 # ========= 通關顯示 / 畫面變暗控制 =========
 SCENE_DARKEN_ENABLED = True  # True: 照原本邏輯變暗 / False: 停止變暗
@@ -96,7 +108,7 @@ class JoystickKeyState:
 
 
 # 讀取地形高度地圖
-def load_terrain_map(csv_path="map.csv", flip_vertical=True):
+def load_terrain_map(csv_path="..\\Assets_Drive\\map.csv", flip_vertical=True):
     df = pd.read_csv(csv_path, header=None)
     terrain = df.values.astype(int)
     if flip_vertical:
@@ -207,7 +219,7 @@ def scene_test(win, font):
     transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
 
     global background_img
-    background_img = pygame.image.load("background.png").convert()
+    background_img = pygame.image.load("..\\Assets_Drive\\background.png").convert()
     background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
 
     clock = pygame.time.Clock()
@@ -217,12 +229,13 @@ def scene_test(win, font):
     #宣告單位
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
-    player = Player(px, py, map_info, "Character_white_24frame_96.png")
+    player = Player(px, py, map_info, "..//Assets_Drive//Character_white_24frame_96.png")
+
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
-    enemy = Enemy(px + 1, py +2, terrain[int(py), int(px)], map_info, "Character_red_24frame_96.png")
-    enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info, "Iwasato_24frame_96.png", 1.5)
+    enemy = Enemy(px + 1, py +2, terrain[int(py), int(px)], map_info, "..\\Assets_Drive\\Character_red_24frame_96.png")
+    enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info, "..\\Assets_Drive\\Iwasato_24frame_96.png", 1.5)
     enemy.name = 'enemy'
     enemy2.name ='enemy2'
     #enemy2.dummy = True
@@ -245,7 +258,7 @@ def scene_test(win, font):
     scene.register_unit(rock, side='netural', tags=['item','interactable'], type='item')
     scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
 
-    ally = Ally(px-2, py,terrain[int(py), int(px)], map_info, "takina1_24frame_96.png")
+    ally = Ally(px-2, py,terrain[int(py), int(px)], map_info, "..\\Assets_Drive\\takina1_24frame_96.png")
     ally.add_component("holdable", HoldableComponent(ally))
     scene.register_unit(ally, side='player_side', tags=['ally', 'interactable'], type='character')
 
@@ -307,6 +320,7 @@ black_enemy_list = ['head0', 'head1', 'head9']
 yellow_enemy_list = ['head2', 'head6', 'head7']
 red_enemy_list = ['head3', 'head4']
 high_enemy_list = ['head5', 'head8']
+all_enemy_list = ['head0','head1','head2','head3','head4','head5','head6','head7','head8','head9']
 
 def input_joypad_handler(player: Player, joystick, joy_axis_left, joy_axis_right, kb_keys, joy_buttons_prev):
     # 如果有搖桿，就包成 JoystickKeyState，讓 handle_input 看到「鍵盤+搖桿」
@@ -394,7 +408,9 @@ def input_joypad_handler(player: Player, joystick, joy_axis_left, joy_axis_right
         # 更新目前狀態
     return keys, dir_left, dir_right, new_prev
 
-def scene_1(win, font, clear_font, backgroung_path="background.png"):
+def is_player_alive(scene):
+    return len(scene.get_units_by_side('player_side')) > 0
+def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background.png"):
     # === 搖桿初始化 ===
     joystick = None
     joy_buttons_prev = []
@@ -433,7 +449,8 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
     #宣告玩家單位
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
-    player = Player(px, py, map_info, "Character_white_24frame_96.png")
+    #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
+    player = Player(px, py, map_info, "..//Assets_Drive//hakuren_96.png")
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
@@ -445,7 +462,7 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
 
     #小兵清單
     enemy_list = []
-    total_enemy = 5
+    total_enemy = 7
     created_enemy = 0
     current_enemy = 0
     max_enemy = 3
@@ -453,9 +470,9 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
     #產生小兵list
     import random
     for i in range(total_enemy):
-        head = random.choice(yellow_enemy_list)
+        head = random.choice(all_enemy_list)
         x_dis = random.randint(0,9)
-        e = Enemy(px+x_dis, py+2, terrain[int(py), int(px)], map_info, f"common_enemy\\{head}_body0_yellow_sheet.png")
+        e = Enemy(px+x_dis, py+2, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
@@ -466,8 +483,8 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
         if created_enemy < total_enemy and current_enemy < max_enemy:
             enemy_to_add = max_enemy-current_enemy
             for i in range(enemy_to_add):
+                print(f'加入{enemy_list[created_enemy].name} ({created_enemy}/{total_enemy}), 現在{current_enemy} enemy_to_add{enemy_to_add}')
                 scene.register_unit(enemy_list[created_enemy], side='enemy_side', tags=['enemy', 'interactable'], type='character')
-                print(f'加入{enemy_list[created_enemy].name} ({created_enemy}/{total_enemy}), 現在{current_enemy}')
                 created_enemy += 1
                 current_enemy += 1
 
@@ -480,19 +497,40 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
 
         # === 原本的邏輯 ===
         player.handle_input(keys)
-        scene.update_all()  # 這會更新所有註冊單位
-        if created_enemy == total_enemy and current_enemy == 0 and phase_clear ==False:
-            #scene.say('player', 'enemy clear!')
-            scr = [
-            {"type": "say", "target": "player", "text": "結束！"},
-            {"type": "wait", "duration": 180},
-            ]
-            scene.script_runner.load(scr)
-            phase_clear = True
-        if phase_clear:
+        if len(scene.get_units_by_side('player_side')) > 0:
+            scene.update_all()  # 這會更新所有註冊單位
+        if phase == 0:
+            if created_enemy == total_enemy and current_enemy == 0:
+                #scene.say('player', 'enemy clear!')
+                scr = [
+                {"type": "say", "target": "player", "text": "Phase 1結束！"},
+                {"type": "wait", "duration": 180},
+                ]
+                scene.script_runner.load(scr)
+                phase = 1
+                enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
+                                  "..\\Assets_Drive\\Iwasato_24frame_96.png", 1.5)
+                enemy2.name = 'boss'
+                # enemy2.dummy = True
+                enemy2.max_hp = 600
+                enemy2.health = 600
+                enemy2.scene=scene
+                scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
+                scr = [
+                    {"type": "say", "target": "boss", "text": "Boss來了!"},
+                    {"type": "wait", "duration": 180},
+                ]
+                scene.script_runner.load(scr)
+
+        elif phase == 1:
+            if len(scene.get_units_by_side('enemy_side')) == 0:
+                print('清除敵人')
+                stage_cleared = True
+                phase = 2
 
 
-        if len(scene.get_units_by_side('player_side')) == 0:
+        #if len(scene.get_units_by_side('player_side')) == 0:
+        if not is_player_alive(scene):
             print('no player left, game over')
             stage_cleared = True
         if stage_cleared == True and scene.scene_end_countdown < 0:
@@ -512,6 +550,8 @@ def scene_1(win, font, clear_font, backgroung_path="background.png"):
         win.fill(WHITE)
         draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+        if is_player_alive(scene):
+            draw_ui(win, player, font)
         pygame.display.update()
         clock.tick(FPS)
 

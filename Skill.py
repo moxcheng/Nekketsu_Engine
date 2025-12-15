@@ -1,5 +1,6 @@
 from State_enum import *
 import math
+from Config import *
 # === Attack State ===
 class AttackState:
     def __init__(self, character, attack_data):
@@ -121,7 +122,8 @@ class ThrowAttackState(AttackState):
 
 # === Attack Data Definition ===
 class AttackData:
-    def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None, force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10, frame_map = None, cancel_table=None):
+    def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
+                 force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10, frame_map = None, cancel_table=None, physical_change=None):
 
         self.attack_type = attack_type
         self.duration = duration
@@ -137,6 +139,7 @@ class AttackData:
         self.frame_map = frame_map or [0] * duration  # 預設全部使用第一張動畫
         assert frame_map is None or len(frame_map) == self.duration, "frame_map 長度需與 duration 相符"
         self.cancel_table = cancel_table or {}
+        self.physical_change = physical_change
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -176,6 +179,17 @@ def front_hitbox_func(x, y, facing, actor=None):
     else:
         return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom}
 
+def down_hitbox_func(x, y, facing, actor=None):
+    if actor is not None:
+        w = getattr(actor, "width", 1.5)
+        h = getattr(actor, "height", 2.5)
+    else:
+        w = 1.5
+        h = 2.5
+    # 2. 計算攻擊觸及距離（reach）
+    return {'x1':x-w/2, 'x2':x+w/2, 'y1':y-h/2, 'y2':y+h/2}
+
+
 def punch_hitbox_func(x, y, facing, actor=None):
     if actor is not None:
         w = getattr(actor, "width", 1.5)
@@ -190,9 +204,9 @@ def punch_hitbox_func(x, y, facing, actor=None):
     y_top = y+h*0.4
     y_bottom = y + h * 0.6
     if facing == DirState.RIGHT:
-        return {'x1': x + 0.5, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom }
+        return {'x1': x + 0.2, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom }
     else:
-        return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom }
+        return {'x1': x - reach, 'x2': x - 0.2, 'y1': y_top, 'y2': y_bottom }
 
 def kick_hitbox_func(x, y, facing, actor=None):
     if actor is not None:
@@ -205,13 +219,13 @@ def kick_hitbox_func(x, y, facing, actor=None):
     #    舉例：讓 reach 跟寬度成比例
     reach = 0.9 + 0.6 * (w / 1.5)
     # 3. 垂直覆蓋範圍也用角色高度來估
-    y_top = y+h*0.2
-    y_bottom = y + h * 0.4
+    y_top = y+h*0.6
+    y_bottom = y + h * 0.8
 
     if facing == DirState.RIGHT:
-        return {'x1': x + 0.5, 'x2': x + reach, 'y1': y+y_top , 'y2': y+y_bottom}
+        return {'x1': x + 0.2, 'x2': x + reach, 'y1': y_top , 'y2': y_bottom}
     else:
-        return {'x1': x - reach, 'x2': x - 0.5, 'y1': y+y_top , 'y2': y+ y_bottom}
+        return {'x1': x - reach, 'x2': x - 0.2, 'y1': y_top , 'y2': y_bottom}
 
 def item_hitbox(x, y, facing):
     # 可依 item 參數決定範圍，或讓角色在攻擊前動態設置
@@ -224,7 +238,7 @@ def item_hitbox(x, y, facing):
 # def throw_damage(self):
 #     return self.item_damage
 # === Attack Data Dictionary ===
-FLY_ATTACKS = [AttackType.FLY_KICK]
+FLY_ATTACKS = [AttackType.FLY_KICK, AttackType.METEOFALL]
 SWING_ATTACKS = [AttackType.SWING]
 THROW_ATTACKS = [AttackType.THROW]
 #FIREBALL_ATTACKS = [AttackType.FIREBALL]
@@ -255,6 +269,19 @@ attack_data_dict = {
         frame_map = [0]*8 + [2]*16 + [1]*8,   #必須與duration等長
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8}
     ),
+    AttackType.MAHAHPUNCH: AttackData(
+        attack_type=AttackType.PUNCH,
+        duration=64,
+        trigger_frame=8,
+        recovery=2,
+        hitbox_func = punch_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN],
+        knock_up_height=0.5,
+        knock_back_distance=2.0,
+        damage = 7,
+        frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,   #必須與duration等長
+    ),
     AttackType.KICK: AttackData(
         attack_type=AttackType.KICK,
         duration=36,
@@ -276,6 +303,19 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         knock_back_distance=1.0,
         damage=8
+    ),
+    AttackType.METEOFALL: AttackData(
+        attack_type=AttackType.METEOFALL,
+        duration=999,
+        trigger_frame=8,
+        recovery=15,
+        hitbox_func=down_hitbox_func,
+        condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN],
+        knock_up_height=1.5,
+        knock_back_distance=2.0,
+        damage=20,
+        physical_change={'jump_z_vel':GRAVITY*-2}
     ),
     AttackType.BASH: AttackData(
         attack_type=AttackType.BASH,
