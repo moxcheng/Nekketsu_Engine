@@ -101,7 +101,8 @@ class ComponentHost:
         if name in self.components:
             del self.components[name]
     def update_components(self):
-        for component in self.components.values():
+        components_to_update = list(self.components.values())
+        for component in components_to_update:
             component.update()
     def override_attack_intent(self, intent: str) -> str:
         """讓所有元件有機會改寫攻擊意圖"""
@@ -148,7 +149,7 @@ class HoldableComponent(Component):
                 return "swing_item"
             elif intent == "x_attack":
                 return "throw_item"
-        elif intent == "z_attack" and self.find_nearby_item():
+        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0:
             return "pickup_item"
         return intent
 
@@ -349,4 +350,110 @@ class HoldFlyLogicMixin:
     def on_hit_unit(self, target):
         print(f"[HIT] {self.name} 命中了 {target.name}")
         #觸發敵我雙方的命中行為
+
+
+from Config import TILE_SIZE, Z_DRAW_OFFSET
+
+
+import pygame
+class AuraEffectComponent(Component):
+    """
+    用於在角色周圍繪製半透明、持續性的靈氣特效。
+    特效持續到角色落地為止。
+    """
+
+    def __init__(self, image_path, frame_width=96, frame_height=96, expire_type=None, expire_value=None,alpha=128, anim_speed=3):
+        super().__init__()
+        # 1. 載入原始圖檔
+        self.sheet = pygame.image.load(image_path).convert_alpha()
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.alpha = alpha
+
+        # 2. 自動切片
+        self.frames = self.slice_sheet()
+
+        # 3. 動態狀態
+        self.anim_timer = 0
+        self.anim_speed = anim_speed  # 控制動畫播放快慢
+        self.current_frame_idx = 0
+        self.expire_type = expire_type or EffectExpireMode.LANDING
+        self.expire_value = expire_value or 0
+
+    def slice_sheet(self):
+        """參考 SpriteAnimator 的切片邏輯"""
+        sheet_w, sheet_h = self.sheet.get_size()
+        cols = sheet_w // self.frame_width
+        rows = sheet_h // self.frame_height
+        frames = []
+        for row in range(rows):
+            for col in range(cols):
+                x = col * self.frame_width
+                y = row * self.frame_height
+                frame = self.sheet.subsurface((x, y, self.frame_width, self.frame_height)).copy()
+                frame.set_alpha(self.alpha)
+                frames.append(frame)
+        return frames
+
+    def on_attach(self, owner):
+        super().on_attach(owner)
+        # 首次掛載時，確保圖片尺寸與角色匹配
+        if owner.width and owner.height and owner.animator:
+            # 假設靈氣圖片與角色動畫幀尺寸一致
+            char_w = owner.animator.frame_width
+            char_h = owner.animator.frame_height
+            self.image = pygame.transform.scale(self.frames[0], (char_w, char_h))
+        else:
+            self.image = self.raw_image  # 使用原始尺寸
+
+    def update(self):
+        # 檢查落地條件，並移除自身
+        if self.expire_type == EffectExpireMode.LANDING:
+            if not self.owner or self.owner.jump_z <= 0:
+                if self.owner and self.owner.state != self.owner.state.JUMP:
+                    # 角色已落地且不是在跳躍狀態
+                    self.owner.remove_component("aura_effect")
+                    return
+        elif self.expire_type == EffectExpireMode.TIMED and self.anim_timer >= self.expire_value:
+            self.owner.remove_component("aura_effect")
+            return
+        elif self.expire_type == EffectExpireMode.ATTACK_END:
+            if self.owner.attack_state is None:
+                self.owner.remove_component("aura_effect")
+                return
+
+        self.anim_timer += 1
+        # [可選] 實作靈氣的微小動畫或閃爍效果
+        if self.anim_timer % self.anim_speed == 0:
+            self.current_frame_idx = (self.current_frame_idx + 1) % len(self.frames)
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        """處理特效的繪製，在 Character.draw_anim 內部被呼叫"""
+        #print('enable auraeffect component draw')
+        owner = self.owner
+        if not owner: return
+
+        # 取得當前動畫幀
+        raw_frame = self.frames[self.current_frame_idx]
+        # 假設原始素材是面向右邊，則面向左邊時需翻轉
+        draw_image = raw_frame
+        if owner.facing == DirState.LEFT:
+            draw_image = pygame.transform.flip(raw_frame, True, False)
+
+        # 1. 計算角色在螢幕上的座標
+        terrain_z_offset = owner.z * Z_DRAW_OFFSET
+        px = int(owner.x * TILE_SIZE) - cam_x
+        py = int((
+                             owner.map_h - owner.y - owner.height) * TILE_SIZE - owner.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+
+
+
+        # 2. 調整繪製位置（讓靈氣繞在角色周圍）
+        frame_rect = draw_image.get_rect()
+        cx = px + int(owner.width * TILE_SIZE / 2)  # 角色中心X
+        draw_x = cx - frame_rect.width // 2
+        draw_y = py + frame_rect.height // 4  # 讓靈氣從腳部開始向上環繞
+
+        # 3. 繪製
+        win.blit(draw_image, (draw_x, draw_y))
 

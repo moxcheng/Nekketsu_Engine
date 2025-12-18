@@ -47,3 +47,7 @@ class AttackEffect(Enum):
     IGNORE_INVINCIBLE = auto() # 無視無敵時間
     BURN = auto()
     DROP_MAGIC_POTION = auto()
+class EffectExpireMode(Enum):
+    LANDING = auto()   # 落地消失
+    TIMED = auto()     # 定時消失
+    ATTACK_END = auto()# 招式結束消失

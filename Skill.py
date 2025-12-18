@@ -123,7 +123,8 @@ class ThrowAttackState(AttackState):
 # === Attack Data Definition ===
 class AttackData:
     def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
-                 force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10, frame_map = None, cancel_table=None, physical_change=None):
+                 force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10,
+                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None):
 
         self.attack_type = attack_type
         self.duration = duration
@@ -139,7 +140,9 @@ class AttackData:
         self.frame_map = frame_map or [0] * duration  # 預設全部使用第一張動畫
         assert frame_map is None or len(frame_map) == self.duration, "frame_map 長度需與 duration 相符"
         self.cancel_table = cancel_table or {}
-        self.physical_change = physical_change
+        self.physical_change = physical_change or {}
+        self.effect_component_config = effect_component_config or {}
+        self.dialogue = dialogue
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -246,16 +249,16 @@ FLYING_OBJECT_ATTACKS = [AttackType.FIREBALL, AttackType.BULLET]
 attack_data_dict = {
     AttackType.SLASH: AttackData(
         attack_type=AttackType.SLASH,
-        duration=90,
+        duration=60,
         trigger_frame=30,
-        recovery=10,
+        recovery=15,
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN],
         knock_up_height = 5.0,
         knock_back_distance=1.0,
         damage = 20,
-        frame_map = [0]*20 + [1]*10 + [2]*60   #必須與duration等長
+        frame_map = [0]*15 + [1]*10 + [2]*35   #必須與duration等長
     ),
     AttackType.PUNCH: AttackData(
         attack_type=AttackType.PUNCH,
@@ -270,7 +273,7 @@ attack_data_dict = {
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8}
     ),
     AttackType.MAHAHPUNCH: AttackData(
-        attack_type=AttackType.PUNCH,
+        attack_type=AttackType.MAHAHPUNCH,
         duration=64,
         trigger_frame=8,
         recovery=2,
@@ -280,7 +283,20 @@ attack_data_dict = {
         knock_up_height=0.5,
         knock_back_distance=2.0,
         damage = 7,
-        frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,   #必須與duration等長
+        frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
+        effect_component_config={
+            # 必須使用 Component 類別的字串名稱，以便動態載入
+            "component_name": "AuraEffectComponent",
+            # 這是您在 ComponentHost 中使用的 key，用於移除
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//hyakuretsu.png",
+                "expire_type":EffectExpireMode.ATTACK_END,
+                "alpha":128,
+                "anim_speed":4
+            }
+        },
+        dialogue = '啊達達達達達'
     ),
     AttackType.KICK: AttackData(
         attack_type=AttackType.KICK,
@@ -315,7 +331,18 @@ attack_data_dict = {
         knock_up_height=1.5,
         knock_back_distance=2.0,
         damage=20,
-        physical_change={'jump_z_vel':GRAVITY*-2}
+        physical_change={'jump_z_vel':GRAVITY*-2},
+        effect_component_config={
+            # 必須使用 Component 類別的字串名稱，以便動態載入
+            "component_name": "AuraEffectComponent",
+            # 這是您在 ComponentHost 中使用的 key，用於移除
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_96.png",
+                "expire_type":EffectExpireMode.LANDING
+            }
+        },
+        dialogue="流星下墜!"
     ),
     AttackType.BASH: AttackData(
         attack_type=AttackType.BASH,

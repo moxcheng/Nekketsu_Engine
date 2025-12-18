@@ -112,9 +112,17 @@ class SpriteAnimator:
         return frame
 
 
+def get_component_class(name):
+    """根據字串名稱動態獲取 Component 類別"""
+    # ⚠️ 這裡假設您的 Component 類別都在 Component.py 中
+    from Component import AuraEffectComponent  # 必須在這裡明確導入 Component 類
 
-
-
+    # 簡化範例：直接映射字串到類別（實際專案可使用 getattr(sys.modules[__name__], name) 獲取）
+    class_map = {
+        "AuraEffectComponent": AuraEffectComponent,
+        # ... 未來可擴充
+    }
+    return class_map.get(name)
 class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, x, y, map_info, z=0):
         super().__init__()
@@ -310,8 +318,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     anim_name = 'swing'
                 elif self.attack_state.data.attack_type in THROW_ATTACKS:
                     anim_name = 'throw'
-                else:
+                elif self.attack_state.data.attack_type == AttackType.PUNCH or self.attack_state.data.attack_type == AttackType.MAHAHPUNCH:
                     anim_name = "punch"
+
         elif self.combat_state == CombatState.KNOCKBACK:
             anim_name = 'on_fly'
         elif self.state == MoveState.JUMP or self.state == MoveState.FALL:
@@ -352,11 +361,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             frame = self.animator.get_frame_by_map_index(anim_name)
         elif anim_name == 'meteofall':
             # 單格'
-            frame = self.animator.get_frame_by_map_index('slash', 2, flip_y = True)
+            frame = self.animator.get_frame_by_map_index('slash', 2, flip_x = True, flip_y = True)
         elif anim_name == 'walk':
             self.anim_walk_cnt += 1
             walk_frame_idx = int(self.anim_walk_cnt / 10) % 3
-            print(f'{self.name} walk {walk_frame_idx}')
+            #print(f'{self.name} walk {walk_frame_idx}')
             frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
         elif anim_name == 'run':
             self.anim_walk_cnt += 1
@@ -422,6 +431,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             win.blit(frame, (draw_x, draw_y))
         #win.blit(frame, (draw_x, draw_y))
 
+        aura_comp = self.get_component("aura_effect")
+        if aura_comp:
+            # 傳入所有繪圖所需參數
+            #print(f'{aura_comp} enable')
+            aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
         # print(f'{self.name} draw debug {self.current_frame}')
         self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
 
@@ -505,13 +519,16 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
         #處理技能的動量變化
-        #atk_data = attack_data_dict[attack]
-        # if atk_data.physical_change is not None:
-        #     for attr_name, value in atk_data.physical_change.items():
-        #         print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
-        #         ori_val = getattr(self, attr_name)
-        #         new_val = ori_val + value
-        #         setattr(self, attr_name, new_val)
+        if attack is not None:
+            atk_data = attack_data_dict[attack]
+            if atk_data.physical_change is not None:
+                for attr_name, value in atk_data.physical_change.items():
+                    print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
+                    ori_val = getattr(self, attr_name)
+                    new_val = ori_val + value
+                    print(f'before value {ori_val}')
+                    setattr(self, attr_name, new_val)
+                    print(f'after value {new_val}')
         return attack
 
 
@@ -1100,7 +1117,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #初始狀態: 站
             self.state = MoveState.STAND
             dx, dy = intent['dx'], intent['dy']
+            if intent['jump']:
+                print(f'jump param: jump_z {self.jump_z}, jumpping_flag {self.jumpping_flag}')
             if intent['jump'] and self.jump_z == 0 and not self.jumpping_flag:
+
                 if intent['horizontal'] == MoveState.RUN:
                     self.high_jump = True
                 self.jump_z_vel = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
@@ -1180,6 +1200,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             else:
                 self.attack_state = AttackState(self, atk_data)
                 self.state = MoveState.ATTACK
+
+            self.apply_skill_effect_components(atk_data)
         # if self.attack_state:
         #     print(f'[set_attack_by_skill] {self.name} attack_state = {self.attack_state.data.attack_type.name}')
 
@@ -1251,6 +1273,33 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             return {'type':'money', 'value':coin}
         return None
 
+    def apply_skill_effect_components(self, attack_data):
+        config = attack_data.effect_component_config
+        if not config:
+            return
+
+        comp_name = config.get("component_name")
+        comp_key = config.get("component_key")
+        params = config.get("params", {})
+
+        if comp_name and comp_key:
+            # 1. 動態取得 Component 類別
+            ComponentClass = get_component_class(comp_name)
+
+            if ComponentClass:
+                # 2. 移除舊元件 (確保沒有重複掛載)
+                if self.get_component(comp_key):
+                    self.remove_component(comp_key)
+
+                # 3. 實例化並傳入參數
+                # **重要**：使用 **params** 字典來初始化元件
+                new_component = ComponentClass(**params)
+
+                # 4. 掛載到角色身上
+                self.add_component(comp_key, new_component)
+                print(f"[{self.name}] 成功掛載特效元件: {comp_name} ({comp_key})")
+            else:
+                print(f"[WARN] 無法找到特效元件類別: {comp_name}")
 
 
 class Player(CharacterBase):
@@ -1330,7 +1379,7 @@ class Player(CharacterBase):
 
         jump_intent = None
         if self.jump_intent_trigger:
-            #suspend('JUMP!')
+            #print(f'{self.name} jump!')
             jump_intent = True
             self.jump_intent_trigger = False
 
@@ -1399,15 +1448,18 @@ class Player(CharacterBase):
             #如果是none=沒設定過攻擊
             self.set_attack_by_skill(skill)
 
-        if self.name == 'player' and self.attack_state is not None and self.attack_state is not ThrowAttackState and self.attack_state.data is not None \
-                and self.attack_state.data.attack_type == AttackType.SLASH:
-            self.scene.say(self, 'Tiger UpperCut!', duration=90)
+        # if self.name == 'player' and self.attack_state is not None and self.attack_state is not ThrowAttackState \
+        #         and (data in self.attack_data and self.attack_state.data is not None and self.attack_state.data.attack_type == AttackType.SLASH:
+        #     self.scene.say(self, 'Tiger UpperCut!', duration=90)
+        if self.name == 'player' and attack_data_dict[skill].dialogue is not None:
+            self.scene.say(self, attack_data_dict[skill].dialogue, duration=90)
+
 
 
     def handle_input(self, keys):
         intent = self.input_intent(keys)
-        if self.name=='ally':
-            st = 'ALLLLLLLLY  [{}] intent [dx{}, dy{}, jump{}, action{}'.format(self.current_frame, intent['dx'],intent['dy'],intent['jump'],intent['action'])
+        if self.name=='player' and intent['jump']:
+            st = 'player  [{}] intent [dx{}, dy{}, jump{}, action{}'.format(self.current_frame, intent['dx'],intent['dy'],intent['jump'],intent['action'])
             print(st, flush=True)
 
 
@@ -1436,7 +1488,10 @@ class Player(CharacterBase):
                 self.jump_z_vel = 0
                 self.color = self.default_color
                 self.jumpping_flag = False
-                self.high_jump=False
+                self.high_jump = False
+        else:
+            self.high_jump = False
+            self.jumpping_flag = False
         for dir, end_frame in self.step_pending.items():
             if self.current_frame <= end_frame and self.state == MoveState.STAND:
                 self.state = MoveState.STEP
@@ -1459,8 +1514,8 @@ class Player(CharacterBase):
         if self.combat_state == CombatState.DEAD:
             print(f'{self.name} 死亡! 遊戲結束')
             return
-        if self.high_jump:
-            print('Player high jump!')
+        # if self.high_jump:
+        #     print('Player high jump!')
         enemys = self.scene.get_units_by_side('enemy_side')
         neturals = self.scene.get_units_by_side('netural')
         # attack_timer的update僅限一次!

@@ -472,7 +472,8 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
     for i in range(total_enemy):
         head = random.choice(all_enemy_list)
         x_dis = random.randint(0,9)
-        e = Enemy(px+x_dis, py+2, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
+        y_dis = random.randint(-1, 1)
+        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
@@ -518,7 +519,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
                 scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
                 scr = [
                     {"type": "say", "target": "boss", "text": "Boss來了!"},
-                    {"type": "wait", "duration": 180},
+                    {"type": "wait", "duration": 30},
                 ]
                 scene.script_runner.load(scr)
 
@@ -530,12 +531,16 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
 
 
         #if len(scene.get_units_by_side('player_side')) == 0:
+        #print(f'player jump block {player.jump_key_block}')
         if not is_player_alive(scene):
             print('no player left, game over')
             stage_cleared = True
         if stage_cleared == True and scene.scene_end_countdown < 0:
-            #scene.draw_overlay(win)
-            scene.trigger_clear("SCENE 1 CLEAR", 180)
+            if is_player_alive(scene):
+                result = 'CLEAR'
+            else:
+                result = 'FAIL'
+            scene.trigger_clear(f"SCENE 1 {result}", 180)
             scene.darken_enabled = True
         if scene.scene_end_countdown == 0:
             print('scene end')
