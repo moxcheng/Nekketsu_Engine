@@ -8,6 +8,7 @@ from Skill import *
 class Item(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, name, x, y, map_info, weight=0.1):
         super().__init__()
+        self.unit_type = 'item'
         self.name = name
         self.x = x
         self.y = y
@@ -367,9 +368,9 @@ class MagicPotion(Item):
                 unit.mp += self.mana
                 self.scene.add_floating_text(x=unit.x + unit.width / 2,
                         y=unit.y + unit.height,
-                        value=f'+{self.money}',
+                        value=f'+{self.mana}',
                         map_h=self.map_h,
-                        color=(255, 215, 0))
+                        color=(30, 144, 255))
                 self.scene.mark_for_removal(self)
                 break
 

@@ -27,3 +27,4 @@ Z_FALL_OFSSET = Z_DRAW_OFFSET/15    #每一個Z =15掉落frame
 
 ON_HIT_SHORT_STUN_TIME = 15
 
+

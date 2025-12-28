@@ -126,6 +126,7 @@ def get_component_class(name):
 class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, x, y, map_info, z=0):
         super().__init__()
+        self.unit_type = "character"
         self.x = x
         self.y = y
         self.jump_z = 0
@@ -220,6 +221,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         for i in range(4):
             frame = sheet.subsurface((i * frame_w, 0, frame_w, frame_h))
             self.burn_frames.append(frame)
+        self.super_move_anim_timer = 0
 
     def update_burning_flag(self):
         if self.get_burning and not self.is_jump():
@@ -526,9 +528,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
                     ori_val = getattr(self, attr_name)
                     new_val = ori_val + value
-                    print(f'before value {ori_val}')
+                    #print(f'before value {ori_val}')
                     setattr(self, attr_name, new_val)
-                    print(f'after value {new_val}')
+                    #print(f'after value {new_val}')
         return attack
 
 
@@ -1303,7 +1305,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
 
 class Player(CharacterBase):
-    def __init__(self, x, y, map_info, material):
+    def __init__(self, x, y, map_info, material, super_move_material=None):
         super().__init__(x, y, map_info)
         self.key_buffer = {dir: None for dir in [DirState.LEFT, DirState.RIGHT]}
         self.step_pending = {dir: -9999 for dir in [DirState.LEFT, DirState.RIGHT]}
@@ -1331,6 +1333,11 @@ class Player(CharacterBase):
 
         self.animator = SpriteAnimator(material)  # 載入素材
         self.stand_image = pygame.image.load("..\\Assets_Drive\\the_world.png").convert_alpha()
+        if super_move_material is not None:
+            self.super_move_animator = SpriteAnimator(super_move_material)
+        else:
+            self.super_move_animator=None
+        self.super_move_max_time = 0
 
 
         #for dir in ['left', 'right', 'up', 'down']:
@@ -1527,6 +1534,56 @@ class Player(CharacterBase):
         self.handle_movement()
         self.update_burning_flag()
 
+    def enable_super_move(self, pre_pose_background = None, portraits=None, effect=None, timer=350, portraits_begin=0.6):
+        #def start_super_move(self, caster, super_move_dict):
+        super_move_dict = {"pre_pose_background":pre_pose_background, "portraits":portraits, "effect":effect, "timer":timer, "damage":50+self.mp*20, "portraits_begin":portraits_begin}
+        if self.mp >= 0:
+            self.super_move_max_time = timer
+            self.scene.start_super_move(self, super_move_dict)
+            self.set_rigid(30)
+            self.mp = 0
+
+    def draw_super_move_character(self, win, cam_x, cam_y, tile_offset_y, show_period=0.5):
+
+        # 更新動畫 frame（每隔 anim_speed frame 換一次圖）
+        self.super_move_anim_timer += 1
+        if self.super_move_anim_timer < self.super_move_max_time*show_period:
+            f_idx = int(len(self.super_move_animator.frames)*self.super_move_anim_timer/(self.super_move_max_time*show_period))
+            print(f"draw_super_move_character {self.super_move_anim_timer}, frame_idx {f_idx}")
+            frame = self.super_move_animator.get_frame_by_index(f_idx)
+        else:
+            frame = self.super_move_animator.get_frame_by_index(len(self.super_move_animator.frames)-1)
+
+        # 若角色面向左側，進行左右翻轉
+        if self.facing == DirState.LEFT:
+            frame = pygame.transform.flip(frame, True, False)
+
+        # 計算畫面座標
+        px = int(self.x * TILE_SIZE) - cam_x
+        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        falling_z_offset = 0
+        if self.is_falling():
+            falling_z_offset = self.falling_y_offset * Z_FALL_OFSSET
+        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+
+        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cy = int((self.map_h - (
+                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+
+        frame_rect = frame.get_rect()
+        draw_x = cx - frame_rect.width // 2
+        draw_y = cy - frame_rect.height
+
+        win.blit(frame, (draw_x, draw_y))
+        # supermove尚未決定是否要使用aura
+        # aura_comp = self.get_component("aura_effect")
+        # if aura_comp:
+        #     # 傳入所有繪圖所需參數
+        #     #print(f'{aura_comp} enable')
+        #     aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
+
 
 
 class Ally(CharacterBase):
@@ -1709,23 +1766,48 @@ def ai_attack_logic(unit, target, intent, act='support'):
                 unit.attack_cooldown = unit.attack_cooldown_duration
                 unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
 
+#定義敵人combo
+# 建議在檔案頂部定義招式組全域常數
+DEFAULT_COMBOS = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackType.SLASH]
+ELITE_COMBOS = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
+FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
 class Enemy(CharacterBase):
-    def __init__(self, x, y, z, map_info, material):
+    def __init__(self, x, y, z, map_info, material,scale=1.0, combos=DEFAULT_COMBOS, name='enemy'):
         super().__init__(x, y, map_info)
+        # 1) 放大碰撞尺寸
+        self.width = self.width * scale
+        self.height = self.height * scale
         self.attack_cooldown = 0  # 攻擊冷卻倒數
-        self.attack_cooldown_duration = 60  # 冷卻時間（可調整）
+        self.attack_cooldown_duration = 45  # 冷卻時間（可調整）
         self.default_color=(100,100,255)
         self.jump_color=(100,150,255)
         self.fall_color=(50, 100, 255)
         self.summon_sickness = 300
-        self.name='enemy'
+        self.name=name
         self.combo_count = 0
-        self.combos = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackType.SLASH]
+        self.combos = combos
         self.dummy = False
         self.animator = SpriteAnimator(material)  # 載入素材
         self.stand_image = pygame.image.load("..\\Assets_Drive\\star_p.png").convert_alpha()
         self.side = 'enemy_side'
         self.money = 10 #loot
+
+        # 4) 調整動畫貼圖大小
+        #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface
+        if scale != 1.0:
+            if hasattr(self, "animator") and self.animator and hasattr(self.animator, "frames"):
+                scaled_frames = []
+                for f in self.animator.frames:
+                    sw = f.get_width()
+                    sh = f.get_height()
+                    scaled_frames.append(pygame.transform.scale(f, (sw * scale, sh * scale)))
+                self.animator.frames = scaled_frames
+
+                # 如果 animator 有 frame_width/height 屬性就同步更新
+                if hasattr(self.animator, "frame_width"):
+                    self.animator.frame_width *= scale
+                if hasattr(self.animator, "frame_height"):
+                    self.animator.frame_height *= scale
 
 
     #enemy的update
@@ -1741,8 +1823,8 @@ class Enemy(CharacterBase):
         #關閉AI
         #return
         #替身測試
-        if self.health < 50:
-            self.has_stand = True
+        # if self.health < 50:
+        #     self.has_stand = True
         
         self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
 

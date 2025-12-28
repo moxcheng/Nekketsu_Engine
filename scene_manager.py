@@ -1,7 +1,8 @@
 # scene_manager.py
 import pygame
 from Config import WIDTH, HEIGHT, TILE_SIZE
-
+from State_enum import *
+import math
 class SceneManager:
     def __init__(self):
         self.interactables = []
@@ -23,6 +24,19 @@ class SceneManager:
         self.clear_text = ""
         self.clear_font = None  # 由外部設定（main 或 scene_1）
         self.scene_end_countdown = -1
+        self.state =SceneState.NORMAL
+        self.super_move_anim = None
+        self.super_move_damage = None
+        self.super_move_timer = 0
+        self.super_move_max_timer = 0
+        self.super_move_portrait_begin = 0
+        self.super_move_pre_pose_background = None
+        self.super_move_effect = None
+
+        self.super_move_portrait = []  # 儲存 super_move_tachie.png
+        self.super_move_portrait_images = [] #一次讀取並儲存
+        self.super_move_caster = None  # 紀錄是誰放的大招
+        self.super_move_full_frames = []  # 儲存全畫面特效動畫
 
     # --- 讓外部設定字型 ---
     def set_clear_font(self, font):
@@ -65,6 +79,57 @@ class SceneManager:
             for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
                 win.blit(outline, (x + dx, y + dy))
             win.blit(txt, (x, y))
+    def draw_super_move_overlay(self, win, cam_x, cam_y, tile_offset_y):
+
+        if self.state != SceneState.SUPER_MOVE:
+            return
+
+            # 計算當前進度 (1.0 -> 0.0)
+        progress = self.super_move_timer / self.super_move_max_timer
+
+        # 1. 繪製全畫面黑色半透明背景 (背景變暗)
+        dark_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        dark_surface.fill((0, 0, 0, 180))
+        win.blit(dark_surface, (0, 0))
+        # 2. 繪製發動者 (讓他穿透黑幕，顯得亮眼)
+        #先插入背景
+        if self.super_move_pre_pose_background is not None and progress > self.super_move_portrait_begin:
+            img = self.super_move_pre_pose_background
+            img.set_alpha(200)
+            win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
+
+        # 這裡要呼叫 caster 的繪製邏輯，但位置不隨相機移動(特寫)或在原地
+        # 建議讓發動者在原地播放 special_move.png 動畫
+        if self.super_move_caster:
+            self.super_move_caster.draw_super_move_character(win, cam_x, cam_y, tile_offset_y, show_period=1-self.super_move_portrait_begin)
+        # 此處由 draw_all 邏輯決定，通常我們會把 caster 的繪製層級提高
+
+
+        # 3. 繪製人物立繪 (Tachie) - 在特定時間點切入
+        # # 假設在計時器剩餘 80% 到 30% 時顯示
+        # if 0.15 < progress < 0.5:
+        #     # 簡單的滑入動畫效果
+        #     offset_x = (progress - 0.15) * 100 if progress > 0.15 else 0
+        #     win.blit(self.super_move_portrait, (WIDTH // 2 - 200 + offset_x, HEIGHT // 2 - 200))
+        for p_cfg in self.super_move_portrait:
+            if p_cfg['end'] <= progress <= p_cfg['start']:
+                img = p_cfg['image']
+                alpha = 128
+                img.set_alpha(alpha)
+                win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
+                break  # 每一刻只畫一張
+
+
+        # 4. 全畫面傷害特效 (當計時器快結束時)
+        if progress < 0.15:
+            # 將 0.5 改為 0.2，速度會變為原本的 2/5 (變慢)
+            frequency = 0.3
+            # 這裡只改第一個 0.5，後面的 0.5 + 0.5 是為了維持 0~255 的範圍，不要動它們
+            alpha = int((math.sin(self.super_move_timer * frequency) * 0.5 + 0.5) * 255)
+            img = self.super_move_effect
+            img.set_alpha(alpha)
+            win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
+
 
     def mark_for_removal(self, unit):
         if unit not in self.to_be_removed:
@@ -85,14 +150,24 @@ class SceneManager:
             c.owner = None
 
     def update_all(self):
+        enemy_remove_count = 0
         self.script_runner.update()
-
         for unit in self.interactables:
             #如果劇情模式開啟，且這個單位不在受控名單中 → 跳過更新
             if self.script_runner.active and self.lock_others_during_script:
                 if unit not in self.script_controlled_units:
                     continue
             unit.update_components()
+            if self.state == SceneState.NPC_BLOCK:
+                if "player" not in unit.name:
+                    continue
+            if self.state == SceneState.PLAYER_BLOCK:
+                if "player" in unit.name:
+                    continue
+            if self.state == SceneState.SUPER_MOVE:
+                if hasattr(unit, "unit_type"):
+                    if unit.unit_type == "character":
+                        continue
             unit.update()
         for text in self.floating_texts:
             text.update()
@@ -100,16 +175,34 @@ class SceneManager:
         # 🔸移除所有標記為移除的物件
         for unit in self.to_be_removed:
             self.unregister_unit(unit)
+            if unit.side == 'enemy_side':
+                enemy_remove_count += 1
             print(f'scene_manager: 註銷{unit.name}')
         self.to_be_removed.clear()
         # 對話泡泡
         for bubble in self.speech_bubbles:
             bubble.update()
         self.speech_bubbles = [b for b in self.speech_bubbles if b.is_alive()]
+
+        if self.state == SceneState.SUPER_MOVE:
+            if self.super_move_timer > 0:
+                self.super_move_timer -= 1
+            else:
+                #結束魔法使用
+                print('enhance damage and clear super move state')
+                self.state = SceneState.NORMAL
+                self.super_move_timer = 0
+                self.super_move_damage = None
+                self.super_move_anim = None
+                self.super_move_caster.super_move_anim_timer = 0
+                self.super_move_portrait_begin = 0
+                self.super_move_portrait.clear()
+
         if self.scene_end_countdown > 0:
             self.scene_end_countdown = self.scene_end_countdown -1
         if self.scene_end_countdown == 0:
             print('SceneManager: scene end')
+        return enemy_remove_count
 
     def get_all_units(self):
         return self.interactables
@@ -134,6 +227,10 @@ class SceneManager:
 
         # 包裝所有可繪製物件，加上 type 標記方便後續判斷
         for unit in self.interactables:
+            if self.state == SceneState.SUPER_MOVE:
+                #在draw_super_move_overlay繪製專用animator
+                if unit == self.super_move_caster:
+                    continue
             all_drawables.append(("unit", unit))
             #print(f'{unit.name}sY={unit.y}')
         for proj in self.projectiles:
@@ -155,9 +252,36 @@ class SceneManager:
             bubble.draw(win, cam_x, cam_y, tile_offset_y, font)
 
         self.draw_overlay(win)
+        if self.state == SceneState.SUPER_MOVE:
+            self.draw_super_move_overlay(win, cam_x, cam_y, tile_offset_y)
+
 
     def add_floating_text(self, x, y, value, map_h, color):
         self.floating_texts.append(FloatingText(x, y, value, map_h, duration=60, color=color))
+
+    def start_super_move(self, caster, super_move_dict):
+        self.state = SceneState.SUPER_MOVE
+        portraits = super_move_dict.get('portraits')
+        effect = super_move_dict.get('effect')
+        pre_pose_background = super_move_dict.get('pre_pose_background')
+        #把anim_path讀取frames塞入super_move_anim
+        self.super_move_caster = caster
+        self.super_move_timer = super_move_dict['timer']
+        self.super_move_damage = super_move_dict['damage']
+        self.super_move_max_timer = super_move_dict['timer']
+        self.super_move_portrait_begin = super_move_dict['portraits_begin']
+
+        # 載入立繪與特效 (實際開發建議在 init 或啟動時預載)
+        for portrait in portraits:
+            portrait['image'] = pygame.image.load(portrait['path']).convert_alpha()
+            self.super_move_portrait.append(portrait)
+        if effect is not None:
+            self.super_move_effect = pygame.image.load(effect).convert_alpha()
+        if pre_pose_background is not None:
+            self.super_move_pre_pose_background = pygame.image.load(pre_pose_background).convert_alpha()
+        # 這裡可以加入載入全畫面特效圖組的邏輯
+
+
 
 class FloatingText:
     def __init__(self, x, y, value, map_h, duration=60, color=(255, 0, 0)):

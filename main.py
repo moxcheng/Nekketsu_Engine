@@ -287,22 +287,24 @@ def scene_test(win, font):
 
         # 例如按 Enter 啟動腳本
         if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-            from Skill import AttackType
-            test_script = [
-                {"type": "say", "target": "enemy", "text": "你來啦，終於找到你了..."},
-                {"type": "wait", "duration": 60},
-                {"type": "move", "target": "enemy", "to": [player.x - 1, player.y]},
-                {"type": "wait", "duration": 30},
-                {"type": "say", "target": "player", "text": "你是誰！？"},
-                {"type": "wait", "duration": 30},
-                {"type": "attack", "target": "enemy", "skill": AttackType.SLASH},
-                {"type": "wait", "duration": 10},
-                {"type": "say", "target": "enemy", "text": "猛虎...硬爬山！"},
-                {"type": "wait", "duration": 30},
-                {"type": "knockback", "target": "player", "vx": 0.5, "vz": 0.7},
-                {"type": "wait", "duration": 90},
-            ]
-            scene.script_runner.load(test_script)
+            # from Skill import AttackType
+            # test_script = [
+            #     {"type": "say", "target": "enemy", "text": "你來啦，終於找到你了..."},
+            #     {"type": "wait", "duration": 60},
+            #     {"type": "move", "target": "enemy", "to": [player.x - 1, player.y]},
+            #     {"type": "wait", "duration": 30},
+            #     {"type": "say", "target": "player", "text": "你是誰！？"},
+            #     {"type": "wait", "duration": 30},
+            #     {"type": "attack", "target": "enemy", "skill": AttackType.SLASH},
+            #     {"type": "wait", "duration": 10},
+            #     {"type": "say", "target": "enemy", "text": "猛虎...硬爬山！"},
+            #     {"type": "wait", "duration": 30},
+            #     {"type": "knockback", "target": "player", "vx": 0.5, "vz": 0.7},
+            #     {"type": "wait", "duration": 90},
+            # ]
+            # scene.script_runner.load(test_script)
+            print('enter!!')
+            player.enable_super_move()
 
         cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
         cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
@@ -450,7 +452,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
-    player = Player(px, py, map_info, "..//Assets_Drive//hakuren_96.png")
+    player = Player(px, py, map_info, "..//Assets_Drive//yamashiro_96.png")
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
@@ -560,6 +562,173 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         pygame.display.update()
         clock.tick(FPS)
 
+def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png"):
+    # === 搖桿初始化 ===
+    joystick = None
+    joy_buttons_prev = []
+    pygame.joystick.init()
+    if pygame.joystick.get_count() > 0:
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        print(f"[JOYPAD] 使用搖桿: {joystick.get_name()}")
+        joy_buttons_prev = [0] * joystick.get_numbuttons()
+    else:
+        print("[JOYPAD] 沒有偵測到搖桿，維持鍵盤操作")
+    joy_axis_left = False
+    joy_axis_right = False
+    # === 搖桿初始化 ===
+
+
+    # 地圖資訊化
+    map_info = load_terrain_map(flip_vertical=True)
+    terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
+    transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
+
+    global background_img
+    background_img = pygame.image.load(backgroung_path).convert()
+    background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
+
+    clock = pygame.time.Clock()
+
+
+
+
+    #宣告場景
+    scene = SceneManager()
+    scene.set_clear_font(clear_font)
+    scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
+    stage_cleared = False
+    #宣告玩家單位
+    tile_offset_y = 0
+    px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
+    #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
+    player = Player(px, py, map_info, "..//Assets_Drive//yamashiro_96.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
+    player.name='player'
+    #掛載component
+    player.add_component("holdable", HoldableComponent(player))
+    player.scene = scene
+    scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    #scene.register_item(item1)  # 未來可新增的 item 類
+    bubble = SpeechBubble(player, "場景1開始！", 120)
+    scene.speech_bubbles = [bubble]
+
+    #小兵清單
+    enemy_list = []
+    total_enemy = 10
+    created_enemy = 0
+    current_enemy = 0
+    destroyed_enemy = 0
+    phase = 0
+    #產生小兵list
+    import random
+    shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',6/4],['shuki2_96.png',5/4],['shuki3_96.png',1.0]]
+    for i in range(total_enemy):
+        choosed_idx = random.randint(0,3)
+        x_dis = random.randint(0,choosed_idx)
+        y_dis = random.randint(-1, 1)
+        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\madou\\{shuki_list[choosed_idx][0]}", scale=shuki_list[choosed_idx][1])
+        e.name = f'enemy{i}'
+        e.scene=scene
+        enemy_list.append(e)
+        #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
+
+    while True:
+        current_enemy = len(scene.get_units_by_side('enemy_side'))
+        max_enemy = 3+destroyed_enemy
+        if created_enemy < total_enemy and current_enemy < max_enemy:
+            enemy_to_add = max_enemy-current_enemy
+            for i in range(enemy_to_add):
+                print(f'加入{enemy_list[created_enemy].name} ({created_enemy}/{total_enemy}), 現在{current_enemy} enemy_to_add{enemy_to_add}')
+                scene.register_unit(enemy_list[created_enemy], side='enemy_side', tags=['enemy', 'interactable'], type='character')
+                created_enemy += 1
+                current_enemy += 1
+                if created_enemy >= total_enemy:
+                    break
+
+
+
+        kb_keys = pygame.key.get_pressed()
+        if 'joystick' in locals() and joystick is not None:
+            keys, joy_axis_left, joy_axis_right, joy_buttons_prev = input_joypad_handler(player, joystick, joy_axis_left, joy_axis_right,kb_keys, joy_buttons_prev)
+        else:
+            keys = kb_keys
+            # --- 在這裡檢查 Enter ---
+        if kb_keys[pygame.K_RETURN]:
+            print('Enter is being held!')
+            player.enable_super_move(pre_pose_background="..\\Assets_Drive\\madou\\pre_pose.png",
+                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_0.png", "start":0.6, "end":0.45},
+            {"path":"..\\Assets_Drive\\madou\\tachie_1.png", "start":0.45, "end":0.35},
+            {"path":"..\\Assets_Drive\\madou\\tachie_2.png", "start":0.35, "end":0.01}],
+            effect="..\\Assets_Drive\\madou\\tachie_4.png",
+                                     portraits_begin=0.6)
+
+        player.handle_input(keys)
+
+
+
+        if len(scene.get_units_by_side('player_side')) > 0:
+            destroyed_enemy += scene.update_all()  # 這會更新所有註冊單位
+        if phase == 0:
+            if created_enemy == total_enemy and current_enemy == 0:
+                #scene.say('player', 'enemy clear!')
+                scr = [
+                {"type": "say", "target": "player", "text": "Phase 1結束！"},
+                {"type": "wait", "duration": 180},
+                ]
+                scene.script_runner.load(scr)
+                phase = 1
+                # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
+                #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
+                enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
+                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss')
+                # enemy2.dummy = True
+                enemy2.max_hp = 600
+                enemy2.health = 600
+                enemy2.scene=scene
+                scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
+                scr = [
+                    {"type": "say", "target": "boss", "text": "Boss來了!"},
+                    {"type": "wait", "duration": 30},
+                ]
+                scene.script_runner.load(scr)
+
+        elif phase == 1:
+            if len(scene.get_units_by_side('enemy_side')) == 0:
+                print('清除敵人')
+                stage_cleared = True
+                phase = 2
+
+
+        #if len(scene.get_units_by_side('player_side')) == 0:
+        #print(f'player jump block {player.jump_key_block}')
+        if not is_player_alive(scene):
+            print('no player left, game over')
+            stage_cleared = True
+        if stage_cleared == True and scene.scene_end_countdown < 0:
+            if is_player_alive(scene):
+                result = 'CLEAR'
+            else:
+                result = 'FAIL'
+            scene.trigger_clear(f"SCENE MADOU {result}", 180)
+            scene.darken_enabled = True
+        if scene.scene_end_countdown == 0:
+            print('scene end')
+            break
+
+        cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+        cam_x = max(0, min(cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        cam_y = max(0, min(cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+        pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
+
+        win.fill(WHITE)
+        draw_map(win, cam_x, cam_y, font, tile_offset_y)
+        scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+        if is_player_alive(scene):
+            draw_ui(win, player, font)
+        pygame.display.update()
+        clock.tick(FPS)
+
 
 
 def main():
@@ -569,7 +738,7 @@ def main():
     clear_font = pygame.font.SysFont(None, 48)
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
-    scene_1(win, font, clear_font)
+    scene_madou(win, font, clear_font)
 
 
 main()

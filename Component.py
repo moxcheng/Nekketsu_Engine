@@ -42,6 +42,7 @@ class ComponentHost:
         self.thrown_by = None
         #給storyScriptRunner使用
         self.external_control = None
+        self.unit_type = None
 
     #劇情演出用
     def clear_autonomous_behavior(self):
@@ -282,7 +283,7 @@ class HoldFlyLogicMixin:
             self.on_held_location()
         elif self.flying:
             self.x += self.vel_x
-            print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
+            #print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
             hit_someone = self.on_fly_z()
         return hit_someone
     def on_held_location(self):

@@ -51,3 +51,9 @@ class EffectExpireMode(Enum):
     LANDING = auto()   # 落地消失
     TIMED = auto()     # 定時消失
     ATTACK_END = auto()# 招式結束消失
+
+class SceneState(Enum):
+    NORMAL = auto()
+    PLAYER_BLOCK = auto()
+    NPC_BLOCK = auto()
+    SUPER_MOVE = auto()
