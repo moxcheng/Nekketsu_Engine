@@ -594,7 +594,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
 
 
     #宣告場景
-    scene = SceneManager()
+    scene = SceneManager(MAP_HEIGHT, end_cut = "..\\Assets_Drive\\madou\\end_cut.png")
     scene.set_clear_font(clear_font)
     scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
     stage_cleared = False
@@ -621,7 +621,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
     phase = 0
     #產生小兵list
     import random
-    shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',6/4],['shuki2_96.png',5/4],['shuki3_96.png',1.0]]
+    shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
     for i in range(total_enemy):
         choosed_idx = random.randint(0,3)
         x_dis = random.randint(0,choosed_idx)
@@ -655,12 +655,16 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
             # --- 在這裡檢查 Enter ---
         if kb_keys[pygame.K_RETURN]:
             print('Enter is being held!')
-            player.enable_super_move(pre_pose_background="..\\Assets_Drive\\madou\\pre_pose.png",
-                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_0.png", "start":0.6, "end":0.45},
-            {"path":"..\\Assets_Drive\\madou\\tachie_1.png", "start":0.45, "end":0.35},
-            {"path":"..\\Assets_Drive\\madou\\tachie_2.png", "start":0.35, "end":0.01}],
-            effect="..\\Assets_Drive\\madou\\tachie_4.png",
-                                     portraits_begin=0.6)
+            player.enable_super_move(pre_pose_background=["..\\Assets_Drive\\madou\\pre_pose1.png","..\\Assets_Drive\\madou\\pre_pose2.png",
+                                                          "..\\Assets_Drive\\madou\\pre_pose3.png","..\\Assets_Drive\\madou\\pre_pose4.png","..\\Assets_Drive\\madou\\pre_pose5.png",
+                                                          "..\\Assets_Drive\\madou\\pre_pose6.png","..\\Assets_Drive\\madou\\pre_pose7.png","..\\Assets_Drive\\madou\\pre_pose8.png",
+                                                          "..\\Assets_Drive\\madou\\pre_pose9.png","..\\Assets_Drive\\madou\\pre_pose10.png"],
+                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_00.png", "start":0.7, "end":0.55, "dir":"L2R","Offset_y":-50},
+                                                {"path":"..\\Assets_Drive\\madou\\tachie_01.png", "start":0.55, "end":0.4, "dir":"R2L","Offset_y":-15},
+                                                {"path":"..\\Assets_Drive\\madou\\tachie_02.png", "start":0.4, "end":0.3, "dir":"L2R","Offset_y":15},
+                                                {"path":"..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir":"R2L","Offset_y":0}],
+                                     effect="..\\Assets_Drive\\madou\\tachie_5.png",
+                                     portraits_begin=0.7, timer=500)
 
         player.handle_input(keys)
 
@@ -687,7 +691,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 enemy2.scene=scene
                 scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
                 scr = [
-                    {"type": "say", "target": "boss", "text": "Boss來了!"},
+                    {"type": "say", "target": "boss", "text": "嘎!!!"},
                     {"type": "wait", "duration": 30},
                 ]
                 scene.script_runner.load(scr)
@@ -711,14 +715,27 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 result = 'FAIL'
             scene.trigger_clear(f"SCENE MADOU {result}", 180)
             scene.darken_enabled = True
+
         if scene.scene_end_countdown == 0:
             print('scene end')
             break
 
+        # main.py 的 scene_madou 迴圈內
         cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
         cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+
+        # 增加震動偏移
+        ox, oy = scene.get_camera_offset()
+        cam_x += ox
+        cam_y += oy
+
+        # 最後再做邊界限制
         cam_x = max(0, min(cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
         cam_y = max(0, min(cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+        # cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        # cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+        # cam_x = max(0, min(cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        # cam_y = max(0, min(cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
         pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
 
         win.fill(WHITE)

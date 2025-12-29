@@ -28,6 +28,29 @@ def is_box_overlap(box1, box2):
         box1['z1'] <= box2['z2'] and box1['z2'] >= box2['z1']
     )
 
+def get_overlap_center(box1, box2):
+    """
+    計算兩個碰撞盒交疊區域的中心點 (x, y, z)。
+    若無交疊，則回傳各軸的中點平均值（或可視需求回傳 None）。
+    """
+    # 計算 X 軸交疊區間
+    overlap_x1 = max(box1['x1'], box2['x1'])
+    overlap_x2 = min(box1['x2'], box2['x2'])
+    center_x = (overlap_x1 + overlap_x2) / 2
+
+    # 計算 Y 軸交疊區間
+    overlap_y1 = max(box1['y1'], box2['y1'])
+    overlap_y2 = min(box1['y2'], box2['y2'])
+    center_y = (overlap_y1 + overlap_y2) / 2
+
+    # 計算 Z 軸交疊區間
+    overlap_z1 = max(box1['z1'], box2['z1'])
+    overlap_z2 = min(box1['z2'], box2['z2'])
+    center_z = (overlap_z1 + overlap_z2) / 2
+
+    return center_x, center_y, center_z
+
+
 KEY_TO_ACTION = {
     pygame.K_z: "z_attack",
     pygame.K_x: "x_attack",
@@ -213,6 +236,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.get_burning = False
         self.burn_frames = []
         self.high_jump = False
+
 
         # 燃燒貼圖初始化
         sheet = pygame.image.load("..\\Assets_Drive\\burn_4frame.png").convert_alpha()
@@ -853,7 +877,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.set_rigid(ON_HIT_SHORT_STUN_TIME)
             self.on_hit_timer = ON_HIT_SHORT_STUN_TIME
         if AttackEffect.BURN in effects:
-            print(f'{self.name} burning!!!!  burning!!!! burning!!!')
+            #print(f'{self.name} burning!!!!  burning!!!! burning!!!')
             self.get_burning = True
 
     def take_damage(self, attacker, attack_data):
@@ -978,6 +1002,12 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
             if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
                 if self not in opponent.attack_state.has_hit:
+                    hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
+
+                    # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
+                    if self.scene:
+                        self.scene.create_hit_effect(hit_x, hit_y, hit_z)
+
                     if self.held_by is None:
                         #避免打到自己
                         self.on_hit(opponent, opponent.attack_state.data)
@@ -1536,8 +1566,10 @@ class Player(CharacterBase):
 
     def enable_super_move(self, pre_pose_background = None, portraits=None, effect=None, timer=350, portraits_begin=0.6):
         #def start_super_move(self, caster, super_move_dict):
-        super_move_dict = {"pre_pose_background":pre_pose_background, "portraits":portraits, "effect":effect, "timer":timer, "damage":50+self.mp*20, "portraits_begin":portraits_begin}
         if self.mp >= 0:
+            tot_damage = 40+self.mp*30
+            super_move_dict = {"pre_pose_background": pre_pose_background, "portraits": portraits, "effect": effect,
+                               "timer": timer, "damage": tot_damage, "portraits_begin": portraits_begin}
             self.super_move_max_time = timer
             self.scene.start_super_move(self, super_move_dict)
             self.set_rigid(30)
@@ -1549,7 +1581,7 @@ class Player(CharacterBase):
         self.super_move_anim_timer += 1
         if self.super_move_anim_timer < self.super_move_max_time*show_period:
             f_idx = int(len(self.super_move_animator.frames)*self.super_move_anim_timer/(self.super_move_max_time*show_period))
-            print(f"draw_super_move_character {self.super_move_anim_timer}, frame_idx {f_idx}")
+            #print(f"draw_super_move_character {self.super_move_anim_timer}, frame_idx {f_idx}")
             frame = self.super_move_animator.get_frame_by_index(f_idx)
         else:
             frame = self.super_move_animator.get_frame_by_index(len(self.super_move_animator.frames)-1)
@@ -1577,12 +1609,6 @@ class Player(CharacterBase):
         draw_y = cy - frame_rect.height
 
         win.blit(frame, (draw_x, draw_y))
-        # supermove尚未決定是否要使用aura
-        # aura_comp = self.get_component("aura_effect")
-        # if aura_comp:
-        #     # 傳入所有繪圖所需參數
-        #     #print(f'{aura_comp} enable')
-        #     aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
 
 
 

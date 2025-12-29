@@ -37,6 +37,7 @@ class AttackType(Enum):
     BULLET=auto()
     MAHAHPUNCH=auto()
     METEOFALL=auto()
+    SUPER_FINAL=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地

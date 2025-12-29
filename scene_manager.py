@@ -1,10 +1,45 @@
 # scene_manager.py
 import pygame
-from Config import WIDTH, HEIGHT, TILE_SIZE
+from Config import WIDTH, HEIGHT, TILE_SIZE,Z_DRAW_OFFSET
 from State_enum import *
 import math
+
+
+
+class VisualEffect:
+    def __init__(self, x, y, z, frames, anim_speed=4):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.frames = frames  # 這是已經預先切片好的打擊特效圖組
+        self.anim_speed = anim_speed
+        self.timer = 0
+        self.alive = True
+
+    def update(self):
+        self.timer += 1
+        # 當播放完所有動畫幀時，標記為死亡
+        if self.timer >= len(self.frames) * self.anim_speed:
+            self.alive = False
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y, map_h):
+        if not self.alive: return
+
+        # 計算當前應該顯示哪一幀
+        frame_idx = self.timer // self.anim_speed
+        frame = self.frames[frame_idx]
+
+        # 轉換 2.5D 座標到螢幕 (參考 Characters.py 的 draw_anim 邏輯)
+        px = int(self.x * TILE_SIZE) - cam_x
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        py = int((map_h - self.y) * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
+
+        # 居中繪製
+        rect = frame.get_rect(center=(px, py))
+        win.blit(frame, rect)
+
 class SceneManager:
-    def __init__(self):
+    def __init__(self, map_h, end_cut=None):
         self.interactables = []
         self.projectiles = []  # 可擴充的道具如飛鏢、火球等
         self.floating_texts = []  # 新增傷害文字列表
@@ -37,6 +72,43 @@ class SceneManager:
         self.super_move_portrait_images = [] #一次讀取並儲存
         self.super_move_caster = None  # 紀錄是誰放的大招
         self.super_move_full_frames = []  # 儲存全畫面特效動畫
+        self.end_cut = pygame.image.load(end_cut).convert_alpha() if end_cut is not None else None
+        #打擊特效
+        self.visual_effects = []  # 專門儲存打擊特效
+        self.hit_effect_frames = self.load_hit_assets()  # 預載特效圖
+        self.map_h = map_h
+        self.shake_timer = 0
+        self.shake_intensity = 0
+
+    def create_hit_effect(self, x, y, z):
+        # 這裡的 z 通常是碰撞盒交疊的中心 z
+        new_effect = VisualEffect(x, y, z, self.hit_frames, anim_speed=1)
+        self.visual_effects.append(new_effect)
+
+    def load_hit_assets(self, path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45):
+        """
+        載入打擊特效圖集並自動切片。
+        """
+        try:
+            sheet = pygame.image.load(path).convert_alpha()  #
+            sheet_w, sheet_h = sheet.get_size()
+            cols = sheet_w // frame_w
+            rows = sheet_h // frame_h
+
+            frames = []
+            for r in range(rows):
+                for c in range(cols):
+                    # 定義子區域並複製
+                    rect = pygame.Rect(c * frame_w, r * frame_h, frame_w, frame_h)
+                    frame = sheet.subsurface(rect).copy()  #
+                    frames.append(frame)
+            return frames
+        except Exception as e:
+            print(f"[ERROR] 載入特效失敗: {e}")
+            # 回傳一個預設的紅色方塊，確保程式不崩潰
+            surface = pygame.Surface((32, 32))
+            surface.fill((255, 0, 0))
+            return [surface]
 
     # --- 讓外部設定字型 ---
     def set_clear_font(self, font):
@@ -56,6 +128,14 @@ class SceneManager:
         self.clear_text = message
         self.scene_end_countdown = countdown
 
+    def create_hit_effect(self, x, y, z):
+        """
+        利用計算出的中心點產生特效。
+        """
+        # 使用計算出的重疊中心座標
+        new_vfx = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=3)
+        self.visual_effects.append(new_vfx)
+
     # --- 在每幀繪圖最後呼叫 ---
     def draw_overlay(self, win):
         # 畫面變暗
@@ -69,7 +149,10 @@ class SceneManager:
             dark_surface.fill((0, 0, 0, self.darken_alpha))
             win.blit(dark_surface, (0, 0))
 
-        # 通關文字
+
+
+
+        # 通關
         if self.cleared and self.clear_font and self.clear_text:
             txt = self.clear_font.render(self.clear_text, True, (255, 255, 0))
             outline = self.clear_font.render(self.clear_text, True, (0, 0, 0))
@@ -79,6 +162,14 @@ class SceneManager:
             for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
                 win.blit(outline, (x + dx, y + dy))
             win.blit(txt, (x, y))
+
+            if self.end_cut is not None:
+                img = self.end_cut
+                alpha = min(255, max(0, 255 - (self.scene_end_countdown - 60)))
+                img.set_alpha(alpha)
+                win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
+
+
     def draw_super_move_overlay(self, win, cam_x, cam_y, tile_offset_y):
 
         if self.state != SceneState.SUPER_MOVE:
@@ -93,8 +184,12 @@ class SceneManager:
         win.blit(dark_surface, (0, 0))
         # 2. 繪製發動者 (讓他穿透黑幕，顯得亮眼)
         #先插入背景
+
         if self.super_move_pre_pose_background is not None and progress > self.super_move_portrait_begin:
-            img = self.super_move_pre_pose_background
+            bkg_idx = int(len(self.super_move_pre_pose_background)*(1.0-progress)/(1.0 - self.super_move_portrait_begin)+0.5)
+            if bkg_idx >= len(self.super_move_pre_pose_background):
+                bkg_idx = -1
+            img = self.super_move_pre_pose_background[bkg_idx]
             img.set_alpha(200)
             win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
 
@@ -114,10 +209,32 @@ class SceneManager:
         for p_cfg in self.super_move_portrait:
             if p_cfg['end'] <= progress <= p_cfg['start']:
                 img = p_cfg['image']
-                alpha = 128
+
+                # --- 計算該段立繪的局部進度 (0.0 到 1.0) ---
+                # 當 progress 從 start 變到 end，local_p 會從 0.0 變到 1.0
+                segment_duration = p_cfg['start'] - p_cfg['end']
+                local_p = (p_cfg['start'] - progress) / segment_duration
+                # 這裡的 300 是滑動距離，您可以根據需求調整
+                slide_dist = 150
+                if p_cfg.get('dir') == 'R2L':
+                    # 從 右側(slide_dist) 滑到 中央(0)
+                    #offset_x = slide_dist * (1 - local_p * 1.5)  # 1.5 倍速讓它快速到位後微移
+                    offset_x = slide_dist * (1 - (1-local_p) * (1-local_p))
+                    offset_x = max(0, offset_x)
+                else:  # L2R
+                    # 從 左側(-slide_dist) 滑到 中央(0)
+                    offset_x = -slide_dist * (1 - (1-local_p) * (1-local_p))
+                    offset_x = min(0, offset_x)
+                # --- 計算最終座標 ---
+                base_x = WIDTH // 2 - img.get_width() // 2
+                base_y = HEIGHT // 2 - img.get_height() // 2 + p_cfg.get('offset_y', 0)
+
+                # --- Alpha 漸顯效果 (Fade In) ---
+                alpha = int(min(local_p * 5, 1.0) * 255)  # 快速漸顯
                 img.set_alpha(alpha)
-                win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
-                break  # 每一刻只畫一張
+
+                win.blit(img, (base_x + offset_x, base_y))
+                break
 
 
         # 4. 全畫面傷害特效 (當計時器快結束時)
@@ -185,6 +302,8 @@ class SceneManager:
         self.speech_bubbles = [b for b in self.speech_bubbles if b.is_alive()]
 
         if self.state == SceneState.SUPER_MOVE:
+            if self.super_move_timer == 1:
+                self.execute_super_move_damage()
             if self.super_move_timer > 0:
                 self.super_move_timer -= 1
             else:
@@ -198,11 +317,61 @@ class SceneManager:
                 self.super_move_portrait_begin = 0
                 self.super_move_portrait.clear()
 
+        for vfx in self.visual_effects:
+            vfx.update()
+        self.visual_effects = [vfx for vfx in self.visual_effects if vfx.alive]
+
         if self.scene_end_countdown > 0:
             self.scene_end_countdown = self.scene_end_countdown -1
         if self.scene_end_countdown == 0:
             print('SceneManager: scene end')
         return enemy_remove_count
+
+    def trigger_shake(self, duration=20, intensity=10):
+        """觸發螢幕震動：duration 為持續幀數，intensity 為最大偏移像素"""
+        self.shake_timer = duration
+        self.shake_intensity = intensity
+
+    def get_camera_offset(self):
+        """
+        計算並回傳當前的震動偏移 (ox, oy)。
+        建議在 main.py 計算 cam_x/y 後累加。
+        """
+        if self.shake_timer > 0:
+            import random
+            # 隨時間衰減震動強度，讓演出更平滑
+            decay = self.shake_timer / 20.0  # 假設預設持續 20 幀
+            current_range = self.shake_intensity * decay
+
+            ox = random.uniform(-current_range, current_range)
+            oy = random.uniform(-current_range, current_range)
+
+            self.shake_timer -= 1
+            return int(ox), int(oy)
+        return 0, 0
+    def execute_super_move_damage(self):
+        # 1. 取得所有敵人
+        enemies = self.get_units_by_side('enemy_side')
+
+        # 2. 準備一個威力強大的大招攻擊數據
+        # 建議在 Skill.py 預定義一個 AttackType.SUPER_FINISH
+        from Skill import attack_data_dict
+        super_data = attack_data_dict.get(AttackType.SUPER_FINAL)
+        super_data.damage = self.super_move_damage
+        for enemy in enemies:
+            if enemy.is_alive():
+                # 觸發命中邏輯
+                enemy.on_hit(self.super_move_caster, super_data)
+
+                # 在敵人受擊中心點產生特效
+                box = enemy.get_hurtbox()
+                cx = (box['x1'] + box['x2']) / 2
+                cy = (box['y1'] + box['y2']) / 2
+                cz = (box['z1'] + box['z2']) / 2
+                self.create_hit_effect(cx, cy, cz)
+
+        # 3. 觸發全畫面劇烈震動
+        self.trigger_shake(duration=30, intensity=15)
 
     def get_all_units(self):
         return self.interactables
@@ -245,11 +414,16 @@ class SceneManager:
         for text in self.floating_texts:
             text.draw(win, cam_x, cam_y, tile_offset_y, pygame.font.SysFont(None, 36))  # 顯示傷害文字
 
+        # 2. 畫特效 (確保特效覆蓋在角色上方)
+        for vfx in self.visual_effects:
+            vfx.draw(win, cam_x, cam_y, tile_offset_y, self.map_h)
         # ✅ 繪製 SpeechBubble
         #font = pygame.font.SysFont(None, 18)
         font = get_cjk_font(20, prefer='tc')  # or 'tc'
         for bubble in self.speech_bubbles:
             bubble.draw(win, cam_x, cam_y, tile_offset_y, font)
+
+
 
         self.draw_overlay(win)
         if self.state == SceneState.SUPER_MOVE:
@@ -278,7 +452,9 @@ class SceneManager:
         if effect is not None:
             self.super_move_effect = pygame.image.load(effect).convert_alpha()
         if pre_pose_background is not None:
-            self.super_move_pre_pose_background = pygame.image.load(pre_pose_background).convert_alpha()
+            self.super_move_pre_pose_background = []
+            for pth in pre_pose_background:
+                self.super_move_pre_pose_background.append(pygame.image.load(pth).convert_alpha())
         # 這裡可以加入載入全畫面特效圖組的邏輯
 
 

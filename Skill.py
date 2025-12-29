@@ -307,7 +307,8 @@ attack_data_dict = {
         condition_func=lambda actor: True,
         effects=[AttackEffect.SHORT_STUN],
         damage = 7,
-        frame_map = [1]*12 + [0]*24
+        frame_map = [1]*12 + [0]*24,
+        cancel_table = {AttackType.SLASH: 24, AttackType.KICK: 18}
     ),
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
@@ -405,5 +406,17 @@ attack_data_dict = {
         hitbox_func=item_hitbox,
         damage=0,
         frame_map=[0] * 16 + [1] * 16,  # 必須與duration等長
+    ),
+    AttackType.SUPER_FINAL:AttackData(
+        attack_type=AttackType.SUPER_FINAL,
+        effects=[AttackEffect.SHORT_STUN],
+        duration=20,
+        trigger_frame=0,
+        recovery=16,
+        hitbox_func=item_hitbox,
+        damage=0,
+        knock_up_height=1.5,
+        knock_back_distance=1.0,
+        frame_map=[0] * 20
     )
 }
