@@ -63,12 +63,9 @@ class FlyAttackState(AttackState):
 class SwingAttackState(AttackState):
     def __init__(self, character, unit):
         attack_data = unit.get_swing_attack_data(character)
-        if attack_data is None:
-            return None
         super().__init__(character, attack_data)
         self.item = unit
         self.name = 'swing'
-
 
     def update(self):
         super().update()
@@ -86,8 +83,6 @@ class SwingAttackState(AttackState):
 class ThrowAttackState(AttackState):
     def __init__(self, character, item):
         attack_data = item.get_throw_attack_data(character)
-        if attack_data is None:
-            return None
         super().__init__(character, attack_data)
         self.item = item
         self.thrown = False
@@ -319,7 +314,7 @@ attack_data_dict = {
         condition_func=lambda actor: actor.jump_z > 0,
         effects=[AttackEffect.SHORT_STUN],
         knock_back_distance=1.0,
-        damage=8
+        damage=12
     ),
     AttackType.METEOFALL: AttackData(
         attack_type=AttackType.METEOFALL,
@@ -331,7 +326,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN],
         knock_up_height=1.5,
         knock_back_distance=2.0,
-        damage=20,
+        damage=35,
         physical_change={'jump_z_vel':GRAVITY*-2},
         effect_component_config={
             # 必須使用 Component 類別的字串名稱，以便動態載入
@@ -370,7 +365,7 @@ attack_data_dict = {
     AttackType.THROW: AttackData(
         attack_type=AttackType.THROW,
         duration=32,
-        trigger_frame=16,
+        trigger_frame=8,
         recovery=16,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],

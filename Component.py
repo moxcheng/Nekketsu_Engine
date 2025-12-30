@@ -166,6 +166,8 @@ class HoldableComponent(Component):
             print(f'HoldableComponent 的 update 的 放棄拾取 {self.held_object.name}')
             self.held_object.held_by = None
             self.held_object = None
+            if hasattr(self, "into_normal_state"):
+                self.into_normal_state()
 
 
     def handle_action(self, attack_intent):

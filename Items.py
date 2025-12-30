@@ -97,17 +97,17 @@ class Item(ComponentHost, HoldFlyLogicMixin):
             effects=[AttackEffect.SHORT_STUN],
             frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
         )
-    def get_swing_attack_data(self, attacker):
-        return AttackData(
-            attack_type=AttackType.SWING,
-            duration=32,
-            trigger_frame=12,
-            recovery=16,
-            hitbox_func=item_hitbox,
-            damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
-            effects=[AttackEffect.SHORT_STUN],
-            frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
-        )
+    # def get_swing_attack_data(self, attacker):
+    #     return AttackData(
+    #         attack_type=AttackType.SWING,
+    #         duration=32,
+    #         trigger_frame=12,
+    #         recovery=16,
+    #         hitbox_func=item_hitbox,
+    #         damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
+    #         effects=[AttackEffect.SHORT_STUN],
+    #         frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
+    #     )
     def get_throw_attack_data(self, attacker):
         return AttackData(
         attack_type=AttackType.THROW,

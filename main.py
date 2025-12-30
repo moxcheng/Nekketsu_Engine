@@ -24,18 +24,7 @@ def draw_center_text(win, text, font, color=(255, 255, 255), outline_color=(0, 0
         win.blit(outline, (x + dx, y + dy))
     win.blit(surf, (x, y))
 # ==========================================
-def draw_ui(win, player, font, color=(255, 255, 255), outline_color=(0, 0, 0)):
-    """在畫面中央印一行字（加簡單外框避免吃背景顏色）"""
-    text = 'HP:{}/{} MP:{} GOLD:{}'.format(player.health, player.max_hp, player.mp, player.money)
-    surf = font.render(text, True, color)
-    outline = font.render(text, True, outline_color)
-    x = (WIDTH - surf.get_width()) // 8
-    y = (HEIGHT - surf.get_height()) *7// 8
 
-    # 簡單外框
-    for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
-        win.blit(outline, (x + dx, y + dy))
-    win.blit(surf, (x, y))
 
 # ========= 通關顯示 / 畫面變暗控制 =========
 SCENE_DARKEN_ENABLED = True  # True: 照原本邏輯變暗 / False: 停止變暗
@@ -473,6 +462,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
     import random
     for i in range(total_enemy):
         head = random.choice(all_enemy_list)
+        rng = random.Random()  # 自動用系統 entropy seed
         x_dis = random.randint(0,9)
         y_dis = random.randint(-1, 1)
         e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
@@ -557,8 +547,6 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         win.fill(WHITE)
         draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
-        if is_player_alive(scene):
-            draw_ui(win, player, font)
         pygame.display.update()
         clock.tick(FPS)
 
@@ -611,6 +599,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
     #scene.register_item(item1)  # 未來可新增的 item 類
     bubble = SpeechBubble(player, "場景1開始！", 120)
     scene.speech_bubbles = [bubble]
+    boss_barserker = False
 
     #小兵清單
     enemy_list = []
@@ -623,10 +612,12 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
     import random
     shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
     for i in range(total_enemy):
+        rng = random.Random()  # 自動用系統 entropy seed
         choosed_idx = random.randint(0,3)
         x_dis = random.randint(0,choosed_idx)
         y_dis = random.randint(-1, 1)
         e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\madou\\{shuki_list[choosed_idx][0]}", scale=shuki_list[choosed_idx][1])
+        e.max_hp = e.health = int(40*shuki_list[choosed_idx][1])
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
@@ -672,6 +663,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
 
         if len(scene.get_units_by_side('player_side')) > 0:
             destroyed_enemy += scene.update_all()  # 這會更新所有註冊單位
+
         if phase == 0:
             if created_enemy == total_enemy and current_enemy == 0:
                 #scene.say('player', 'enemy clear!')
@@ -684,7 +676,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
                 enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
-                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss')
+                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup="landing")
                 # enemy2.dummy = True
                 enemy2.max_hp = 600
                 enemy2.health = 600
@@ -697,10 +689,31 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 scene.script_runner.load(scr)
 
         elif phase == 1:
+            boss_list = scene.get_units_by_name('boss')
+            for boss in boss_list:
+                if boss.health <= 150:
+                    scr = [
+                        {"type": "say", "target": "boss", "text": "嘎啊啊啊啊!!!"},
+                        {"type": "wait", "duration":30}
+                    ]
+                    scene.script_runner.load(scr)
+                    for i in range(3):
+                        rng = random.Random()  # 自動用系統 entropy seed
+                        x_dis = random.randint(-10, 10)
+                        y_dis = random.randint(-1, 1)
+                        px, py = player.x, player.y
+                        e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
+                                       "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
+                                       popup="landing")
+                        scene.register_unit(e, side='enemy_side', tags=['enemy'], type='character')
+                        print('summon boss fantom')
+                    phase = 2
+        elif phase == 2:
             if len(scene.get_units_by_side('enemy_side')) == 0:
                 print('清除敵人')
                 stage_cleared = True
-                phase = 2
+                phase = 3
+
 
 
         #if len(scene.get_units_by_side('player_side')) == 0:
@@ -741,8 +754,6 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
         win.fill(WHITE)
         draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
-        if is_player_alive(scene):
-            draw_ui(win, player, font)
         pygame.display.update()
         clock.tick(FPS)
 

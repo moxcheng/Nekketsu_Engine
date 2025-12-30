@@ -247,7 +247,20 @@ class SceneManager:
             img.set_alpha(alpha)
             win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
 
+    def draw_ui(self, win, font, color=(255, 255, 255), outline_color=(0, 0, 0)):
+        players = self.get_units_by_name("player")
+        player = players[0]
+        """在畫面中央印一行字（加簡單外框避免吃背景顏色）"""
+        text = 'HP:{}/{} MP:{} GOLD:{}'.format(player.health, player.max_hp, player.mp, player.money)
+        surf = font.render(text, True, color)
+        outline = font.render(text, True, outline_color)
+        x = (WIDTH - surf.get_width()) // 8
+        y = (HEIGHT - surf.get_height()) * 7 // 8
 
+        # 簡單外框
+        for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
+            win.blit(outline, (x + dx, y + dy))
+        win.blit(surf, (x, y))
     def mark_for_removal(self, unit):
         if unit not in self.to_be_removed:
             self.to_be_removed.append(unit)
@@ -405,6 +418,7 @@ class SceneManager:
         for proj in self.projectiles:
             all_drawables.append(("projectile", proj))
 
+        font = get_cjk_font(20, prefer='tc')  # or 'tc'
         all_drawables.sort(key=lambda item: getattr(item[1], 'y', 0), reverse=True)
         for item_type, obj in all_drawables:
             if item_type == "text":
@@ -419,7 +433,7 @@ class SceneManager:
             vfx.draw(win, cam_x, cam_y, tile_offset_y, self.map_h)
         # ✅ 繪製 SpeechBubble
         #font = pygame.font.SysFont(None, 18)
-        font = get_cjk_font(20, prefer='tc')  # or 'tc'
+
         for bubble in self.speech_bubbles:
             bubble.draw(win, cam_x, cam_y, tile_offset_y, font)
 
@@ -429,9 +443,11 @@ class SceneManager:
         if self.state == SceneState.SUPER_MOVE:
             self.draw_super_move_overlay(win, cam_x, cam_y, tile_offset_y)
 
+        self.draw_ui(win, font)
 
-    def add_floating_text(self, x, y, value, map_h, color):
-        self.floating_texts.append(FloatingText(x, y, value, map_h, duration=60, color=color))
+
+    def add_floating_text(self, x, y, value, map_h, color, font_size=24):
+        self.floating_texts.append(FloatingText(x, y, value, map_h, duration=60, color=color, font_size=font_size))
 
     def start_super_move(self, caster, super_move_dict):
         self.state = SceneState.SUPER_MOVE
@@ -460,7 +476,7 @@ class SceneManager:
 
 
 class FloatingText:
-    def __init__(self, x, y, value, map_h, duration=60, color=(255, 0, 0)):
+    def __init__(self, x, y, value, map_h, duration=60, color=(255, 0, 0), font_size=24):
         self.x = x
         self.y = y
         self.value = str(value)
@@ -468,18 +484,26 @@ class FloatingText:
         self.color = color
         self.offset_y = 0  # 漂浮動畫用
         self.map_h = map_h
+        self.font_size = font_size
 
     def update(self):
         self.duration -= 1
-        self.offset_y += 0.3  # 向上漂浮
+        speed = 0.3 if self.font_size < 36 else 0.15
+        self.offset_y += speed
 
     def is_alive(self):
         return self.duration > 0
 
-    def draw(self, win, cam_x, cam_y, tile_offset_y, font):
+    def draw(self, win, cam_x, cam_y, tile_offset_y, font_ignored):
+        # 增加外框效果讓大數字更顯眼
+        # ❌ 注意：這裡不再使用傳進來的 font_ignored，而是根據 self.font_size 建立
+        # 建議實作中將字體緩存，避免每幀執行 pygame.font.SysFont
+        current_font = pygame.font.SysFont("Arial Black", self.font_size)
         screen_x = int(self.x * TILE_SIZE) - cam_x
         screen_y = int((self.map_h - self.y) * TILE_SIZE - cam_y + tile_offset_y - self.offset_y)
-        label = font.render(self.value, True, self.color)
+        outline = current_font.render(self.value, True, (0, 0, 0))
+        label = current_font.render(self.value, True, self.color)
+        win.blit(outline, (screen_x + 2, screen_y + 2))  # 簡單陰影
         win.blit(label, (screen_x, screen_y))
 
 
@@ -509,6 +533,7 @@ class StoryScriptRunner:
             self.scene.script_controlled_units.add(unit)
 
         if not self.active or self.wait_timer > 0:
+            #print(f'script runner: {self.wait_timer}')
             self.wait_timer = max(0, self.wait_timer - 1)
             return
 
