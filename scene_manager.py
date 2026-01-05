@@ -39,7 +39,7 @@ class VisualEffect:
         win.blit(frame, rect)
 
 class SceneManager:
-    def __init__(self, map_h, end_cut=None):
+    def __init__(self, map_h, end_cuts=None):
         self.interactables = []
         self.projectiles = []  # 可擴充的道具如飛鏢、火球等
         self.floating_texts = []  # 新增傷害文字列表
@@ -72,17 +72,21 @@ class SceneManager:
         self.super_move_portrait_images = [] #一次讀取並儲存
         self.super_move_caster = None  # 紀錄是誰放的大招
         self.super_move_full_frames = []  # 儲存全畫面特效動畫
-        self.end_cut = pygame.image.load(end_cut).convert_alpha() if end_cut is not None else None
+        self.end_cuts = []
+        if end_cuts:
+            for cut in end_cuts:
+                self.end_cuts.append(pygame.image.load(cut).convert_alpha())
         #打擊特效
         self.visual_effects = []  # 專門儲存打擊特效
         self.hit_effect_frames = self.load_hit_assets()  # 預載特效圖
         self.map_h = map_h
         self.shake_timer = 0
         self.shake_intensity = 0
+        self.default_font_36 = pygame.font.SysFont("Arial Black", 36)   #預載入文字
 
     def create_hit_effect(self, x, y, z):
         # 這裡的 z 通常是碰撞盒交疊的中心 z
-        new_effect = VisualEffect(x, y, z, self.hit_frames, anim_speed=1)
+        new_effect = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=2)
         self.visual_effects.append(new_effect)
 
     def load_hit_assets(self, path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45):
@@ -128,13 +132,13 @@ class SceneManager:
         self.clear_text = message
         self.scene_end_countdown = countdown
 
-    def create_hit_effect(self, x, y, z):
-        """
-        利用計算出的中心點產生特效。
-        """
-        # 使用計算出的重疊中心座標
-        new_vfx = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=3)
-        self.visual_effects.append(new_vfx)
+    # def create_hit_effect(self, x, y, z):
+    #     """
+    #     利用計算出的中心點產生特效。
+    #     """
+    #     # 使用計算出的重疊中心座標
+    #     new_vfx = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=3)
+    #     self.visual_effects.append(new_vfx)
 
     # --- 在每幀繪圖最後呼叫 ---
     def draw_overlay(self, win):
@@ -163,11 +167,31 @@ class SceneManager:
                 win.blit(outline, (x + dx, y + dy))
             win.blit(txt, (x, y))
 
-            if self.end_cut is not None:
-                img = self.end_cut
-                alpha = min(255, max(0, 255 - (self.scene_end_countdown - 60)))
-                img.set_alpha(alpha)
-                win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
+            if len(self.end_cuts) > 0:
+                cut_count = len(self.end_cuts)
+                life_cycle = 180/cut_count
+                cut_duration = int(life_cycle/2)
+                fading = int(cut_duration/2)
+                for i, cut in enumerate(self.end_cuts):
+                    frame_fadein = (fading+cut_duration)*(cut_count-i)+fading
+                    frame_highlight = frame_fadein-fading
+                    frame_fadeout = frame_highlight-cut_duration
+                    frame_disspear = frame_fadeout-fading
+                    #print(f"[{self.scene_end_countdown}] endcut {i}, ({frame_fadein}, {frame_highlight}, {frame_fadeout}, {frame_disspear})")
+                    if frame_fadein > self.scene_end_countdown >= frame_highlight:
+                        alpha = min(255, max(0, int(255*(frame_fadein - self.scene_end_countdown)/fading)))
+                    elif frame_highlight > self.scene_end_countdown >= frame_fadeout:
+                        alpha=255
+                    elif frame_fadeout > self.scene_end_countdown >= frame_disspear:
+                        if i != cut_count-1:
+                            alpha = min(255, max(0, int(255*(frame_fadeout-self.scene_end_countdown)/fading)))
+                        else:
+                            alpha=255
+                    else:
+                        alpha = 0
+                    if alpha > 0:
+                        cut.set_alpha(alpha)
+                        win.blit(cut, (WIDTH // 2 - cut.get_width() // 2, HEIGHT // 2 - cut.get_height() // 2))
 
 
     def draw_super_move_overlay(self, win, cam_x, cam_y, tile_offset_y):
@@ -247,20 +271,56 @@ class SceneManager:
             img.set_alpha(alpha)
             win.blit(img, (WIDTH // 2 - img.get_width() // 2, HEIGHT // 2 - img.get_height() // 2))
 
+
     def draw_ui(self, win, font, color=(255, 255, 255), outline_color=(0, 0, 0)):
         players = self.get_units_by_name("player")
+        if not players: return
         player = players[0]
-        """在畫面中央印一行字（加簡單外框避免吃背景顏色）"""
-        text = 'HP:{}/{} MP:{} GOLD:{}'.format(player.health, player.max_hp, player.mp, player.money)
-        surf = font.render(text, True, color)
-        outline = font.render(text, True, outline_color)
-        x = (WIDTH - surf.get_width()) // 8
-        y = (HEIGHT - surf.get_height()) * 7 // 8
 
-        # 簡單外框
-        for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
-            win.blit(outline, (x + dx, y + dy))
-        win.blit(surf, (x, y))
+        # --- 配置參數 ---
+        UI_X, UI_Y = 20, HEIGHT - 80  # UI 左下角起始位置
+        BAR_WIDTH = 200
+        BAR_HEIGHT = 15
+
+        # 1. 繪製血條 (HP) - 黃條紅底
+        # 底色 (深紅)
+        pygame.draw.rect(win, (100, 0, 0), (UI_X, UI_Y, BAR_WIDTH, BAR_HEIGHT))
+        # 當前血量 (亮黃/橘)
+        hp_visual_ratio = max(0, player.health_visual / player.max_hp)
+        pygame.draw.rect(win, (255, 255, 255), (UI_X, UI_Y, int(BAR_WIDTH * hp_visual_ratio), BAR_HEIGHT))
+
+        hp_ratio = max(0, player.health / player.max_hp)
+        pygame.draw.rect(win, (255, 200, 0), (UI_X, UI_Y, int(BAR_WIDTH * hp_ratio), BAR_HEIGHT))
+        # 外框
+        pygame.draw.rect(win, (255, 255, 255), (UI_X, UI_Y, BAR_WIDTH, BAR_HEIGHT), 2)
+
+        # 標籤文字
+        hp_label = font.render(f"HP {player.health}/{player.max_hp}", True, (255, 255, 255))
+        win.blit(hp_label, (UI_X, UI_Y - 30))
+
+        # 2. 繪製魔力條 (MP) - 10格點陣式
+        MP_Y = UI_Y + 25
+        GRID_W = 15
+        GRID_H = 10
+        SPACING = 4
+        MAX_MP = 10
+
+        for i in range(MAX_MP):
+            grid_x = UI_X + i * (GRID_W + SPACING)
+            # 背景格 (半透明深藍)
+            pygame.draw.rect(win, (0, 0, 50), (grid_x, MP_Y, GRID_W, GRID_H))
+
+            # 填充格 (亮藍)
+            if i < player.mp:
+                pygame.draw.rect(win, (0, 191, 255), (grid_x, MP_Y, GRID_W, GRID_H))
+
+            # 格子外框
+            pygame.draw.rect(win, (200, 200, 200), (grid_x, MP_Y, GRID_W, GRID_H), 1)
+
+        # 3. 繪製金錢 (GOLD)
+        gold_label = font.render(f"GOLD: {player.money}", True, (255, 215, 0))
+        win.blit(gold_label, (UI_X, MP_Y + 20))
+
     def mark_for_removal(self, unit):
         if unit not in self.to_be_removed:
             self.to_be_removed.append(unit)
@@ -425,8 +485,17 @@ class SceneManager:
                 obj.draw(win, cam_x, cam_y, tile_offset_y, font)
             else:
                 obj.draw(win, cam_x, cam_y, tile_offset_y)
+        # 2. 在所有角色畫完之後，額外「疊加」玩家剪影
+        players = self.get_units_by_name("player")
+        if players:
+            player = players[0]
+            # 建立一個半透明的影子 (Alpha 設為 100~128)
+            # 這裡可以直接呼叫 player 的 draw，但內部需要支持 alpha 覆蓋
+            player.draw_silhouette(win)
+
+
         for text in self.floating_texts:
-            text.draw(win, cam_x, cam_y, tile_offset_y, pygame.font.SysFont(None, 36))  # 顯示傷害文字
+            text.draw(win, cam_x, cam_y, tile_offset_y, self.default_font_36)  # 顯示傷害文字
 
         # 2. 畫特效 (確保特效覆蓋在角色上方)
         for vfx in self.visual_effects:

@@ -550,7 +550,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         pygame.display.update()
         clock.tick(FPS)
 
-def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png"):
+def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png"):
     # === 搖桿初始化 ===
     joystick = None
     joy_buttons_prev = []
@@ -582,7 +582,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
 
 
     #宣告場景
-    scene = SceneManager(MAP_HEIGHT, end_cut = "..\\Assets_Drive\\madou\\end_cut.png")
+    scene = SceneManager(MAP_HEIGHT, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"])
     scene.set_clear_font(clear_font)
     scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
     stage_cleared = False
@@ -611,18 +611,22 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
     #產生小兵list
     import random
     shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
+    x_pool = list(range(-1*total_enemy, total_enemy))
+    random.shuffle(x_pool)
     for i in range(total_enemy):
         rng = random.Random()  # 自動用系統 entropy seed
         choosed_idx = random.randint(0,3)
-        x_dis = random.randint(0,choosed_idx)
+        x_dis = x_pool[i]
         y_dis = random.randint(-1, 1)
         e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\madou\\{shuki_list[choosed_idx][0]}", scale=shuki_list[choosed_idx][1])
+        e.attack_cooldown = random.randint(40, 50)
         e.max_hp = e.health = int(40*shuki_list[choosed_idx][1])
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
         #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
 
+    a=input('press to start')
     while True:
         current_enemy = len(scene.get_units_by_side('enemy_side'))
         max_enemy = 3+destroyed_enemy
@@ -650,8 +654,8 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                                                           "..\\Assets_Drive\\madou\\pre_pose3.png","..\\Assets_Drive\\madou\\pre_pose4.png","..\\Assets_Drive\\madou\\pre_pose5.png",
                                                           "..\\Assets_Drive\\madou\\pre_pose6.png","..\\Assets_Drive\\madou\\pre_pose7.png","..\\Assets_Drive\\madou\\pre_pose8.png",
                                                           "..\\Assets_Drive\\madou\\pre_pose9.png","..\\Assets_Drive\\madou\\pre_pose10.png"],
-                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_00.png", "start":0.7, "end":0.55, "dir":"L2R","Offset_y":-50},
-                                                {"path":"..\\Assets_Drive\\madou\\tachie_01.png", "start":0.55, "end":0.4, "dir":"R2L","Offset_y":-15},
+                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_00.png", "start":0.7, "end":0.525, "dir":"L2R","Offset_y":-50},
+                                                {"path":"..\\Assets_Drive\\madou\\tachie_01.png", "start":0.525, "end":0.4, "dir":"R2L","Offset_y":-15},
                                                 {"path":"..\\Assets_Drive\\madou\\tachie_02.png", "start":0.4, "end":0.3, "dir":"L2R","Offset_y":15},
                                                 {"path":"..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir":"R2L","Offset_y":0}],
                                      effect="..\\Assets_Drive\\madou\\tachie_5.png",
@@ -676,10 +680,10 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
                 enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
-                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup="landing")
+                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
                 # enemy2.dummy = True
-                enemy2.max_hp = 600
-                enemy2.health = 600
+                enemy2.max_hp = 300
+                enemy2.health = 300
                 enemy2.scene=scene
                 scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
                 scr = [
@@ -699,12 +703,15 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                     scene.script_runner.load(scr)
                     for i in range(3):
                         rng = random.Random()  # 自動用系統 entropy seed
-                        x_dis = random.randint(-10, 10)
-                        y_dis = random.randint(-1, 1)
+                        if i%2==0:
+                            x_dis = random.randint(0, 10)
+                        else:
+                            x_dis = random.randint(-10, 0)
+                        y_dis = random.randint(-2, 2)
                         px, py = player.x, player.y
                         e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
                                        "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
-                                       popup="landing")
+                                       popup=["landing", "shake"], ai_move_speed=0.25, attack_cooldown=45)
                         scene.register_unit(e, side='enemy_side', tags=['enemy'], type='character')
                         print('summon boss fantom')
                     phase = 2
@@ -726,7 +733,7 @@ def scene_madou(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\
                 result = 'CLEAR'
             else:
                 result = 'FAIL'
-            scene.trigger_clear(f"SCENE MADOU {result}", 180)
+            scene.trigger_clear(f"SCENE MATO {result}", 180)
             scene.darken_enabled = True
 
         if scene.scene_end_countdown == 0:
@@ -766,7 +773,7 @@ def main():
     clear_font = pygame.font.SysFont(None, 48)
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
-    scene_madou(win, font, clear_font)
+    scene_mato(win, font, clear_font)
 
 
 main()

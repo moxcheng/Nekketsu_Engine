@@ -5,7 +5,7 @@ from State_enum import *
 from Skill import *
 from Component import ComponentHost, HoldFlyLogicMixin
 
-DEBUG = True
+DEBUG = False
 
 def suspend(info=''):
     print(f"🟡 暫停中，{info}...")
@@ -91,6 +91,23 @@ class SpriteAnimator:
             'swing': [20,21],
             'throw': [22,23]
         }
+        self.anim_frame_size = {
+            "stand":len(self.anim_map.get("stand")),
+            "walk":len(self.anim_map.get("walk")),
+            "punch":len(self.anim_map.get("punch")),
+            "bash":len(self.anim_map.get("bash")),
+            "jump":len(self.anim_map.get("jump")),
+            "flykick":len(self.anim_map.get("flykick")),
+            "kick":len(self.anim_map.get("kick")),
+            "on_fly":len(self.anim_map.get("on_fly")),
+            "slash":len(self.anim_map.get("slash")),
+            "on_hit":len(self.anim_map.get("on_hit")),
+            "weak":len(self.anim_map.get("weak")),
+            "down":len(self.anim_map.get("down")),
+            "dead":len(self.anim_map.get("dead")),
+            'swing':len(self.anim_map.get("swing")),
+            'throw':len(self.anim_map.get("throw"))
+        }
 
     def slice_sheet(self):
         sheet_w, sheet_h = self.sheet.get_size()
@@ -134,6 +151,37 @@ class SpriteAnimator:
             frame = pygame.transform.flip(frame, flip_x, flip_y)
         return frame
 
+class SpriteAnimator2nd(SpriteAnimator):
+    def __init__(self, image_path, frame_width=96, frame_height=96):
+        self.sheet = pygame.image.load(image_path).convert_alpha()
+        self.frame_width = frame_width
+        self.frame_height = frame_height
+        self.frames = self.slice_sheet()
+
+        # 定義每種狀態的 frame index list
+        self.anim_map = {
+            "stand": [0],
+            "walk": [1, 2, 3, 4],
+            "jump":[5,6],
+            "flykick": [7,8],
+            "punch": [9, 10, 11,12],
+            "kick": [13, 14],
+            "bash": [15,16,17],
+            "special_punch": [18,19],
+            "palm":[20,21,22],
+            "upper":[23],
+            "special_kick":[24,25,26],
+            "pose_1":[27],
+            "on_hit":[28,29],
+            "knockback":[30,31,32,33,34,35],
+            "weak":[36],
+            "down":[37],
+            "dead":[38],
+            "burst":[39,40],
+            "pose_2":[41]
+        }
+        # 一行搞定
+        self.anim_frame_size = {key: len(frames) for key, frames in self.anim_map.items()}
 
 def get_component_class(name):
     """根據字串名稱動態獲取 Component 類別"""
@@ -147,7 +195,7 @@ def get_component_class(name):
     }
     return class_map.get(name)
 class CharacterBase(ComponentHost, HoldFlyLogicMixin):
-    def __init__(self, x, y, map_info, z=0):
+    def __init__(self, x, y, map_info, z=0, popup=None):
         super().__init__()
         self.unit_type = "character"
         self.x = x
@@ -170,6 +218,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.recovery_rate = 0.01
         self.max_hp=100
         self.health = self.max_hp
+        self.health_visual = self.max_hp    #UI視覺使用
         self.z = z  # 如有需要強制指定 z 值
         self.summon_sickness=0
         self.hit = False
@@ -237,7 +286,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.get_burning = False
         self.burn_frames = []
         self.high_jump = False
-        self.popup = None
+        self.popup = popup
 
 
         # 燃燒貼圖初始化
@@ -248,6 +297,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             frame = sheet.subsurface((i * frame_w, 0, frame_w, frame_h))
             self.burn_frames.append(frame)
         self.super_move_anim_timer = 0
+        self.current_anim_frame = None
+        self.currnet_anim_draw_x = None
+        self.current_anim_draw_y = None
+
 
     def update_burning_flag(self):
         if self.get_burning and not self.is_jump():
@@ -392,23 +445,24 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             frame = self.animator.get_frame_by_map_index('slash', 2, flip_x = True, flip_y = True)
         elif anim_name == 'walk':
             self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 10) % 3
+            walk_frame_idx = int(self.anim_walk_cnt / 10) % self.animator.anim_frame_size.get('walk', 3)
             #print(f'{self.name} walk {walk_frame_idx}')
             frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
         elif anim_name == 'run':
             self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 5) % 3
+            walk_frame_idx = int(self.anim_walk_cnt / 5) % self.animator.anim_frame_size.get('walk', 3)
             frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
         else:
             frame = self.animator.get_frame(anim_name, self.anim_frame)
 
-        if self.popup == 'landing':
+        if self.popup and 'landing' in self.popup:
             if self.jump_z > 0 and self.current_frame < self.summon_sickness:
                 #調整為跳躍動作
                 frame = self.animator.get_frame_by_map_index('jump')
             if self.jump_z <= 0 and self.current_frame < self.summon_sickness:
                 frame = self.animator.get_frame_by_map_index('slash', 2)
-                self.scene.trigger_shake(20,15)
+                if 'shake' in self.popup:
+                    self.scene.trigger_shake(20,15)
                 self.popup = None
                 self.summon_sickness = 0
         elif self.popup is None and self.current_frame < self.summon_sickness:
@@ -420,7 +474,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if self.facing == DirState.LEFT:
             frame = pygame.transform.flip(frame, True, False)
 
-
+        self.current_anim_frame = frame
 
         # 計算畫面座標
         px = int(self.x * TILE_SIZE) - cam_x
@@ -454,7 +508,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.draw_debug_info(win, px, py)
             # DEBUG: 角色腳下的圓形定位點（用於碰撞、踩地感）
         cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-
 #for swing --- 關鍵修正：若正在被揮舞，則不再加上額外的 held_by 偏移，因為 self.x 已在 Skill.py 被更新 ---
 
         base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
@@ -462,7 +515,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         pygame.draw.circle(win, (0, 0, 0), (cx, base_cy), 3)
         # DEBUG: 繪製 hitbox
-        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
+        if DEBUG:
+            self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
         # win.blit(frame, (px, py))
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
@@ -485,6 +539,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 win.blit(dead_frame, (draw_x, draw_y))
         else:
             win.blit(frame, (draw_x+swing_offset_x, draw_y+swing_offset_y))
+
+        self.current_anim_frame = frame
+        self.currnet_anim_draw_x = draw_x+swing_offset_x
+        self.current_anim_draw_y = draw_y+swing_offset_y
         #win.blit(frame, (draw_x, draw_y))
 
         aura_comp = self.get_component("aura_effect")
@@ -493,10 +551,17 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #print(f'{aura_comp} enable')
             aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
         # print(f'{self.name} draw debug {self.current_frame}')
-        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
+        if DEBUG:
+            self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
 
-
-
+    def draw_silhouette(self, win):
+        # 取得玩家當前應該顯示的那一幀 (從 animator 拿)
+        # 假設我們已經在原本的 draw 流程算好了 frame
+        if not self.animator: return
+        if not self.current_anim_frame: return
+        temp_frame = self.current_anim_frame.copy()
+        temp_frame.set_alpha(120)
+        win.blit(temp_frame, (self.currnet_anim_draw_x, self.current_anim_draw_y))
     def draw_block(self, win, cam_x, cam_y, tile_offset_y):
         px = int(self.x * TILE_SIZE) - cam_x
         # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
@@ -714,7 +779,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
 
         # ✅ 處理水平擊退
-        if self.super_armor_timer <= 0:
+        if self.super_armor_timer <= 0 and self.combat_state != CombatState.DOWN:
             #鋼體不擊退
             if self.knockback_vel_x != 0:
                 self.x += self.knockback_vel_x
@@ -875,7 +940,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 if attack_data.knock_back_distance == 0 and attack_data.knock_up_height == 0:
                     self.into_down_state()
             elif self.combat_state == CombatState.DOWN:
-                print(f'{self.name} 被倒地追加!')
+                #倒地被追加時避免連段到死,給予霸體
+                self.super_armor_timer = self.rigid_timer
 
     def apply_attack_effects(self, attacker, attack_data):
         if self.invincible_timer > 0 or self.super_armor_timer > 0:
@@ -890,9 +956,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.into_weak_state()
 
         #擊退處理
-        if attack_data.knock_back_distance!= 0 or attack_data.knock_up_height != 0:
+        if attack_data.knock_back_distance!= 0 or attack_data.knock_up_height != 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
+            #倒地狀態下不擊退
+            #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
             self.combat_state = CombatState.KNOCKBACK
-            #suspend(f'{self.name} 被擊退! {attack_data.knock_back_distance}/{attack_data.knock_up_height}')
             if attack_data.knock_back_distance != 0:
                 direction = self.get_knock_direction(attacker, attack_data)
                 self.knockback_vel_x = direction * attack_data.knock_back_distance
@@ -900,8 +967,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if attack_data.knock_up_height != 0:
                 self.knockback_vel_z = attack_data.knock_up_height
                 self.jump_z = max(0.2, attack_data.knock_up_height * 0.05)
-                #self.falling = True
-
 
         if AttackEffect.SHORT_STUN in effects:
             self.set_rigid(ON_HIT_SHORT_STUN_TIME)
@@ -924,7 +989,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if damage >= 100:
                 font_size = 48
             self.scene.add_floating_text(self.x + self.width / 2, self.y + self.height, f"-{damage}", self.map_h, color=(255, 0, 0), font_size=font_size)
-        return f'{self.name} 受到 {damage}, 剩餘HP: {self.health}'
+        return f'{self.name} 受到 {damage}, 剩餘HP: {self.health}', damage
 
     def on_hit(self, attacker, attack_data):
         # 無敵檢查
@@ -933,7 +998,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             st = st + '(空中)'
         if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
             print(f'{st} (無敵!)')
-            return False
+            return False, 0
 
         # 鋼體檢查
         if self.super_armor_timer > 0:
@@ -947,7 +1012,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #attacker.attack_state.has_hit = True
             attacker.attack_state.has_hit.append(self)
 
-        damage_st = self.take_damage(attacker, attack_data)
+        damage_st, damage = self.take_damage(attacker, attack_data)
         st = st + f' {damage_st}'
         # CombatState 處理
         if self.combat_state != CombatState.DEAD:
@@ -959,18 +1024,23 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             print(f'[on_hit] {self.name} 的 {self.attack_state.data.attack_type.name} 攻擊被中斷')
             self.attack_state = None
             self.state = MoveState.STAND
+        #持有物掉落
+        if hasattr(self, "held_object"):
+            if self.held_object:
+                self.held_object.held_by = None
+                self.held_object = None
         #print(st)
-        return True
+        return True, damage
 
     def update_common_timer(self):
         self.current_frame += 1
         if self.rigid_timer > 0:
             if self.health < self.max_hp/4:
-                self.rigid_timer -= 4
+                self.recovery_rate = 0.04
             elif self.health < self.max_hp/2:
-                self.rigid_timer -= 2
-            else:
-                self.rigid_timer -= 1
+                self.recovery_rate = 0.02
+            self.rigid_timer -= 1
+
         if self.invincible_timer > 0:
             self.invincible_timer -= 1
         if self.super_armor_timer > 0:
@@ -1048,13 +1118,14 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 if self not in opponent.attack_state.has_hit:
                     hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
 
-                    # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
-                    if self.scene:
-                        self.scene.create_hit_effect(hit_x, hit_y, hit_z)
 
                     if self.held_by is None:
                         #避免打到自己
-                        self.on_hit(opponent, opponent.attack_state.data)
+                        result, damage = self.on_hit(opponent, opponent.attack_state.data)
+
+                        # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
+                        if self.scene and damage > 0:
+                            self.scene.create_hit_effect(hit_x, hit_y, hit_z)
 
         # 若正在攻擊期間
         #
@@ -1251,6 +1322,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                         if atk_data:
                             self.attack_state = SwingAttackState(self, item)  # 會在初始化時載入AttackData.SWING的相關資料
                             self.state = MoveState.ATTACK
+                        else:
+                            item.held_by = None
+                            if hasattr(self, "held_object"):
+                                self.held_object = None
                 elif skill in THROW_ATTACKS:
                     item = self.get_component("holdable").held_object
                     if item:
@@ -1258,6 +1333,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                         if atk_data:
                             self.attack_state = ThrowAttackState(self, item)
                             self.state = MoveState.ATTACK
+                        else:
+                            item.held_by = None
+                            if hasattr(self, "held_object"):
+                                self.held_object = None
                 elif skill in FLY_ATTACKS:
                     self.attack_state = FlyAttackState(self, atk_data)
                     self.state = MoveState.ATTACK
@@ -1405,7 +1484,7 @@ class Player(CharacterBase):
                              'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}}
 
         self.animator = SpriteAnimator(material)  # 載入素材
-        self.stand_image = pygame.image.load("..\\Assets_Drive\\the_world.png").convert_alpha()
+        self.stand_image = pygame.image.load("..\\Assets_Drive\\aura_mandara.png").convert_alpha()
         if super_move_material is not None:
             self.super_move_animator = SpriteAnimator(super_move_material)
         else:
@@ -1580,14 +1659,18 @@ class Player(CharacterBase):
     #這是player的update
     def update(self):
         self.update_common_timer()
+        if self.health_visual > self.health:
+            self.health_visual -= 0.5
         if self.external_control:
             self.update_by_external_control()
             return
 
         if self.held_by:
             print(f'{self.name} 被持有 {self.held_by.name}')
-        if self.health < 50:
+        if self.health < 50 and self.health > 0:
             self.has_stand = True
+            self.super_armor_timer = 1
+            #持續霸體
         if self.held_by:
             self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
         #處理失控的飛行狀態
@@ -1657,10 +1740,10 @@ class Player(CharacterBase):
 
 
 class Ally(CharacterBase):
-    def __init__(self, x, y, z, map_info, material):
+    def __init__(self, x, y, z, map_info, material, move_speed = 0.5, attack_cooldown_duration=240):
         super().__init__(x, y, map_info)
         self.attack_cooldown = 0  # 攻擊冷卻倒數
-        self.attack_cooldown_duration = 240  # 冷卻時間（可調整）
+        self.attack_cooldown_duration = attack_cooldown_duration  # 冷卻時間（可調整）
         self.default_color = (100, 100, 255)
         self.jump_color = (100, 150, 255)
         self.fall_color = (50, 100, 255)
@@ -1672,6 +1755,8 @@ class Ally(CharacterBase):
         self.animator = SpriteAnimator(material)  # 載入素材
         self.stand_image = None
         self.side = 'player_side'
+        self.ai_move_speed = move_speed
+
 
     # ally的update
     def update(self):
@@ -1732,7 +1817,7 @@ class Ally(CharacterBase):
         # 分開邏輯模組處理
         ai_jump_logic(self, target, intent)
         ai_attack_logic(self, target, intent, act='support')
-        ai_move_logic(self, target, intent, far_speed = 0.5, near_speed = 0.3)
+        ai_move_logic(self, target, intent, far_speed = self.ai_move_speed, near_speed = self.ai_move_speed*0.6)
         return intent
 
     def attack(self, skill):
@@ -1828,7 +1913,10 @@ def ai_attack_logic(unit, target, intent, act='support'):
             unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
             unit.attack_cooldown = unit.attack_cooldown_duration
     else:
-        attack_range = 1.5
+        if hasattr(unit, "scale"):
+            attack_range = 3*unit.scale
+        else:
+            attack_range = 3
         if dist <= attack_range and dz < 1.0:
             if unit.attack_cooldown <= 0:
                 intent['action'] = unit.combos[int(unit.combo_count) % len(unit.combos)]
@@ -1842,13 +1930,13 @@ DEFAULT_COMBOS = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackTyp
 ELITE_COMBOS = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
 FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
 class Enemy(CharacterBase):
-    def __init__(self, x, y, z, map_info, material,scale=1.0, combos=DEFAULT_COMBOS, name='enemy', popup=None):
+    def __init__(self, x, y, z, map_info, material,scale=1.0, combos=DEFAULT_COMBOS, name='enemy', ai_move_speed = 0.2, attack_cooldown = 45, popup=None):
         super().__init__(x, y, map_info)
         # 1) 放大碰撞尺寸
         self.width = self.width * scale
         self.height = self.height * scale
         self.attack_cooldown = 0  # 攻擊冷卻倒數
-        self.attack_cooldown_duration = 45  # 冷卻時間（可調整）
+        self.attack_cooldown_duration = attack_cooldown  # 冷卻時間（可調整）
         self.default_color=(100,100,255)
         self.jump_color=(100,150,255)
         self.fall_color=(50, 100, 255)
@@ -1861,8 +1949,9 @@ class Enemy(CharacterBase):
         self.stand_image = pygame.image.load("..\\Assets_Drive\\star_p.png").convert_alpha()
         self.side = 'enemy_side'
         self.money = 10 #loot
-        self.popup = popup
-        if self.popup == "landing":
+        self.ai_move_speed = ai_move_speed
+        self.popup=popup
+        if self.popup and "landing" in self.popup:
             self.jump_z = 40
             self.jump_z_vel = -0.1
 
@@ -1940,7 +2029,7 @@ class Enemy(CharacterBase):
         # 分開邏輯模組處理
         ai_jump_logic(self, target, intent)
         ai_attack_logic(self, target, intent, act='Enemy')
-        ai_move_logic(self, target, intent, far_speed=0.2, near_speed=0.1)
+        ai_move_logic(self, target, intent, far_speed=self.ai_move_speed, near_speed=self.ai_move_speed*0.6)
 
 
 
