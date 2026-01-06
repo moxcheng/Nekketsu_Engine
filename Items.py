@@ -23,9 +23,6 @@ class Item(ComponentHost, HoldFlyLogicMixin):
         self.breakthrough = False
         self.attack_state = None
         self.swing_damage = 2
-        
-
-
         self.terrain = map_info[0]
         self.map_w = map_info[1]
         self.map_h = map_info[2]
@@ -211,6 +208,7 @@ class Fireball(Item):
         effects=[AttackEffect.SHORT_STUN],
         damage=200,
         frame_map = [0]*16 + [1]*16,   #必須與duration等長
+        frame_map_ratio=[16,16]
     )
 
 class Bullet(Item):
@@ -271,6 +269,7 @@ class Bullet(Item):
         knock_back_distance=1.0,
         damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 1,
         frame_map = [0]*16 + [1]*32,   #必須與duration等長
+        frame_map_ratio = [16,32]
     )
 
 def is_box_overlap(box1, box2):

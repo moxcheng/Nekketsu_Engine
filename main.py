@@ -441,6 +441,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
+    #player = Player(px, py, map_info, "..//Assets_Drive//yamashiro_96.png")
     player = Player(px, py, map_info, "..//Assets_Drive//yamashiro_96.png")
     player.name='player'
     #掛載component
@@ -590,7 +591,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
-    player = Player(px, py, map_info, "..//Assets_Drive//yamashiro_96.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
+    player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
@@ -626,7 +627,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         enemy_list.append(e)
         #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
 
-    a=input('press to start')
+    #a=input('press to start')
     while True:
         current_enemy = len(scene.get_units_by_side('enemy_side'))
         max_enemy = 3+destroyed_enemy

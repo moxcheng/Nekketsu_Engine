@@ -75,38 +75,27 @@ class SpriteAnimator:
 
         # 定義每種狀態的 frame index list
         self.anim_map = {
-            "stand": [0],
-            "walk": [1, 3, 2],
-            "punch": [4, 5, 6],
-            "bash": [7],
-            "jump": [8],
-            "flykick": [9],
-            "kick":[10,11],
-            "on_fly":[12],
-            "slash": [13, 14, 15],
-            "on_hit": [16],
-            "weak": [17],
-            "down": [18],
-            "dead": [19],
-            'swing': [20,21],
-            'throw': [22,23]
-        }
-        self.anim_frame_size = {
-            "stand":len(self.anim_map.get("stand")),
-            "walk":len(self.anim_map.get("walk")),
-            "punch":len(self.anim_map.get("punch")),
-            "bash":len(self.anim_map.get("bash")),
-            "jump":len(self.anim_map.get("jump")),
-            "flykick":len(self.anim_map.get("flykick")),
-            "kick":len(self.anim_map.get("kick")),
-            "on_fly":len(self.anim_map.get("on_fly")),
-            "slash":len(self.anim_map.get("slash")),
-            "on_hit":len(self.anim_map.get("on_hit")),
-            "weak":len(self.anim_map.get("weak")),
-            "down":len(self.anim_map.get("down")),
-            "dead":len(self.anim_map.get("dead")),
-            'swing':len(self.anim_map.get("swing")),
-            'throw':len(self.anim_map.get("throw"))
+            "stand": [[0]],
+            "walk": [[1, 3, 2]],
+            "run": [[1, 3, 2]],
+            "punch": [[4], [5], [6]],
+            "bash": [[7]],
+            "jump": [[8]],
+            "fall": [[8]],
+            "flykick": [[9]],
+            "kick":[[11],[10]],
+            "on_fly":[[12]],
+            "slash": [[13], [14], [15]],
+            "on_hit": [[16]],
+            "weak": [[17]],
+            "down": [[18]],
+            "dead": [[19]],
+            'swing': [[20],[21]],
+            'throw': [[22],[23]],
+            'meteofall':[[7]],
+            'pose_1':[[6]],
+            "knockback": [[12], [19]],
+            "mahahpunch": [[4],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5]]
         }
 
     def slice_sheet(self):
@@ -152,7 +141,7 @@ class SpriteAnimator:
         return frame
 
 class SpriteAnimator2nd(SpriteAnimator):
-    def __init__(self, image_path, frame_width=96, frame_height=96):
+    def __init__(self, image_path, frame_width=128, frame_height=128):
         self.sheet = pygame.image.load(image_path).convert_alpha()
         self.frame_width = frame_width
         self.frame_height = frame_height
@@ -160,28 +149,34 @@ class SpriteAnimator2nd(SpriteAnimator):
 
         # 定義每種狀態的 frame index list
         self.anim_map = {
-            "stand": [0],
-            "walk": [1, 2, 3, 4],
-            "jump":[5,6],
-            "flykick": [7,8],
-            "punch": [9, 10, 11,12],
-            "kick": [13, 14],
-            "bash": [15,16,17],
-            "special_punch": [18,19],
-            "palm":[20,21,22],
-            "upper":[23],
-            "special_kick":[24,25,26],
-            "pose_1":[27],
-            "on_hit":[28,29],
-            "knockback":[30,31,32,33,34,35],
-            "weak":[36],
-            "down":[37],
-            "dead":[38],
-            "burst":[39,40],
-            "pose_2":[41]
+            "stand": [[0]],
+            "walk": [[1, 2, 3, 4]],
+            "run": [[1, 2, 3, 4]],
+            "jump": [[5, 6]],   #須修正與Z軸的關係
+            "fall": [[6]],
+            "flykick": [[8]],
+            "punch": [[9], [10, 11], [12, 11]],
+            "kick": [[13,7], [14]],
+            "bash": [[15, 16], [17]],
+            "special_punch": [[18], [19, 12, 19, 12]],
+            "palm": [[20, 21], [22]],
+            "upper": [[23]],
+            "special_kick": [[24, 25], [26]],
+            "pose_1": [[27]],
+            "on_hit": [[28, 29]],
+            "knockback": [[30, 31, 32], [33, 34, 35]],
+            "on_fly": [[30]],
+            "weak": [[36]],
+            "down": [[37]],
+            "dead": [[38]],
+            "burst": [[39, 40]],
+            "slash": [[20, 10], [21], [23]],
+            "mahahpunch": [[9],[10],[11],[12],[11],[10],[11],[12],[11],[10],[11],[12],[11],[10],[11],[12]],
+            "meteofall": [[41]],
+            "ranbu": [[9,10,11,12,14,13,18,11,23,26,24,40,39,41],[5,23]],
+            "swing":[[9],[11]],
+            "throw":[[27],[22]]
         }
-        # 一行搞定
-        self.anim_frame_size = {key: len(frames) for key, frames in self.anim_map.items()}
 
 def get_component_class(name):
     """根據字串名稱動態獲取 Component 類別"""
@@ -223,6 +218,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.summon_sickness=0
         self.hit = False
         self.hit_timer = 0  #受創"持續時間"的timer
+        self.on_hit_count = 0 #作為動畫切換用
         self.jump_z_vel = 0
         self.rigid_timer = 0
         self.invincible_timer = 0   #無敵timer
@@ -300,8 +296,33 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.current_anim_frame = None
         self.currnet_anim_draw_x = None
         self.current_anim_draw_y = None
+        self.frame_map_cache = {}
+        self.afterimage_list = []  # 儲存快照的 list
+        self.afterimage_enabled = False  # 是否開啟殘影
+        self.afterimage_timer = 0
 
+    def update_afterimages(self):
+        # 只有在特定狀態或開啟標記時才記錄
+        if self.afterimage_enabled or (
+                self.attack_state and AttackEffect.AFTER_IMAGE in self.attack_state.data.effects):
+            # 每 2 幀記錄一個快照，避免殘影太密變成一坨
+            if self.current_frame % 2 == 0:
+                snapshot = {
+                    'image': self.current_anim_frame.copy(),  # 必須 copy，否則會隨本體改變
+                    'pos': (self.currnet_anim_draw_x, self.current_anim_draw_y),
+                    'alpha': 150  # 初始透明度
+                }
+                self.afterimage_list.append(snapshot)
 
+        # 更新已存在的殘影（減少透明度並移除消失的）
+        for img in self.afterimage_list[:]:
+            img['alpha'] -= 15  # 每一幀淡出多少
+            if img['alpha'] <= 0:
+                self.afterimage_list.remove(img)
+
+        # 限制最大殘影數量，避免效能問題
+        if len(self.afterimage_list) > 10:
+            self.afterimage_list.pop(0)
     def update_burning_flag(self):
         if self.get_burning and not self.is_jump():
             self.get_burning = False
@@ -320,6 +341,30 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     #     if self.anim_timer >= self.anim_speed:
     #         self.anim_timer = 0
     #         self.anim_frame += 1
+    def generate_frame_index_from_ratio_map(self, frame_map_ratio, anim_map):
+        # 2. 根據frame_map_ratio = [8,16,8]與 anim_map的"punch": [[4], [5], [6]] 生成對應frame index
+        #   例如: 上述生成結果應該是[4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4]
+        #   換個例子: "punch": [[9], [10, 11], [12, 11]]
+        #   則預期生成結果應該是[9,9,9,9,9,9,9,9,
+        #   10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,
+        #   12,12,12,12,11,11,11,11]
+
+        if len(frame_map_ratio) != len(anim_map):
+            return None
+        result = []
+        for one_stage_frame_count, one_stage_map in zip(frame_map_ratio, anim_map):
+            step = int(one_stage_frame_count/len(one_stage_map))
+            sub_map = []
+            for f in one_stage_map:
+                sub_map = sub_map + [f]*step
+            while len(sub_map) < one_stage_frame_count:
+                sub_map.append(one_stage_map[-1])
+            result = result + sub_map
+        print(f'{frame_map_ratio}\n{anim_map}\n{result}')
+        return result
+
+
+
     def draw(self, win, cam_x, cam_y, tile_offset_y):
         if self.animator:
             cal_func = self.draw_anim
@@ -366,101 +411,190 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         # 狀態轉換為動畫名
         # print(f'[draw_anim] {self.name} combat_state = {self.combat_state.name} move_state = {self.state.name}', end='\r')
-
+        combat_state_anim_map = {
+            CombatState.DEAD: "dead",CombatState.DOWN:"down",CombatState.WEAK:"weak",CombatState.KNOCKBACK:"knockback"
+        }
+        attack_state_anim_map = {
+            AttackType.BASH:"bash",AttackType.SLASH:"slash",AttackType.KICK:"kick",AttackType.FLY_KICK:"flykick",
+            AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
+            AttackType.MAHAHPUNCH:"mahahpunch"
+        }
+        move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run"}
+        common_anim_material = ['burn']
+        #決定anim_frame
+        anim_name = 'stand'
         if self.get_burning:
             anim_name = "burn"
-        elif self.combat_state == CombatState.DEAD:
-            anim_name = "dead"
-        elif self.combat_state == CombatState.DOWN:
-            if self.is_jump() or self.held_by:
-                #print(f'{self.name} is_jump {self.is_jump()} ({self.jump_z}/{self.jump_z_vel:.2f}), held_by {self.held_by}')
-                anim_name = 'on_fly'
-            else:
-                anim_name = "down"
-        elif self.combat_state == CombatState.WEAK:
-            anim_name = "weak"
+        elif self.is_knockbacking():
+            anim_name = "knockback"
+        elif self.combat_state in combat_state_anim_map:     #判斷戰鬥狀態動畫
+            anim_name = combat_state_anim_map[self.combat_state]
         elif self.is_on_hit():
             anim_name = "on_hit"
-        elif self.is_knockbacking():
-            anim_name = "on_fly"
         elif self.attack_state:
             if hasattr(self.attack_state.data, 'attack_type'):
-                if self.attack_state.data.attack_type == AttackType.BASH:
-                    anim_name = "bash"
-                elif self.attack_state.data.attack_type == AttackType.SLASH:
-                    anim_name = 'slash'
-                elif self.attack_state.data.attack_type == AttackType.KICK:
-                    anim_name = 'kick'
-                elif self.attack_state.data.attack_type == AttackType.FLY_KICK:
-                    anim_name = 'flykick'
-                elif self.attack_state.data.attack_type == AttackType.METEOFALL:
-                    anim_name = 'meteofall'
-                elif self.attack_state.data.attack_type in SWING_ATTACKS:
-                    anim_name = 'swing'
-                elif self.attack_state.data.attack_type in THROW_ATTACKS:
-                    anim_name = 'throw'
-                elif self.attack_state.data.attack_type == AttackType.PUNCH or self.attack_state.data.attack_type == AttackType.MAHAHPUNCH:
-                    anim_name = "punch"
-
-        elif self.combat_state == CombatState.KNOCKBACK:
-            anim_name = 'on_fly'
-        elif self.state == MoveState.JUMP or self.state == MoveState.FALL:
-            anim_name = "jump"
-            # if self.state == MoveState.FALL:
-            #     #self.stop_print_info()
-            #     print(f'{self.name} fall_timer = {self.falling_timer}')
-        elif self.state == MoveState.WALK:
-            anim_name = "walk"
-        elif self.state == MoveState.RUN:
-            anim_name = 'run'
+                if self.attack_state.data.attack_type in attack_state_anim_map:
+                    anim_name = attack_state_anim_map[self.attack_state.data.attack_type]
+        elif self.state in move_state_anim_map:
+            anim_name = move_state_anim_map[self.state]
         else:
             anim_name = "stand"
+        # 進行例外處理
+        if anim_name == "knockback" and not self.animator.anim_map.get("knockback"):
+            anim_name = "on_fly"
 
         # 取得動畫 frame 圖像
-        if anim_name in ['punch', 'slash', 'kick', 'swing', 'throw']:
-            # 多格
-            f_idx = self.attack_state.frame_index
-            if f_idx >= len(self.attack_state.data.frame_map):
-                print('illegal frame index')
-                f_idx = -1
-            #print(f'{self.name}: [{anim_name}], attack_state {self.attack_state.data.attack_type.name} frame {self.attack_state.data.frame_map[f_idx]}({f_idx})')
+        # === 攻擊圖像: 從attack_data中取得當前frame cnt, frame_map_ratio, 並且對齊===
+        # Example: PUNCH
+        # AttackData /         frame_map_ratio = [8,16,8]
+        #         # 定義每種狀態的 frame index list
+        #         self.anim_map = {
+        #             "punch": [[4], [5], [6]],
+        #         }
+        # 1. 檢查len(frame_map_ratio)必須等於len(self.anim_map["punch"])
+        # 2. 根據frame_map_ratio = [8,16,8]與 anim_map的"punch": [[4], [5], [6]] 生成對應frame index
+        #   例如: 上述生成結果應該是[4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4]
+        #   換個例子: "punch": [[9], [10, 11], [12, 11]]
+        #   則預期生成結果應該是[9,9,9,9,9,9,9,9,
+        #   10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,
+        #   12,12,12,12,11,11,11,11]
+        # 3. 從self.attack_state.frame_index查找2的結果
+        # === 移動圖像: walk/run維持不變, jump要新增靠近地面的動作===
+        # 戰鬥狀態圖像: knockback在接近地面時與空中有不同圖像, on_hit也有不同變化
 
-            frame = self.animator.get_frame_by_map_index(anim_name, self.attack_state.data.frame_map[f_idx])
-        elif anim_name == 'burn':
-            # 👇 繪製燃燒效果（如果標記為 get_burning）
-            burn_idx = (self.current_frame % 16) // 4  # 0~3，每幀持續4 frame
-            resize_burn_frames = []
-            #
-            for f in self.burn_frames:
-                sw = f.get_width()
-                sh = f.get_height()
-                resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
-            frame = resize_burn_frames[burn_idx]
-            #print(f'anim_name = Burn frame {burn_idx}!')
-        elif anim_name in ['flykick', 'on_hit', 'on_fly', 'bash']:
-            # 單格'
-            frame = self.animator.get_frame_by_map_index(anim_name)
-        elif anim_name == 'meteofall':
-            # 單格'
-            frame = self.animator.get_frame_by_map_index('slash', 2, flip_x = True, flip_y = True)
-        elif anim_name == 'walk':
-            self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 10) % self.animator.anim_frame_size.get('walk', 3)
-            #print(f'{self.name} walk {walk_frame_idx}')
-            frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
-        elif anim_name == 'run':
-            self.anim_walk_cnt += 1
-            walk_frame_idx = int(self.anim_walk_cnt / 5) % self.animator.anim_frame_size.get('walk', 3)
-            frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
+
+        frame_index = 0
+        st = ''
+        if self.state:
+            st = st + f'Mov={self.state.name} '
+        if self.attack_state:
+            st = st + f'Atk={self.attack_state.name} '
+        if self.combat_state:
+            st = st + f'Cbt={self.combat_state.name}'
+        #print(f'[{self.current_frame}] {st} anim_name {anim_name}')
+        #common material anime
+        if anim_name in common_anim_material:
+            if anim_name == 'burn':
+                # 👇 繪製燃燒效果（如果標記為 get_burning）
+                burn_idx = (self.current_frame % 16) // 4  # 0~3，每幀持續4 frame
+                resize_burn_frames = []
+                #
+                for f in self.burn_frames:
+                    sw = f.get_width()
+                    sh = f.get_height()
+                    resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
+                frame = resize_burn_frames[burn_idx]
+        elif len(self.animator.anim_map.get(anim_name)) == 1:
+            frames = self.animator.anim_map.get(anim_name)[0]
+            #只有一個stage的動畫
+            if len(frames) == 1:
+                #只有一張圖的動畫
+                frame_index = frames[0]
+            else:
+                #只有一個stage但有多張圖的動畫, 根據某些條件來選擇
+                # walk, jump, on_hit
+                if anim_name in ['walk','run']:
+                    self.anim_walk_cnt += 1
+                    frame_period = 10 if anim_name == 'walk' else 5
+                    walk_index = int(self.anim_walk_cnt / frame_period) % len(self.animator.anim_map.get('walk')[0])
+                    frame_index = frames[walk_index]
+                    #print(f'{self.anim_walk_cnt}: {walk_index}')
+                elif anim_name == 'jump':
+                    if self.jump_z < 0.1:
+                        frame_index = frames[0]
+                    else:
+                        frame_index = frames[1]
+                elif anim_name == 'on_hit':
+                    if self.on_hit_count %2 == 0:
+                        frame_index = frames[1]
+                    else:
+                        frame_index = frames[0]
         else:
-            frame = self.animator.get_frame(anim_name, self.anim_frame)
+            #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
+            #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
+            if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm',
+                             'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw']:
+                index_map = self.frame_map_cache.get(anim_name)
+                if not index_map:
+                    index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, self.animator.anim_map.get(anim_name))
+                    print(f'cache {anim_name}')
+                    self.frame_map_cache[anim_name] = index_map.copy()
+                use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
+                frame_index = index_map[use_index]
+            elif anim_name in ['knockback']:
+                kb_frames = self.animator.anim_map.get('knockback')
+                near_ground_bound = 3.0
+                if self.jump_z >= near_ground_bound:
+                    # 使用frames[1]
+                    frames = kb_frames[0]
+                    rotation_frame_num = 4*len(frames)
+                    # 如果有3張動畫, 每張播放4個frame
+                    choose_frame_param = self.current_frame % rotation_frame_num
+                    frame_index = frames[int(choose_frame_param/4)]
+                else:
+                    #靠近地面, 使用kb_frames[1]
+                    #越接近地面, 使用後面的張數
+                    frames = kb_frames[1]
+                    step = near_ground_bound/len(frames)
+                    dist_from_start = near_ground_bound-self.jump_z
+                    choose_index = min(int(dist_from_start/step), len(frames)-1)
+                    frame_index = frames[choose_index]
+
+        # 若角色面向左側，進行左右翻轉
+        vertical_flip = False
+        if self.facing == DirState.LEFT:
+            vertical_flip = True
+        if anim_name not in common_anim_material:
+            frame = self.animator.get_frame_by_index(frame_index, flip_x = vertical_flip)
+            # knockback
+
+        # 新規則<--
+
+
+        # if anim_name in ['punch', 'slash', 'kick', 'swing', 'throw']:
+        #     # 多格
+        #     f_idx = self.attack_state.frame_index
+        #     if f_idx >= len(self.attack_state.data.frame_map):
+        #         print('illegal frame index')
+        #         f_idx = -1
+        #     frame = self.animator.get_frame_by_map_index(anim_name, self.attack_state.data.frame_map[f_idx])
+        # elif anim_name == 'burn':
+        #     # 👇 繪製燃燒效果（如果標記為 get_burning）
+        #     burn_idx = (self.current_frame % 16) // 4  # 0~3，每幀持續4 frame
+        #     resize_burn_frames = []
+        #     #
+        #     for f in self.burn_frames:
+        #         sw = f.get_width()
+        #         sh = f.get_height()
+        #         resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
+        #     frame = resize_burn_frames[burn_idx]
+        #     #print(f'anim_name = Burn frame {burn_idx}!')
+        # elif anim_name in ['flykick', 'on_hit', 'on_fly', 'bash']:
+        #     # 單格'
+        #     frame = self.animator.get_frame_by_map_index(anim_name)
+        # elif anim_name == 'meteofall':
+        #     # 單格'
+        #     frame = self.animator.get_frame_by_map_index('slash', 2, flip_x = True, flip_y = True)
+        # elif anim_name == 'walk':
+        #     self.anim_walk_cnt += 1
+        #     walk_frame_idx = int(self.anim_walk_cnt / 10) % self.animator.anim_frame_size.get('walk', 3)
+        #     #print(f'{self.name} walk {walk_frame_idx}')
+        #     frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
+        # elif anim_name == 'run':
+        #     self.anim_walk_cnt += 1
+        #     walk_frame_idx = int(self.anim_walk_cnt / 5) % self.animator.anim_frame_size.get('walk', 3)
+        #     frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
+        # else:
+        #     frame = self.animator.get_frame(anim_name, self.anim_frame)
 
         if self.popup and 'landing' in self.popup:
             if self.jump_z > 0 and self.current_frame < self.summon_sickness:
                 #調整為跳躍動作
-                frame = self.animator.get_frame_by_map_index('jump')
+                frames = self.animator.anim_map.get('fall')[0]
+                frame = self.animator.get_frame_by_index(frames[0])
             if self.jump_z <= 0 and self.current_frame < self.summon_sickness:
-                frame = self.animator.get_frame_by_map_index('slash', 2)
+                frames = self.animator.anim_map.get('pose_1')[0]
+                frame = self.animator.get_frame_by_index(frames[0])
                 if 'shake' in self.popup:
                     self.scene.trigger_shake(20,15)
                 self.popup = None
@@ -470,9 +604,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
             frame.set_alpha(alpha)
 
-        # 若角色面向左側，進行左右翻轉
-        if self.facing == DirState.LEFT:
-            frame = pygame.transform.flip(frame, True, False)
+        # # 若角色面向左側，進行左右翻轉
+        # if self.facing == DirState.LEFT:
+        #     frame = pygame.transform.flip(frame, True, False)
 
         self.current_anim_frame = frame
 
@@ -521,6 +655,15 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
         draw_y = cy - frame_rect.height
+
+        self.update_afterimages()
+        # 2. 繪製殘影
+        for img in self.afterimage_list:
+            # 創建一個帶有 Alpha 值的副本或直接設定 Alpha
+            temp_surf = img['image'].copy()
+            temp_surf.set_alpha(img['alpha'])
+            win.blit(temp_surf, img['pos'])
+
         if self.has_stand:
             stand_x = draw_x - 35 if self.facing == DirState.RIGHT else draw_x + 35
             stand_y = draw_y - 20
@@ -877,6 +1020,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             knock_back_distance=1.2,
             effects=[AttackEffect.FORCE_DOWN],
             frame_map = [0] * 12 + [1] * (duration - 12),  # 必須與duration等長
+            frame_map_ratio = [12, duration-12]
         )
     def get_throw_attack_data(self, attacker):
         duration = 30
@@ -895,6 +1039,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             knock_back_distance=1.2,
             knock_up_height= 0.2,
             frame_map = [0] * 16 + [1] * (duration - 16),  # 必須與duration等長
+            frame_map_ratio = [16, duration-16]
         )
 
     def get_knock_direction(self, attacker, attack_data):
@@ -1030,6 +1175,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.held_object.held_by = None
                 self.held_object = None
         #print(st)
+        self.on_hit_count += 1
         return True, damage
 
     def update_common_timer(self):
@@ -1483,7 +1629,8 @@ class Player(CharacterBase):
                              'swing_item':{'default': AttackType.SWING},
                              'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}}
 
-        self.animator = SpriteAnimator(material)  # 載入素材
+        #self.animator = SpriteAnimator(material)  # 載入素材
+        self.animator = SpriteAnimator2nd(material)  # 載入素材
         self.stand_image = pygame.image.load("..\\Assets_Drive\\aura_mandara.png").convert_alpha()
         if super_move_material is not None:
             self.super_move_animator = SpriteAnimator(super_move_material)
@@ -1924,11 +2071,7 @@ def ai_attack_logic(unit, target, intent, act='support'):
                 unit.attack_cooldown = unit.attack_cooldown_duration
                 unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
 
-#定義敵人combo
-# 建議在檔案頂部定義招式組全域常數
-DEFAULT_COMBOS = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackType.SLASH]
-ELITE_COMBOS = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
-FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
+from CharactersConfig import *
 class Enemy(CharacterBase):
     def __init__(self, x, y, z, map_info, material,scale=1.0, combos=DEFAULT_COMBOS, name='enemy', ai_move_speed = 0.2, attack_cooldown = 45, popup=None):
         super().__init__(x, y, map_info)

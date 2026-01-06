@@ -38,6 +38,7 @@ class AttackType(Enum):
     MAHAHPUNCH=auto()
     METEOFALL=auto()
     SUPER_FINAL=auto()
+    BRUST=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地
@@ -48,6 +49,7 @@ class AttackEffect(Enum):
     IGNORE_INVINCIBLE = auto() # 無視無敵時間
     BURN = auto()
     DROP_MAGIC_POTION = auto()
+    AFTER_IMAGE = auto()
 class EffectExpireMode(Enum):
     LANDING = auto()   # 落地消失
     TIMED = auto()     # 定時消失

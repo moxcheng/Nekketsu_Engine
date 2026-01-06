@@ -154,6 +154,7 @@ class HoldableComponent(Component):
             return "pickup_item"
         return intent
 
+
     def update(self):
         if self.owner.is_able_hold_item() and self.held_object:
             #持有者無法控制

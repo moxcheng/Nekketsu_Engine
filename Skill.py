@@ -119,7 +119,7 @@ class ThrowAttackState(AttackState):
 class AttackData:
     def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
                  force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10,
-                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, visual_weights=[1]):
+                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, frame_map_ratio=[1], character_effect=None):
 
         self.attack_type = attack_type
         self.duration = duration
@@ -133,12 +133,15 @@ class AttackData:
         self.knock_up_height = knock_up_height  #擊飛高度
         self.damage = damage
         self.frame_map = frame_map or [0] * duration  # 預設全部使用第一張動畫
-        assert frame_map is None or len(frame_map) == self.duration, "frame_map 長度需與 duration 相符"
+        #if sum(frame_map_ratio) != self.duration:
+        # sun = sum(frame_map_ratio)
+        # print(f'frame_map_ratio={frame_map_ratio} sum={sun}, duration={self.duration}')
+        assert sum(frame_map_ratio) == self.duration, "frame_map 長度需與 duration 相符"
         self.cancel_table = cancel_table or {}
         self.physical_change = physical_change or {}
         self.effect_component_config = effect_component_config or {}
         self.dialogue = dialogue
-        self.visual_weights=visual_weights
+        self.frame_map_ratio=frame_map_ratio
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -250,12 +253,12 @@ attack_data_dict = {
         recovery=15,
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
-        effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN],
+        effects=[AttackEffect.SHORT_STUN],
         knock_up_height = 5.0,
-        knock_back_distance=1.0,
+        knock_back_distance=5.0,
         damage = 20,
-        frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
-        visual_weights = [3,2,7]
+        #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
+        frame_map_ratio = [15,10,35] #必須與duration等長
     ),
     AttackType.PUNCH: AttackData(
         attack_type=AttackType.PUNCH,
@@ -268,7 +271,7 @@ attack_data_dict = {
         damage = 5,
         frame_map = [0]*8 + [2]*16 + [1]*8,   #必須與duration等長
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8},
-        visual_weights = [1,2,1]
+        frame_map_ratio = [8,16,8]
     ),
     AttackType.MAHAHPUNCH: AttackData(
         attack_type=AttackType.MAHAHPUNCH,
@@ -277,7 +280,7 @@ attack_data_dict = {
         recovery=2,
         hitbox_func = punch_hitbox_func,
         condition_func=lambda actor: True,
-        effects=[AttackEffect.SHORT_STUN],
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
         knock_up_height=0.5,
         knock_back_distance=2.0,
         damage = 7,
@@ -295,7 +298,7 @@ attack_data_dict = {
             }
         },
         dialogue = '啊達達達達達',
-        visual_weights = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4]
     ),
     AttackType.KICK: AttackData(
         attack_type=AttackType.KICK,
@@ -308,7 +311,7 @@ attack_data_dict = {
         damage = 7,
         frame_map = [1]*12 + [0]*24,
         cancel_table = {AttackType.SLASH: 24, AttackType.KICK: 18},
-        visual_weights = [1,2]
+        frame_map_ratio = [12,24]
     ),
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
@@ -320,7 +323,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         knock_back_distance=1.0,
         damage=12,
-        visual_weights = [1,2]
+        frame_map_ratio = [999]
     ),
     AttackType.METEOFALL: AttackData(
         attack_type=AttackType.METEOFALL,
@@ -329,7 +332,7 @@ attack_data_dict = {
         recovery=15,
         hitbox_func=down_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
-        effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN],
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN, AttackEffect.AFTER_IMAGE],
         knock_up_height=1.5,
         knock_back_distance=2.0,
         damage=35,
@@ -344,8 +347,8 @@ attack_data_dict = {
                 "expire_type":EffectExpireMode.LANDING
             }
         },
-        dialogue="流星下墜!",
-        visual_weights = [1,1,1,1]
+        dialogue="飛翔白麗!",
+        frame_map_ratio = [999]
     ),
     AttackType.BASH: AttackData(
         attack_type=AttackType.BASH,
@@ -358,7 +361,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         knock_back_distance=2.0,
         damage = 5,
-        visual_weights = [1,1,2]
+        frame_map_ratio = [10,20]
     ),
     AttackType.SWING: AttackData(
         attack_type=AttackType.SWING,
@@ -369,7 +372,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         damage = 10,
         frame_map = [0]*12 + [1]*20,   #必須與duration等長
-        visual_weights = [2,4]
+        frame_map_ratio = [12,20]
     ),
     AttackType.THROW: AttackData(
         attack_type=AttackType.THROW,
@@ -380,7 +383,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         damage = 15,
         frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        visual_weights = [2,1]
+        frame_map_ratio = [16,16]
     ),
     AttackType.THROW_CRASH: AttackData(
         attack_type=AttackType.THROW,
@@ -391,7 +394,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         knock_back_distance=1.0,
         damage=lambda attacker: getattr(attacker, "throw_damage", 2),  # 如果無此屬性就預設 2
-        visual_weights = [1]
+        frame_map_ratio = [2]
     ),
     AttackType.FIREBALL: AttackData(
         attack_type=AttackType.FIREBALL,
@@ -402,7 +405,7 @@ attack_data_dict = {
         hitbox_func=item_hitbox,
         damage = 0,
         frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        visual_weights = [1,1]
+        frame_map_ratio = [16,16]
     ),
     AttackType.BULLET: AttackData(
         attack_type=AttackType.BULLET,
@@ -413,7 +416,7 @@ attack_data_dict = {
         hitbox_func=item_hitbox,
         damage=0,
         frame_map=[0] * 16 + [1] * 16,  # 必須與duration等長
-        visual_weights = [1,1]
+        frame_map_ratio = [16,16]
     ),
     AttackType.SUPER_FINAL:AttackData(
         attack_type=AttackType.SUPER_FINAL,
@@ -426,6 +429,19 @@ attack_data_dict = {
         knock_up_height=1.5,
         knock_back_distance=1.0,
         frame_map=[0] * 20,
-        visual_weights = [1]
+        frame_map_ratio = [20]
+    ),
+    AttackType.BRUST: AttackData(
+        attack_type=AttackType.BRUST,
+        effects=[AttackEffect.SHORT_STUN],
+        duration=45,
+        trigger_frame=0,
+        recovery=16,
+        hitbox_func=item_hitbox,
+        damage=10,
+        knock_up_height=1.5,
+        knock_back_distance=1.0,
+        frame_map=[0] * 15 + [1]* 30,
+        frame_map_ratio=[15, 30]
     )
 }
