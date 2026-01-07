@@ -21,7 +21,7 @@ PLAYER_KONOMI_CONFIG={
             "punch": [[9], [10, 11], [12, 11]],
             "kick": [[13,7], [14]],
             "bash": [[15, 16], [17]],
-            "special_punch": [[18], [19, 12, 19, 12]],
+            "special_punch": [[40],[18], [12,19]],
             "palm": [[20, 21], [22]],
             "upper": [[23]],
             "special_kick": [[24, 25], [26]],
@@ -62,6 +62,12 @@ PLAYER_REN_CONFIG={
         }
     }
 
+basic_anim_map1 = {
+            "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
+            "fall": [[8]], "flykick": [[9]], "kick":[[11],[10]], "on_fly":[[12]], "slash": [[13], [14], [15]], "on_hit": [[16]],
+            "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20],[21]], 'throw': [[22],[23]], 'meteofall':[[7]],
+            'pose_1':[[6]], "knockback": [[12], [19]]
+        }
 
 SHUKI_0_CONFIG={
     'name': "shuki0",
@@ -69,12 +75,7 @@ SHUKI_0_CONFIG={
     "scale":7/4,
     "frame_width":96,
     "frame_height":96,
-    "anim_map":{
-            "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
-            "fall": [[8]], "flykick": [[9]], "kick":[[11],[10]], "on_fly":[[12]], "slash": [[13], [14], [15]], "on_hit": [[16]],
-            "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20],[21]], 'throw': [[22],[23]], 'meteofall':[[7]],
-            'pose_1':[[6]], "knockback": [[12], [19]],
-        },
+    "anim_map":basic_anim_map1,
     "combos": ELITE_COMBOS,
     "ai_move_speed": 0.15,
     "attack_cooldown": 40
@@ -85,12 +86,7 @@ SHUKI_1_CONFIG={
     "scale":5/4,
     "frame_width":96,
     "frame_height":96,
-    "anim_map":{
-            "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
-            "fall": [[8]], "flykick": [[9]], "kick":[[11],[10]], "on_fly":[[12]], "slash": [[13], [14], [15]], "on_hit": [[16]],
-            "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20],[21]], 'throw': [[22],[23]], 'meteofall':[[7]],
-            'pose_1':[[6]], "knockback": [[12], [19]],
-        },
+    "anim_map":basic_anim_map1,
     "combos": DEFAULT_COMBOS,
     "ai_move_speed": 0.2,
     "attack_cooldown": 35
@@ -101,12 +97,7 @@ SHUKI_2_CONFIG={
     "scale":6/4,
     "frame_width":96,
     "frame_height":96,
-    "anim_map":{
-            "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
-            "fall": [[8]], "flykick": [[9]], "kick":[[11],[10]], "on_fly":[[12]], "slash": [[13], [14], [15]], "on_hit": [[16]],
-            "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20],[21]], 'throw': [[22],[23]], 'meteofall':[[7]],
-            'pose_1':[[6]], "knockback": [[12], [19]],
-        },
+    "anim_map":basic_anim_map1,
     "combos": ELITE_COMBOS,
     "ai_move_speed": 0.18,
     "attack_cooldown": 40
@@ -117,12 +108,7 @@ SHUKI_3_CONFIG={
     "scale":1.0,
     "frame_width":96,
     "frame_height":96,
-    "anim_map":{
-            "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
-            "fall": [[8]], "flykick": [[9]], "kick":[[11],[10]], "on_fly":[[12]], "slash": [[13], [14], [15]], "on_hit": [[16]],
-            "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20],[21]], 'throw': [[22],[23]], 'meteofall':[[7]],
-            'pose_1':[[6]], "knockback": [[12], [19]],
-        },
+    "anim_map":basic_anim_map1,
     "combos": DEFAULT_COMBOS,
     "ai_move_speed": 0.25,
     "attack_cooldown": 40
@@ -133,14 +119,7 @@ SHUKI_BOSS_CONFIG={
     "scale": 2.0,
     "frame_width": 96,
     "frame_height": 96,
-    "anim_map": {
-        "stand": [[0]], "walk": [[1, 3, 2]], "run": [[1, 3, 2]], "punch": [[4], [5], [6]], "bash": [[7]], "jump": [[8]],
-        "fall": [[8]], "flykick": [[9]], "kick": [[11], [10]], "on_fly": [[12]], "slash": [[13], [14], [15]],
-        "on_hit": [[16]],
-        "weak": [[17]], "down": [[18]], "dead": [[19]], 'swing': [[20], [21]], 'throw': [[22], [23]],
-        'meteofall': [[7]],
-        'pose_1': [[6]], "knockback": [[12], [19]],
-    },
+    "anim_map": basic_anim_map1,
     "combos": ELITE_COMBOS,
     "popup":["landing","shake"],
     "ai_move_speed":0.15,

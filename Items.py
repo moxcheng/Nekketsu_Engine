@@ -265,8 +265,7 @@ class Bullet(Item):
         recovery=16,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
-        knock_up_height = 0.1,
-        knock_back_distance=1.0,
+        knock_back_power=[0.5,0.1],
         damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 1,
         frame_map = [0]*16 + [1]*32,   #必須與duration等長
         frame_map_ratio = [16,32]

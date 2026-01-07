@@ -118,7 +118,7 @@ class ThrowAttackState(AttackState):
 # === Attack Data Definition ===
 class AttackData:
     def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
-                 force_move=0, effects=None,knock_back_distance=0.0,knock_up_height=0.0, damage=10,
+                 force_move=0, effects=None,knock_back_power=[0.0,0.0], damage=10,
                  frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, frame_map_ratio=[1], character_effect=None):
 
         self.attack_type = attack_type
@@ -129,8 +129,7 @@ class AttackData:
         self.condition_func = condition_func or (lambda actor: True)
         self.force_move = force_move    #角色自己的位移
         self.effects = effects or []    #被擊中的效果
-        self.knock_back_distance = knock_back_distance  #擊飛距離
-        self.knock_up_height = knock_up_height  #擊飛高度
+        self.knock_back_power = knock_back_power  #擊飛多遠多高
         self.damage = damage
         self.frame_map = frame_map or [0] * duration  # 預設全部使用第一張動畫
         #if sum(frame_map_ratio) != self.duration:
@@ -180,6 +179,21 @@ def front_hitbox_func(x, y, facing, actor=None):
         return {'x1': x + 0.5, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom}
     else:
         return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom}
+
+def two_side_hitbox_func(x, y, facing, actor=None):
+    if actor is not None:
+        w = getattr(actor, "width", 1.5)
+        h = getattr(actor, "height", 2.5)
+    else:
+        w = 1.5
+        h = 2.5
+    # 2. 計算攻擊觸及距離（reach）
+    #    舉例：讓 reach 跟寬度成比例
+    reach = 0.9 + 0.6 * (w / 1.5)
+    # 3. 垂直覆蓋範圍也用角色高度來估
+    y_top = y - 0.2
+    y_bottom = y + h * 0.6
+    return {'x1': x -reach, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom}
 
 def down_hitbox_func(x, y, facing, actor=None):
     if actor is not None:
@@ -254,8 +268,7 @@ attack_data_dict = {
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN],
-        knock_up_height = 5.0,
-        knock_back_distance=5.0,
+        knock_back_power=[1.0,3.0],
         damage = 20,
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio = [15,10,35] #必須與duration等長
@@ -273,6 +286,19 @@ attack_data_dict = {
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8},
         frame_map_ratio = [8,16,8]
     ),
+    AttackType.SPECIAL_PUNCH: AttackData(
+        attack_type=AttackType.SPECIAL_PUNCH,
+        duration=32,
+        trigger_frame=8,
+        recovery=2,
+        hitbox_func=punch_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN],
+        damage=5,
+        frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
+        frame_map_ratio=[8, 16, 8],
+        knock_back_power=[0.5,1.0],
+    ),
     AttackType.MAHAHPUNCH: AttackData(
         attack_type=AttackType.MAHAHPUNCH,
         duration=64,
@@ -281,8 +307,7 @@ attack_data_dict = {
         hitbox_func = punch_hitbox_func,
         condition_func=lambda actor: True,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
-        knock_up_height=0.5,
-        knock_back_distance=2.0,
+        knock_back_power=[1.0,0.5],
         damage = 7,
         frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
         effect_component_config={
@@ -313,6 +338,19 @@ attack_data_dict = {
         cancel_table = {AttackType.SLASH: 24, AttackType.KICK: 18},
         frame_map_ratio = [12,24]
     ),
+    AttackType.SPECIAL_KICK: AttackData(
+        attack_type=AttackType.SPECIAL_KICK,
+        duration=36,
+        trigger_frame=12,
+        recovery=5,
+        hitbox_func=kick_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN],
+        damage=7,
+        frame_map=[1] * 12 + [0] * 24,
+        frame_map_ratio=[12, 24],
+        knock_back_power=1.0
+    ),
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
         duration=999,# ✅ 實際上會被 is_active() 覆蓋
@@ -321,7 +359,7 @@ attack_data_dict = {
         hitbox_func=kick_hitbox_func,
         condition_func=lambda actor: actor.jump_z > 0,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_distance=1.0,
+        knock_back_power=[0.5,0.2],
         damage=12,
         frame_map_ratio = [999]
     ),
@@ -333,8 +371,7 @@ attack_data_dict = {
         hitbox_func=down_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN, AttackEffect.AFTER_IMAGE],
-        knock_up_height=1.5,
-        knock_back_distance=2.0,
+        knock_back_power=[1.0,1.5],
         damage=35,
         physical_change={'jump_z_vel':GRAVITY*-2},
         effect_component_config={
@@ -359,7 +396,7 @@ attack_data_dict = {
         condition_func=lambda actor: True,
         force_move=0.2,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_distance=2.0,
+        knock_back_power=[0.5,0.2],
         damage = 5,
         frame_map_ratio = [10,20]
     ),
@@ -392,7 +429,7 @@ attack_data_dict = {
         recovery=0,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_distance=1.0,
+        knock_back_power=[0.3,0.2],
         damage=lambda attacker: getattr(attacker, "throw_damage", 2),  # 如果無此屬性就預設 2
         frame_map_ratio = [2]
     ),
@@ -426,8 +463,7 @@ attack_data_dict = {
         recovery=16,
         hitbox_func=item_hitbox,
         damage=0,
-        knock_up_height=1.5,
-        knock_back_distance=1.0,
+        knock_back_power=[1.0,1.5],
         frame_map=[0] * 20,
         frame_map_ratio = [20]
     ),
@@ -435,13 +471,22 @@ attack_data_dict = {
         attack_type=AttackType.BRUST,
         effects=[AttackEffect.SHORT_STUN],
         duration=45,
-        trigger_frame=0,
-        recovery=16,
-        hitbox_func=item_hitbox,
+        trigger_frame=15,
+        recovery=2,
+        hitbox_func=two_side_hitbox_func,
         damage=10,
-        knock_up_height=1.5,
-        knock_back_distance=1.0,
+        knock_back_power=[1.0,1.5],
         frame_map=[0] * 15 + [1]* 30,
-        frame_map_ratio=[15, 30]
+        frame_map_ratio=[15, 30],
+        effect_component_config={
+            # 必須使用 Component 類別的字串名稱，以便動態載入
+            "component_name": "AuraEffectComponent",
+            # 這是您在 ComponentHost 中使用的 key，用於移除
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_96.png",
+                "expire_type": EffectExpireMode.TIMED
+            }
+        },
     )
 }

@@ -39,12 +39,12 @@ class AttackType(Enum):
     METEOFALL=auto()
     SUPER_FINAL=auto()
     BRUST=auto()
+    SPECIAL_KICK=auto()
+    SPECIAL_PUNCH=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地
     FORCE_WEAK = auto()  # 強制倒地
-    # KNOCK_BACK = auto()        # 擊退   使用data中的knock_back_distance取代
-    # KNOCK_UP = auto()          # 擊飛   使用data中的knock_up_height取代
     SHORT_STUN = auto()              # 暫時無法動作
     IGNORE_INVINCIBLE = auto() # 無視無敵時間
     BURN = auto()

@@ -79,11 +79,13 @@ class SpriteAnimator:
             "walk": [[1, 3, 2]],
             "run": [[1, 3, 2]],
             "punch": [[4], [5], [6]],
+            "special_punch": [[4], [5], [6]],
             "bash": [[7]],
             "jump": [[8]],
             "fall": [[8]],
             "flykick": [[9]],
             "kick":[[11],[10]],
+            "special_kick": [[11], [10]],
             "on_fly":[[12]],
             "slash": [[13], [14], [15]],
             "on_hit": [[16]],
@@ -95,7 +97,8 @@ class SpriteAnimator:
             'meteofall':[[7]],
             'pose_1':[[6]],
             "knockback": [[12], [19]],
-            "mahahpunch": [[4],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5]]
+            "mahahpunch": [[4],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5],[6],[5]],
+            "brust":[[6],[7]]
         }
 
     def slice_sheet(self):
@@ -155,13 +158,13 @@ class SpriteAnimator2nd(SpriteAnimator):
             "jump": [[5, 6]],   #須修正與Z軸的關係
             "fall": [[6]],
             "flykick": [[8]],
-            "punch": [[9], [10, 11], [12, 11]],
+            "punch": [[9], [10, 11], [12]],
+            "special_punch": [[18],[19], [9]],
             "kick": [[13,7], [14]],
+            "special_kick": [[24, 25], [26]],
             "bash": [[15, 16], [17]],
-            "special_punch": [[18], [19, 12, 19, 12]],
             "palm": [[20, 21], [22]],
             "upper": [[23]],
-            "special_kick": [[24, 25], [26]],
             "pose_1": [[27]],
             "on_hit": [[28, 29]],
             "knockback": [[30, 31, 32], [33, 34, 35]],
@@ -169,7 +172,7 @@ class SpriteAnimator2nd(SpriteAnimator):
             "weak": [[36]],
             "down": [[37]],
             "dead": [[38]],
-            "burst": [[39, 40]],
+            "brust": [[40], [39]],
             "slash": [[20, 10], [21], [23]],
             "mahahpunch": [[9],[10],[11],[12],[11],[10],[11],[12],[11],[10],[11],[12],[11],[10],[11],[12]],
             "meteofall": [[41]],
@@ -417,7 +420,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         attack_state_anim_map = {
             AttackType.BASH:"bash",AttackType.SLASH:"slash",AttackType.KICK:"kick",AttackType.FLY_KICK:"flykick",
             AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
-            AttackType.MAHAHPUNCH:"mahahpunch"
+            AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
+            AttackType.BRUST:"brust"
         }
         move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run"}
         common_anim_material = ['burn']
@@ -512,7 +516,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         else:
             #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
-            if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm',
+            if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust',
                              'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw']:
                 index_map = self.frame_map_cache.get(anim_name)
                 if not index_map:
@@ -782,6 +786,19 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                         attack=atk_table.get('highjump', None)
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
+        if attack in [AttackType.PUNCH, AttackType.KICK]:
+            enemy_side = 'enemy_side' if self.side == 'player_side' else 'player_side'
+            # 定義偵測中心（通常在角色前方一點）
+            check_dist = 1.5 if self.facing == DirState.RIGHT else -1.5
+            nearby_enemies = self.scene.get_nearby_units_by_side(
+                self.x + check_dist, self.y, radius=2.0, side=enemy_side
+            )
+            # 檢查是否有任何敵人處於 WEAK 狀態
+            has_weak_target = any(e.combat_state == CombatState.WEAK for e in nearby_enemies)
+            if has_weak_target:
+                print(f"[REACTION] 偵測到 Weak 敵人，{self.name} 的 PUNCH 轉變為 SPECIAL_PUNCH！")
+                attack = AttackType.SPECIAL_PUNCH if attack == AttackType.PUNCH else AttackType.SPECIAL_KICK
+
         #處理技能的動量變化
         if attack is not None:
             atk_data = attack_data_dict[attack]
@@ -808,13 +825,19 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.rigid_timer = max(self.rigid_timer, duration)
 
     def is_locked(self):
-        return self.rigid_timer > 0 or self.combat_state == CombatState.DOWN
+        return self.rigid_timer > 0 or self.combat_state == CombatState.DOWN or self.combat_state == CombatState.KNOCKBACK
     def is_on_hit(self):
         return self.on_hit_timer > 0
     def is_invincible(self):
         return self.invincible_timer > 0
+    # def is_knockbacking(self):
+    #     return abs(self.knockback_vel_x) > 0.0 or self.knockback_vel_z < 0.0
+    # Characters.py
+
     def is_knockbacking(self):
-        return abs(self.knockback_vel_x) > 0.01 or self.knockback_vel_z > 0.01
+        # 只要狀態是 KNOCKBACK，不論速度正負，都應該鎖定控制
+        return self.combat_state == CombatState.KNOCKBACK or abs(self.knockback_vel_x) > 0.1
+
     def is_falling(self):
         return self.falling_timer > 0
     def is_alive(self):
@@ -862,9 +885,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         tx = int(self.x + self.width / 2)
         ty = int(self.y + self.height * 0.1)
         below_z = self.get_tile_z(tx, ty)
-
         #如果是空中攻擊, 清除狀態
-        if self.attack_state and isinstance(self.attack_state, FlyKickAttackState):
+        if self.attack_state:
             self.attack_state = None
             self.state = MoveState.STAND
 
@@ -875,6 +897,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.jump_z = 0
         self.jump_z_vel = 0
         self.knockback_vel_z = 0
+        self.knockback_vel_x = 0
         self.z = below_z
         self.state = MoveState.STAND
         self.set_rigid(10)
@@ -904,11 +927,14 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def update_physics_only(self):
         if self.knockback_vel_z != 0:
             self.jump_z += self.knockback_vel_z
-            self.knockback_vel_z = self.knockback_vel_z - 0.05  # 重力加速度
+            self.knockback_vel_z = self.knockback_vel_z - GRAVITY  # 重力加速度
+            #print(f'{self.name} knockback with vel_z={self.knockback_vel_z} jump_z={self.jump_z}')
 
             if self.jump_z <= 0:
                 self.jump_z = 0
                 self.knockback_vel_z = 0
+                #self.check_ground_contact()
+
         # ✅ 若正在跳躍中，僅更新跳躍高度與落下，不進行碰撞判定
         if self.jump_z != 0 and not self.held_by:
             #排除被拿著的狀態
@@ -918,6 +944,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if self.jump_z <= 0:
                 self.jump_z = 0
                 self.jump_z_vel = 0
+                self.check_ground_contact()
         # ✅ 處理垂直跳躍或擊飛
 
 
@@ -926,8 +953,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #鋼體不擊退
             if self.knockback_vel_x != 0:
                 self.x += self.knockback_vel_x
-                self.knockback_vel_x *= 0.25  # 摩擦力衰減
-                if abs(self.knockback_vel_x) < 0.01:
+                self.knockback_vel_x *= 0.85  # 摩擦力衰減
+                #print(f'{self.name} knockback_vel_x={self.knockback_vel_x}')
+                if abs(self.knockback_vel_x) < 0.1:
                     self.knockback_vel_x = 0
 
 
@@ -992,7 +1020,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.into_normal_state()
                 return False
         if self.combat_state == CombatState.KNOCKBACK:
-            if self.knockback_vel_x <= 0 and self.knockback_vel_z <= 0 and self.jump_z <= 0 and self.super_armor_timer <= 0:
+            # 使用較大的閾值判定結束，避免因微小速度導致動畫卡住
+            is_vertical_stopped = (self.jump_z <= 0.05 and self.knockback_vel_z <= 0.05)
+            is_horizontal_stopped = (abs(self.knockback_vel_x) < 0.05)
+            if is_vertical_stopped and is_horizontal_stopped and self.super_armor_timer <= 0:
                 self.into_down_state()
 
 
@@ -1017,7 +1048,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             recovery=16,
             hitbox_func=item_hitbox,
             damage=lambda _: self.throw_damage if hasattr(self, 'swing_damage') else 11,
-            knock_back_distance=1.2,
+            knock_back_power=[0.3,0.2],
             effects=[AttackEffect.FORCE_DOWN],
             frame_map = [0] * 12 + [1] * (duration - 12),  # 必須與duration等長
             frame_map_ratio = [12, duration-12]
@@ -1036,8 +1067,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             hitbox_func=item_hitbox,
             effects=[AttackEffect.SHORT_STUN],
             damage=lambda _: self.throw_damage if hasattr(self, 'throw_damage') else 7,
-            knock_back_distance=1.2,
-            knock_up_height= 0.2,
+            knock_back_power=[0.6,0.2],
             frame_map = [0] * 16 + [1] * (duration - 16),  # 必須與duration等長
             frame_map_ratio = [16, duration-16]
         )
@@ -1082,7 +1112,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     self.into_weak_state()
             elif self.combat_state == CombatState.WEAK:
                 #weak中強制所有技能擊倒
-                if attack_data.knock_back_distance == 0 and attack_data.knock_up_height == 0:
+                if attack_data.knock_back_power[0] == 0 and attack_data.knock_back_power[1] == 0:
                     self.into_down_state()
             elif self.combat_state == CombatState.DOWN:
                 #倒地被追加時避免連段到死,給予霸體
@@ -1101,17 +1131,17 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.into_weak_state()
 
         #擊退處理
-        if attack_data.knock_back_distance!= 0 or attack_data.knock_up_height != 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
+        if attack_data.knock_back_power[0]!= 0 or attack_data.knock_back_power[1] != 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
             #倒地狀態下不擊退
             #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
             self.combat_state = CombatState.KNOCKBACK
-            if attack_data.knock_back_distance != 0:
+            #knock_back_power[0]水平 [1]垂直
+            if attack_data.knock_back_power[0] != 0:
                 direction = self.get_knock_direction(attacker, attack_data)
-                self.knockback_vel_x = direction * attack_data.knock_back_distance
-
-            if attack_data.knock_up_height != 0:
-                self.knockback_vel_z = attack_data.knock_up_height
-                self.jump_z = max(0.2, attack_data.knock_up_height * 0.05)
+                self.knockback_vel_x = direction * attack_data.knock_back_power[0]
+            if attack_data.knock_back_power[1] != 0:
+                self.knockback_vel_z = attack_data.knock_back_power[1]
+                self.jump_z = max(0.2, attack_data.knock_back_power[1] * 0.05)
 
         if AttackEffect.SHORT_STUN in effects:
             self.set_rigid(ON_HIT_SHORT_STUN_TIME)
@@ -1143,7 +1173,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             st = st + '(空中)'
         if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
             print(f'{st} (無敵!)')
-            return False, 0
+            return
 
         # 鋼體檢查
         if self.super_armor_timer > 0:
@@ -1176,7 +1206,19 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.held_object = None
         #print(st)
         self.on_hit_count += 1
-        return True, damage
+        hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+        self.scene.create_hit_effect(hit_x, hit_y, hit_z)
+        #                     hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
+        #
+        #
+        #                     if self.held_by is None:
+        #                         #避免打到自己
+        #                         result, damage = self.on_hit(opponent, opponent.attack_state.data)
+        #
+        #                         # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
+        #                         if self.scene and damage > 0:
+        #                             self.scene.create_hit_effect(hit_x, hit_y, hit_z)
+        # return True, damage
 
     def update_common_timer(self):
         self.current_frame += 1
@@ -1262,16 +1304,16 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
             if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
                 if self not in opponent.attack_state.has_hit:
-                    hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
+                    # hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
 
 
                     if self.held_by is None:
                         #避免打到自己
-                        result, damage = self.on_hit(opponent, opponent.attack_state.data)
+                        self.on_hit(opponent, opponent.attack_state.data)
 
                         # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
-                        if self.scene and damage > 0:
-                            self.scene.create_hit_effect(hit_x, hit_y, hit_z)
+                        # if self.scene and damage > 0:
+                        #     self.scene.create_hit_effect(hit_x, hit_y, hit_z)
 
         # 若正在攻擊期間
         #
@@ -1623,7 +1665,7 @@ class Player(CharacterBase):
         #     "x_attack": lambda: AttackType.KICK,
         #     "c_attack": lambda: AttackType.SLASH
         # }
-        self.attack_table = {'z_attack':{'default': AttackType.MAHAHPUNCH, 'run': AttackType.BASH, 'highjump': AttackType.METEOFALL},
+        self.attack_table = {'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump': AttackType.METEOFALL},
                              'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK},
                              'c_attack':{'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
                              'swing_item':{'default': AttackType.SWING},
@@ -1690,6 +1732,7 @@ class Player(CharacterBase):
             self.jump_intent_trigger = False
 
         down_pressed = keys[pygame.K_DOWN]
+        zxc_buttons = [keys[pygame.K_z], keys[pygame.K_x], keys[pygame.K_c]]
         return {
             'horizontal': horizontal,
             'direction': direction,
@@ -1698,6 +1741,7 @@ class Player(CharacterBase):
             'jump': jump_intent,
             'action': attack_type,
             'down_pressed': down_pressed, # <--- 新增
+            'button_pressed': zxc_buttons
         }
 
     def on_key_down(self, key):
@@ -1743,6 +1787,15 @@ class Player(CharacterBase):
             self.jump_key_block = False
 
     def attack(self, skill):
+        if skill == AttackType.BRUST:
+            self.attack_state = None
+            self.set_attack_by_skill(skill)
+            # 設定爆氣後的屬性
+            atk_data = attack_data_dict[AttackType.BRUST]
+            self.invincible_timer = atk_data.duration
+            self.set_rigid(atk_data.duration)
+            return
+
         if self.attack_state:
             if self.attack_state.can_cancel_to(skill):
                 print(f"[Cancel] {self.attack_state.data.attack_type.name} → {skill.name}")
@@ -1764,11 +1817,17 @@ class Player(CharacterBase):
 
     def handle_input(self, keys):
         intent = self.input_intent(keys)
-        if self.name=='player' and intent['jump']:
-            st = 'player  [{}] intent [dx{}, dy{}, jump{}, action{}'.format(self.current_frame, intent['dx'],intent['dy'],intent['jump'],intent['action'])
-            print(st, flush=True)
+        # 1. 偵測爆氣 (Z+X+C)
+        try_brust = intent.get("button_pressed")
+        # 檢查是否至少按下了兩個攻擊鍵，且目前不是無敵狀態
+        if try_brust and sum(try_brust) >= 2 and self.invincible_timer <= 0:
+            if self.mp >= 0:  # 如果有爆氣資源
+                print(f"[BRUST] {self.name} 強制發動爆氣！")
+                self.into_normal_state()  # 解除受創狀態
+                self.attack(AttackType.BRUST)  # 呼叫攻擊
+                return  # 爆氣是最高優先級，直接結束輸入處理
 
-
+        # 2. 呼叫父類別處理一般攻擊與移動
         super().handle_input(intent)
 
 

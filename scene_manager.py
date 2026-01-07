@@ -542,6 +542,19 @@ class SceneManager:
                 self.super_move_pre_pose_background.append(pygame.image.load(pth).convert_alpha())
         # 這裡可以加入載入全畫面特效圖組的邏輯
 
+    def get_nearby_units_by_side(self, center_x, center_y, radius, side):
+        """
+        找出以 (center_x, center_y) 為中心，半徑 radius 內，屬於 side 陣營的單位。
+        """
+        nearby = []
+        for unit in self.get_units_by_side(side):
+            # 使用歐幾里得距離平方避開開根號運算，提升效能
+            dx = unit.x - center_x
+            dy = unit.y - center_y
+            if (dx ** 2 + dy ** 2) <= radius ** 2:
+                nearby.append(unit)
+        return nearby
+
 
 
 class FloatingText:
