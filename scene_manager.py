@@ -83,7 +83,11 @@ class SceneManager:
         self.shake_timer = 0
         self.shake_intensity = 0
         self.default_font_36 = pygame.font.SysFont("Arial Black", 36)   #預載入文字
+        self.hit_stop_timer = 0
 
+    def trigger_hit_stop(self, frames):
+        """觸發時間凍結"""
+        self.hit_stop_timer = max(self.hit_stop_timer, frames)
     def create_hit_effect(self, x, y, z):
         # 這裡的 z 通常是碰撞盒交疊的中心 z
         new_effect = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=2)
@@ -340,7 +344,14 @@ class SceneManager:
             c.owner = None
 
     def update_all(self):
+
         enemy_remove_count = 0
+        # 如果處於 Hit Stop 期間，倒數計時並跳過邏輯更新
+        if self.hit_stop_timer > 0:
+            self.hit_stop_timer -= 1
+            print(f'scene updateall: hit_stop_timer {self.hit_stop_timer}')
+            return enemy_remove_count# 關鍵：直接回傳，不執行下方的 units.update()
+
         self.script_runner.update()
         for unit in self.interactables:
             #如果劇情模式開啟，且這個單位不在受控名單中 → 跳過更新

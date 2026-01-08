@@ -196,8 +196,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, x, y, map_info, z=0, popup=None):
         super().__init__()
         self.unit_type = "character"
-        self.x = x
-        self.y = y
+        self.x = max(0, min(x, map_info[1]-1))
+        self.y = max(0, min(y, map_info[2]-1))
         self.jump_z = 0
         self.width = 1.5
         self.height = 2.5
@@ -363,7 +363,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             while len(sub_map) < one_stage_frame_count:
                 sub_map.append(one_stage_map[-1])
             result = result + sub_map
-        print(f'{frame_map_ratio}\n{anim_map}\n{result}')
+        #print(f'{frame_map_ratio}\n{anim_map}\n{result}')
         return result
 
 
@@ -447,26 +447,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if anim_name == "knockback" and not self.animator.anim_map.get("knockback"):
             anim_name = "on_fly"
 
-        # 取得動畫 frame 圖像
-        # === 攻擊圖像: 從attack_data中取得當前frame cnt, frame_map_ratio, 並且對齊===
-        # Example: PUNCH
-        # AttackData /         frame_map_ratio = [8,16,8]
-        #         # 定義每種狀態的 frame index list
-        #         self.anim_map = {
-        #             "punch": [[4], [5], [6]],
-        #         }
-        # 1. 檢查len(frame_map_ratio)必須等於len(self.anim_map["punch"])
-        # 2. 根據frame_map_ratio = [8,16,8]與 anim_map的"punch": [[4], [5], [6]] 生成對應frame index
-        #   例如: 上述生成結果應該是[4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4]
-        #   換個例子: "punch": [[9], [10, 11], [12, 11]]
-        #   則預期生成結果應該是[9,9,9,9,9,9,9,9,
-        #   10,10,10,10,10,10,10,10,11,11,11,11,11,11,11,11,
-        #   12,12,12,12,11,11,11,11]
-        # 3. 從self.attack_state.frame_index查找2的結果
-        # === 移動圖像: walk/run維持不變, jump要新增靠近地面的動作===
-        # 戰鬥狀態圖像: knockback在接近地面時與空中有不同圖像, on_hit也有不同變化
-
-
         frame_index = 0
         st = ''
         if self.state:
@@ -499,7 +479,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 # walk, jump, on_hit
                 if anim_name in ['walk','run']:
                     self.anim_walk_cnt += 1
-                    frame_period = 10 if anim_name == 'walk' else 5
+                    frame_period = 8 if anim_name == 'walk' else 4
                     walk_index = int(self.anim_walk_cnt / frame_period) % len(self.animator.anim_map.get('walk')[0])
                     frame_index = frames[walk_index]
                     #print(f'{self.anim_walk_cnt}: {walk_index}')
@@ -554,63 +534,24 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         # 新規則<--
 
-
-        # if anim_name in ['punch', 'slash', 'kick', 'swing', 'throw']:
-        #     # 多格
-        #     f_idx = self.attack_state.frame_index
-        #     if f_idx >= len(self.attack_state.data.frame_map):
-        #         print('illegal frame index')
-        #         f_idx = -1
-        #     frame = self.animator.get_frame_by_map_index(anim_name, self.attack_state.data.frame_map[f_idx])
-        # elif anim_name == 'burn':
-        #     # 👇 繪製燃燒效果（如果標記為 get_burning）
-        #     burn_idx = (self.current_frame % 16) // 4  # 0~3，每幀持續4 frame
-        #     resize_burn_frames = []
-        #     #
-        #     for f in self.burn_frames:
-        #         sw = f.get_width()
-        #         sh = f.get_height()
-        #         resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
-        #     frame = resize_burn_frames[burn_idx]
-        #     #print(f'anim_name = Burn frame {burn_idx}!')
-        # elif anim_name in ['flykick', 'on_hit', 'on_fly', 'bash']:
-        #     # 單格'
-        #     frame = self.animator.get_frame_by_map_index(anim_name)
-        # elif anim_name == 'meteofall':
-        #     # 單格'
-        #     frame = self.animator.get_frame_by_map_index('slash', 2, flip_x = True, flip_y = True)
-        # elif anim_name == 'walk':
-        #     self.anim_walk_cnt += 1
-        #     walk_frame_idx = int(self.anim_walk_cnt / 10) % self.animator.anim_frame_size.get('walk', 3)
-        #     #print(f'{self.name} walk {walk_frame_idx}')
-        #     frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
-        # elif anim_name == 'run':
-        #     self.anim_walk_cnt += 1
-        #     walk_frame_idx = int(self.anim_walk_cnt / 5) % self.animator.anim_frame_size.get('walk', 3)
-        #     frame = self.animator.get_frame_by_map_index('walk', walk_frame_idx)
-        # else:
-        #     frame = self.animator.get_frame(anim_name, self.anim_frame)
-
         if self.popup and 'landing' in self.popup:
             if self.jump_z > 0 and self.current_frame < self.summon_sickness:
                 #調整為跳躍動作
                 frames = self.animator.anim_map.get('fall')[0]
                 frame = self.animator.get_frame_by_index(frames[0])
             if self.jump_z <= 0 and self.current_frame < self.summon_sickness:
+                self.check_ground_contact()
                 frames = self.animator.anim_map.get('pose_1')[0]
                 frame = self.animator.get_frame_by_index(frames[0])
                 if 'shake' in self.popup:
                     self.scene.trigger_shake(20,15)
+                    print(f'{self.name}, x y z = {self.x, self.y, self.z}, jump_z = {self.jump_z}')
                 self.popup = None
                 self.summon_sickness = 0
         elif self.popup is None and self.current_frame < self.summon_sickness:
             # 使用 max(0, 255 - countdown) 的簡潔寫法處理 Alpha
             alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
             frame.set_alpha(alpha)
-
-        # # 若角色面向左側，進行左右翻轉
-        # if self.facing == DirState.LEFT:
-        #     frame = pygame.transform.flip(frame, True, False)
 
         self.current_anim_frame = frame
 
@@ -655,10 +596,16 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         # DEBUG: 繪製 hitbox
         if DEBUG:
             self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
+        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
         # win.blit(frame, (px, py))
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
         draw_y = cy - frame_rect.height
+
+        if self.scene and self.scene.hit_stop_timer > 0:
+            import random
+            draw_x += random.randint(-2, 2)
+            draw_y += random.randint(-2, 2)
 
         self.update_afterimages()
         # 2. 繪製殘影
@@ -700,7 +647,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         # print(f'{self.name} draw debug {self.current_frame}')
         if DEBUG:
             self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
-
+        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
     def draw_silhouette(self, win):
         # 取得玩家當前應該顯示的那一幀 (從 animator 拿)
         # 假設我們已經在原本的 draw 流程算好了 frame
@@ -923,7 +870,26 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             return True
         return False
 
+    # Characters.py
 
+    def check_wall_collision(self, next_x):
+        """偵測 next_x 是否撞牆或超出地圖邊界"""
+        # 1. 檢查地圖左右邊界
+        if next_x < 0 or next_x+self.width > self.map_w:
+            return True
+
+        # 2. 檢查地形高度差 (牆壁)
+        # 取得角色當前高度與前方地塊高度
+        tx = int(next_x + (0.8 if self.knockback_vel_x > 0 else 0.2))
+        ty = int(self.y + 0.5)
+
+        target_z = self.get_tile_z(tx, ty)
+        if target_z is not None:
+            # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
+            if target_z - self.z >= 2:
+                return True
+
+        return False
     def update_physics_only(self):
         if self.knockback_vel_z != 0:
             self.jump_z += self.knockback_vel_z
@@ -958,7 +924,29 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 if abs(self.knockback_vel_x) < 0.1:
                     self.knockback_vel_x = 0
 
+        # 水平擊退與撞牆偵測
+        if self.combat_state == CombatState.KNOCKBACK:
+            if self.knockback_vel_x != 0:
+                next_x = self.x + self.knockback_vel_x
 
+                if self.check_wall_collision(next_x):
+                    # 撞牆反應：
+                    print(f"[PHYSICS] {self.name} 撞牆了！, ({self.x}, {self.y})")
+                    self.knockback_vel_x = -self.knockback_vel_x * 0.2  # 反彈
+
+                    # 如果還在空中，讓它垂直落下；如果接近地面，直接進入倒地
+                    if self.jump_z <= 0.5:
+                        self.into_down_state()
+
+                    # 選配：加入撞牆震動
+                    if self.scene:
+                        self.scene.trigger_shake(10,5)
+                else:
+                    self.x = next_x
+                    self.knockback_vel_x *= 0.85
+
+                    if abs(self.knockback_vel_x) < 0.05:
+                        self.knockback_vel_x = 0
 
     def draw_combat_bar(self, win, px, py):
         if self.combat_state == CombatState.NORMAL:
@@ -1112,7 +1100,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     self.into_weak_state()
             elif self.combat_state == CombatState.WEAK:
                 #weak中強制所有技能擊倒
-                if attack_data.knock_back_power[0] == 0 and attack_data.knock_back_power[1] == 0:
+                if attack_data.knock_back_power[0] <= 0 and attack_data.knock_back_power[1] <= 0:
                     self.into_down_state()
             elif self.combat_state == CombatState.DOWN:
                 #倒地被追加時避免連段到死,給予霸體
@@ -1131,7 +1119,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.into_weak_state()
 
         #擊退處理
-        if attack_data.knock_back_power[0]!= 0 or attack_data.knock_back_power[1] != 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
+        if attack_data.knock_back_power[0] > 0 or attack_data.knock_back_power[1] > 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
             #倒地狀態下不擊退
             #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
             self.combat_state = CombatState.KNOCKBACK
@@ -1187,6 +1175,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #attacker.attack_state.has_hit = True
             attacker.attack_state.has_hit.append(self)
 
+
         damage_st, damage = self.take_damage(attacker, attack_data)
         st = st + f' {damage_st}'
         # CombatState 處理
@@ -1206,19 +1195,15 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.held_object = None
         #print(st)
         self.on_hit_count += 1
-        hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
-        self.scene.create_hit_effect(hit_x, hit_y, hit_z)
-        #                     hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
-        #
-        #
-        #                     if self.held_by is None:
-        #                         #避免打到自己
-        #                         result, damage = self.on_hit(opponent, opponent.attack_state.data)
-        #
-        #                         # 2. 觸發打擊特效（例如在該座標產生一個 Effect 物件）
-        #                         if self.scene and damage > 0:
-        #                             self.scene.create_hit_effect(hit_x, hit_y, hit_z)
-        # return True, damage
+        if attacker.get_hitbox():
+            hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+            self.scene.create_hit_effect(hit_x, hit_y, hit_z)
+
+        if attack_data.hit_stop_frames > 0:
+            if self.scene:
+                self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
+                # 選配：配合微小的震動效果更好
+                self.scene.trigger_shake(duration=attack_data.hit_stop_frames, intensity=2)
 
     def update_common_timer(self):
         self.current_frame += 1
@@ -1300,7 +1285,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.mode = MoveState.STAND
 
         #命中計時器
-        #命中判定123456
         if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
             if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
                 if self not in opponent.attack_state.has_hit:
@@ -1321,8 +1305,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if self.is_jump():
                 # 空中攻擊時允許 X 軸移動與跳躍物理
                 dx = self.last_intent.get('dx')*0.1
-                self.x += dx
-
+                new_x = self.x + dx
+                #限制邊界
+                self.x = max(0, min(new_x, self.map_w - self.width))
             return False
         else:
             return True
@@ -1733,10 +1718,15 @@ class Player(CharacterBase):
 
         down_pressed = keys[pygame.K_DOWN]
         zxc_buttons = [keys[pygame.K_z], keys[pygame.K_x], keys[pygame.K_c]]
+        dx = dir_h*0.5
+        dy = dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
+        if self.x+dx < 0 or self.x+dx+self.width >= self.map_w:
+            dx = 0.0
+
         return {
             'horizontal': horizontal,
             'direction': direction,
-            "dx": dir_h * 0.5,            # 實際位移
+            "dx": dx,
             "dy": dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
             'jump': jump_intent,
             'action': attack_type,
@@ -2154,8 +2144,8 @@ class Enemy(CharacterBase):
         self.ai_move_speed = ai_move_speed
         self.popup=popup
         if self.popup and "landing" in self.popup:
-            self.jump_z = 40
-            self.jump_z_vel = -0.1
+            self.jump_z = 20
+            self.jump_z_vel = -0.2
 
         # 4) 調整動畫貼圖大小
         #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface

@@ -50,6 +50,7 @@ class AttackEffect(Enum):
     BURN = auto()
     DROP_MAGIC_POTION = auto()
     AFTER_IMAGE = auto()
+    HIT_STOP=auto()
 class EffectExpireMode(Enum):
     LANDING = auto()   # 落地消失
     TIMED = auto()     # 定時消失

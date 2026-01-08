@@ -680,6 +680,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 phase = 1
                 # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
+                px, py = player.x, player.y
                 enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                                    "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
                 # enemy2.dummy = True
@@ -742,26 +743,29 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             break
 
         # main.py 的 scene_madou 迴圈內
-        cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
-        cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
 
-        # 增加震動偏移
+        # 1. 先根據角色位置計算基礎攝影機座標
+        base_cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        base_cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+
+        # 2. 進行地圖邊界限制 (Clamp)，確保基礎背景座標不越界
+        base_cam_x = max(0, min(base_cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        base_cam_y = max(0, min(base_cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+
+        # 3. 取得震動偏移量
         ox, oy = scene.get_camera_offset()
-        cam_x += ox
-        cam_y += oy
 
-        # 最後再做邊界限制
-        cam_x = max(0, min(cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
-        cam_y = max(0, min(cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
-        # cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
-        # cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
-        # cam_x = max(0, min(cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
-        # cam_y = max(0, min(cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
-        pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
+        # 4. 最終繪製用的 cam_x/y 等於「基礎座標」加上「震動偏移」
+        # 注意：這裡不要再做一次邊界限制，否則震動會被擋住
+        cam_x = base_cam_x + ox
+        cam_y = base_cam_y + oy
 
+        # --- 接下來進行繪圖 ---
         win.fill(WHITE)
         draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+
+        #pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
         pygame.display.update()
         clock.tick(FPS)
 

@@ -285,6 +285,17 @@ class HoldFlyLogicMixin:
         if self.held_by:
             self.on_held_location()
         elif self.flying:
+            next_x = self.x+self.vel_x
+            #可能是item或character, 只有character需要反彈
+            wall_collied = False
+            if hasattr(self, "check_wall_collision"):
+                wall_collied = self.check_wall_collision(self.x+self.vel_x)
+            if wall_collied:
+                #撞牆反彈
+                self.vel_x = 0.2*self.vel_x
+                print('飛行撞牆反彈')
+                if self.scene:
+                    self.scene.trigger_shake(10, 5)
             self.x += self.vel_x
             #print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
             hit_someone = self.on_fly_z()

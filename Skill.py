@@ -25,7 +25,11 @@ class AttackState:
                 dir_vec = 1
             elif self.character.facing == DirState.LEFT:
                 dir_vec = -1
-            self.character.x += dir_vec*self.data.force_move
+
+                # --- 修正：計算新座標並檢查邊界 ---
+            new_x = self.character.x + dir_vec * self.data.force_move
+            # 限制在 [0, MAP_WIDTH - 角色寬度] 之間
+            self.character.x = max(0, min(new_x, self.character.map_w - self.character.width))
 
     def is_active(self):
         return self.timer > 0
@@ -118,8 +122,8 @@ class ThrowAttackState(AttackState):
 # === Attack Data Definition ===
 class AttackData:
     def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
-                 force_move=0, effects=None,knock_back_power=[0.0,0.0], damage=10,
-                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, frame_map_ratio=[1], character_effect=None):
+                 force_move=0, effects=None,knock_back_power=[0.0, 0.0], damage=10,
+                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, frame_map_ratio=[1], hit_stop_frames=0):
 
         self.attack_type = attack_type
         self.duration = duration
@@ -141,6 +145,7 @@ class AttackData:
         self.effect_component_config = effect_component_config or {}
         self.dialogue = dialogue
         self.frame_map_ratio=frame_map_ratio
+        self.hit_stop_frames = hit_stop_frames  # 凍結幀數 (通常 3~8 幀就很強烈)
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -349,7 +354,7 @@ attack_data_dict = {
         damage=7,
         frame_map=[1] * 12 + [0] * 24,
         frame_map_ratio=[12, 24],
-        knock_back_power=1.0
+        knock_back_power=[1.0,0.2]
     ),
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
@@ -488,5 +493,6 @@ attack_data_dict = {
                 "expire_type": EffectExpireMode.TIMED
             }
         },
+        hit_stop_frames=5
     )
 }
