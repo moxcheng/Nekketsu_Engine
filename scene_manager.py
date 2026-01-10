@@ -7,7 +7,7 @@ import math
 
 
 class VisualEffect:
-    def __init__(self, x, y, z, frames, anim_speed=4):
+    def __init__(self, x, y, z, frames, anim_speed=4, alpha=255, flip = False):
         self.x = x
         self.y = y
         self.z = z
@@ -15,6 +15,8 @@ class VisualEffect:
         self.anim_speed = anim_speed
         self.timer = 0
         self.alive = True
+        self.alpha = alpha
+        self.flip = flip
 
     def update(self):
         self.timer += 1
@@ -35,6 +37,9 @@ class VisualEffect:
         py = int((map_h - self.y) * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
 
         # 居中繪製
+        frame.set_alpha(self.alpha)
+        if self.flip:
+            frame = pygame.transform.flip(frame, True, False)
         rect = frame.get_rect(center=(px, py))
         win.blit(frame, rect)
 
@@ -78,7 +83,10 @@ class SceneManager:
                 self.end_cuts.append(pygame.image.load(cut).convert_alpha())
         #打擊特效
         self.visual_effects = []  # 專門儲存打擊特效
-        self.hit_effect_frames = self.load_hit_assets()  # 預載特效圖
+        self.hit_effect_frames = self.load_effect_assets(path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45)  # 預載特效圖
+        self.hitstop_effect_frames = self.load_effect_assets(path="..//Assets_Drive//hit_stop1.png", frame_w=128, frame_h=128)  # 預載特效圖
+        self.brust_effect_frames = self.load_effect_assets(path="..//Assets_Drive//brust.png", frame_w=128,frame_h=128)  # 預載特效圖
+        #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
         self.shake_intensity = 0
@@ -88,12 +96,21 @@ class SceneManager:
     def trigger_hit_stop(self, frames):
         """觸發時間凍結"""
         self.hit_stop_timer = max(self.hit_stop_timer, frames)
-    def create_hit_effect(self, x, y, z):
+    def create_effect(self, x, y, z, type='hit', flip=False):
         # 這裡的 z 通常是碰撞盒交疊的中心 z
-        new_effect = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=2)
-        self.visual_effects.append(new_effect)
+        new_effect = None
+        if type =='hit':
+            new_effect = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=2, alpha=255)
+        elif type == 'hitstop':
+            new_effect = VisualEffect(x, y, z, self.hitstop_effect_frames, anim_speed=2, alpha=200, flip=flip)
+        elif type == 'brust':
+            new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=4, alpha=200)
+        if new_effect:
+            self.visual_effects.append(new_effect)
 
-    def load_hit_assets(self, path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45):
+
+
+    def load_effect_assets(self, path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45):
         """
         載入打擊特效圖集並自動切片。
         """
@@ -136,13 +153,6 @@ class SceneManager:
         self.clear_text = message
         self.scene_end_countdown = countdown
 
-    # def create_hit_effect(self, x, y, z):
-    #     """
-    #     利用計算出的中心點產生特效。
-    #     """
-    #     # 使用計算出的重疊中心座標
-    #     new_vfx = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=3)
-    #     self.visual_effects.append(new_vfx)
 
     # --- 在每幀繪圖最後呼叫 ---
     def draw_overlay(self, win):
@@ -452,7 +462,7 @@ class SceneManager:
                 cx = (box['x1'] + box['x2']) / 2
                 cy = (box['y1'] + box['y2']) / 2
                 cz = (box['z1'] + box['z2']) / 2
-                self.create_hit_effect(cx, cy, cz)
+                self.create_effect(cx, cy, cz,'hit')
 
         # 3. 觸發全畫面劇烈震動
         self.trigger_shake(duration=30, intensity=15)

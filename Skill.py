@@ -123,7 +123,8 @@ class ThrowAttackState(AttackState):
 class AttackData:
     def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
                  force_move=0, effects=None,knock_back_power=[0.0, 0.0], damage=10,
-                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None, dialogue=None, frame_map_ratio=[1], hit_stop_frames=0):
+                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None,
+                 dialogue=None, frame_map_ratio=[1], hit_stop_frames=0, scene_effect = None):
 
         self.attack_type = attack_type
         self.duration = duration
@@ -303,6 +304,7 @@ attack_data_dict = {
         frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
         frame_map_ratio=[8, 16, 8],
         knock_back_power=[0.5,1.0],
+        hit_stop_frames=5
     ),
     AttackType.MAHAHPUNCH: AttackData(
         attack_type=AttackType.MAHAHPUNCH,
@@ -325,7 +327,9 @@ attack_data_dict = {
                 "expire_type":EffectExpireMode.ATTACK_END,
                 "alpha":128,
                 "anim_speed":4
-            }
+            },
+            "frame_width":128,
+            "frame_height":128
         },
         dialogue = '啊達達達達達',
         frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4]
@@ -354,7 +358,8 @@ attack_data_dict = {
         damage=7,
         frame_map=[1] * 12 + [0] * 24,
         frame_map_ratio=[12, 24],
-        knock_back_power=[1.0,0.2]
+        knock_back_power=[1.0,0.2],
+        hit_stop_frames=5
     ),
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
@@ -385,9 +390,11 @@ attack_data_dict = {
             # 這是您在 ComponentHost 中使用的 key，用於移除
             "component_key": "aura_effect",
             "params": {
-                "image_path": "..//Assets_Drive//aura_96.png",
-                "expire_type":EffectExpireMode.LANDING
-            }
+                "image_path": "..//Assets_Drive//aura_4frame_256.png",
+                "expire_type":EffectExpireMode.LANDING,
+                "frame_width": 256,
+                "frame_height": 256
+            },
         },
         dialogue="飛翔白麗!",
         frame_map_ratio = [999]
@@ -489,9 +496,12 @@ attack_data_dict = {
             # 這是您在 ComponentHost 中使用的 key，用於移除
             "component_key": "aura_effect",
             "params": {
-                "image_path": "..//Assets_Drive//aura_96.png",
-                "expire_type": EffectExpireMode.TIMED
-            }
+                "image_path": "..//Assets_Drive//brust_256.png",
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "frame_width": 256,
+                "frame_height": 256,
+                "anim_speed": 12
+            },
         },
         hit_stop_frames=5
     )

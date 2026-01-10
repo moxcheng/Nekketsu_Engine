@@ -455,20 +455,12 @@ class AuraEffectComponent(Component):
         if owner.facing == DirState.LEFT:
             draw_image = pygame.transform.flip(raw_frame, True, False)
 
-        # 1. 計算角色在螢幕上的座標
-        terrain_z_offset = owner.z * Z_DRAW_OFFSET
-        px = int(owner.x * TILE_SIZE) - cam_x
-        py = int((
-                             owner.map_h - owner.y - owner.height) * TILE_SIZE - owner.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
-
-
-
-        # 2. 調整繪製位置（讓靈氣繞在角色周圍）
-        frame_rect = draw_image.get_rect()
-        cx = px + int(owner.width * TILE_SIZE / 2)  # 角色中心X
-        draw_x = cx - frame_rect.width // 2
-        draw_y = py + frame_rect.height // 4  # 讓靈氣從腳部開始向上環繞
-
-        # 3. 繪製
+        cx, cy = self.owner.cached_pivot
+        # 向上偏移半個身高，對準腰部
+        center_y = cy - (self.owner.height * TILE_SIZE // 2)
+        rect = draw_image.get_rect()
+        draw_x = cx - rect.width // 2
+        #draw_y = center_y - rect.height // 2
+        draw_y = center_y - rect.height*3//4
         win.blit(draw_image, (draw_x, draw_y))
 

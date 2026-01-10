@@ -551,7 +551,9 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         pygame.display.update()
         clock.tick(FPS)
 
+from CharactersConfig import *
 def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png"):
+
     # === 搖桿初始化 ===
     joystick = None
     joy_buttons_prev = []
@@ -591,7 +593,8 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     tile_offset_y = 0
     px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
-    player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
+    #player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
+    player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
@@ -611,7 +614,8 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     phase = 0
     #產生小兵list
     import random
-    shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
+    #shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
+    shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG]
     x_pool = list(range(-1*total_enemy, total_enemy))
     random.shuffle(x_pool)
     for i in range(total_enemy):
@@ -619,9 +623,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         choosed_idx = random.randint(0,3)
         x_dis = x_pool[i]
         y_dis = random.randint(-1, 1)
-        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\madou\\{shuki_list[choosed_idx][0]}", scale=shuki_list[choosed_idx][1])
+        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, config_dict = shuki_list[choosed_idx])
         e.attack_cooldown = random.randint(40, 50)
-        e.max_hp = e.health = int(40*shuki_list[choosed_idx][1])
+        e.max_hp = e.health = int(40*(shuki_list[choosed_idx].get("scale", 1.0)))
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
@@ -651,16 +655,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             # --- 在這裡檢查 Enter ---
         if kb_keys[pygame.K_RETURN]:
             print('Enter is being held!')
-            player.enable_super_move(pre_pose_background=["..\\Assets_Drive\\madou\\pre_pose1.png","..\\Assets_Drive\\madou\\pre_pose2.png",
-                                                          "..\\Assets_Drive\\madou\\pre_pose3.png","..\\Assets_Drive\\madou\\pre_pose4.png","..\\Assets_Drive\\madou\\pre_pose5.png",
-                                                          "..\\Assets_Drive\\madou\\pre_pose6.png","..\\Assets_Drive\\madou\\pre_pose7.png","..\\Assets_Drive\\madou\\pre_pose8.png",
-                                                          "..\\Assets_Drive\\madou\\pre_pose9.png","..\\Assets_Drive\\madou\\pre_pose10.png"],
-                                     portraits=[{"path":"..\\Assets_Drive\\madou\\tachie_00.png", "start":0.7, "end":0.525, "dir":"L2R","Offset_y":-50},
-                                                {"path":"..\\Assets_Drive\\madou\\tachie_01.png", "start":0.525, "end":0.4, "dir":"R2L","Offset_y":-15},
-                                                {"path":"..\\Assets_Drive\\madou\\tachie_02.png", "start":0.4, "end":0.3, "dir":"L2R","Offset_y":15},
-                                                {"path":"..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir":"R2L","Offset_y":0}],
-                                     effect="..\\Assets_Drive\\madou\\tachie_5.png",
-                                     portraits_begin=0.7, timer=500)
+            player.enable_super_move()
 
         player.handle_input(keys)
 
@@ -681,8 +676,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
                 px, py = player.x, player.y
-                enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
-                                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
+                # enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
+                #                    "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
+                enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
                 # enemy2.dummy = True
                 enemy2.max_hp = 300
                 enemy2.health = 300
@@ -711,9 +707,14 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                             x_dis = random.randint(-10, 0)
                         y_dis = random.randint(-2, 2)
                         px, py = player.x, player.y
-                        e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
-                                       "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
-                                       popup=["landing", "shake"], ai_move_speed=0.25, attack_cooldown=45)
+                        # e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
+                        #                "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
+                        #                popup=["landing", "shake"], ai_move_speed=0.25, attack_cooldown=45)
+                        e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
+                        e.scale=2.0
+                        e.name=f'fantom{i}'
+                        e.attack_cooldown=45
+                        e.ai_move_speed=0.3
                         scene.register_unit(e, side='enemy_side', tags=['enemy'], type='character')
                         print('summon boss fantom')
                     phase = 2
