@@ -48,21 +48,12 @@ class Item(ComponentHost, HoldFlyLogicMixin):
             return self.terrain[int(y), int(x)]
         return None
     def draw(self, win, cam_x, cam_y, tile_offset_y):
-        px = int((self.x + 0.5) * TILE_SIZE) - cam_
-        #py = int((self.map_h - self.y - 0.5) * TILE_SIZE - self.jump_z * 5) + tile_offset_y
         terrain_z_offset = self.z * Z_DRAW_OFFSET
-        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        px, py = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         w = int(self.width * TILE_SIZE)
         h = int(self.height * TILE_SIZE)
         pygame.draw.rect(win, self.color, (px, py, w, h))
 
-    # def swing_attack(self, attacker):
-    #     print(f"{attacker.name} 用 {self.name} 揮舞攻擊！")
-    # 
-    # def throw(self, attacker):
-    #     print(f"{attacker.name} 投擲了 {self.name}，受重力: {self.is_heavy}")
-    #     self.is_being_held = None
-    #     # 可向 scene_manager 添加拋出物件
     def is_pickable(self):
         return not self.held_by
     def update(self):
@@ -142,8 +133,7 @@ class Rock(Item):
             elif self.held_by.facing == DirState.LEFT:
                 offset_x = 0
 
-        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
-        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         color = self.color
         if self.flying:
@@ -191,8 +181,7 @@ class Fireball(Item):
                 offset_x = self.held_by.width*TILE_SIZE*0.6
             elif self.held_by.facing == DirState.LEFT:
                 offset_x = 0
-        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
-        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         rect = self.image.get_rect(center=(cx, cy))
         #print('fireball.draw')
         win.blit(self.image, rect)
@@ -250,8 +239,7 @@ class Bullet(Item):
                 offset_x = self.held_by.width*TILE_SIZE*0.6
             elif self.held_by.facing == DirState.LEFT:
                 offset_x = 0
-        cx = int(self.x * TILE_SIZE + offset_x) - cam_x
-        cy = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         rect = self.image.get_rect(center=(cx, cy))
         #print('fireball.draw')
         win.blit(self.image, rect)
@@ -319,13 +307,7 @@ class Coin(Item):
 
 
         # 計算畫面位置
-        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
-
-        cy = int((self.map_h - (
-                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - 0 + 0) - cam_y + tile_offset_y
-
-
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         # 每 15 frame 換一張，共 4 張動畫
         frame_index = (self.anim_timer // 15) % self.num_frames
         frame = self.frames[frame_index]
@@ -374,10 +356,7 @@ class MagicPotion(Item):
 
     def draw(self, win, cam_x, cam_y, tile_offset_y):
         # 計算畫面位置
-        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
-        cy = int((self.map_h - (
-                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - 0 + 0) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         # 每 15 frame 換一張，共 4 張動畫
         frame_index = (self.anim_timer // 15) % self.num_frames
         frame = self.frames[frame_index]

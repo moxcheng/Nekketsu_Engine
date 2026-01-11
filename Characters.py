@@ -497,14 +497,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.current_anim_frame = frame
 
         # 計算畫面座標
-        px = int(self.x * TILE_SIZE) - cam_x
-        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
         terrain_z_offset = self.z * Z_DRAW_OFFSET
         falling_z_offset = 0
         if self.is_falling():
             falling_z_offset = self.falling_y_offset * Z_FALL_OFSSET
-        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
-        # print(f'terrain_z_offset={terrain_z_offset:.2f} falling_z_offset={falling_z_offset:.2f} py={py}')
+        px, py = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         # 劇情提示（血條與命中特效等）
         self.draw_combat_bar(win, px, py)
@@ -527,11 +524,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if DEBUG:
             self.draw_debug_info(win, px, py)
             # DEBUG: 角色腳下的圓形定位點（用於碰撞、踩地感）
-        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-#for swing --- 關鍵修正：若正在被揮舞，則不再加上額外的 held_by 偏移，因為 self.x 已在 Skill.py 被更新 ---
-
         base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
-        cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         # cache住繪圖位置
         self.cached_pivot = (cx, cy)
@@ -600,11 +594,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         temp_frame.set_alpha(120)
         win.blit(temp_frame, (self.currnet_anim_draw_x, self.current_anim_draw_y))
     def draw_block(self, win, cam_x, cam_y, tile_offset_y):
-        px = int(self.x * TILE_SIZE) - cam_x
-        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
         terrain_z_offset = self.z * Z_DRAW_OFFSET
-        py = int((
-                             self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        px, py = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         # 狀態導向繪製
 
@@ -623,8 +614,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         else:
             self.draw_stand(win, px, py)
 
-        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-        cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         pygame.draw.circle(win, (0, 0, 0), (cx, cy), 3)
 
         self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0))
@@ -748,10 +738,12 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def into_down_state(self):
         self.combat_state = CombatState.DOWN
         self.invincible_timer = 40
-        self.combat_timer = 180
-        self.combat_timer_max = 180
+        knockout_time = 80+int(100*self.health/self.max_hp)
+        #血越少越快醒
+        self.combat_timer = knockout_time
+        self.combat_timer_max = knockout_time
         self.hit_count = 0.0
-        self.set_rigid(180)
+        self.set_rigid(knockout_time)
         self.state = MoveState.STAND
     def into_dead_state(self):
         self.combat_state = CombatState.DEAD
@@ -899,6 +891,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         height = 5
         ratio = self.combat_timer / self.combat_timer_max
 
+        # 這裡計算角色在螢幕上的實際高度
+        char_visual_height = int(self.height * TILE_SIZE)
+
         if self.combat_state == CombatState.WEAK:
             color = (255, 255, 0)
         elif self.combat_state == CombatState.DOWN:
@@ -909,18 +904,18 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         # 如果是 down 狀態，改畫在右側橫向縮短，避免重疊倒地姿勢
         if self.combat_state == CombatState.DOWN:
             bar_x = px + width + 4
-            bar_y = py + int(self.height * TILE_SIZE * 0.5)
-            bar_h = int(self.height * TILE_SIZE * 0.5)
+            bar_y = py - int(char_visual_height * 0.5)
+            bar_h = int(char_visual_height * 0.5)
             bar_w = 5
             fill_h = int(bar_h * ratio)
             pygame.draw.rect(win, (50, 50, 50), (bar_x, bar_y, bar_w, bar_h))
             pygame.draw.rect(win, color, (bar_x, bar_y + bar_h - fill_h, bar_w, fill_h))
         else:
-            # 一般狀態畫在角色上方
-            bar_x = px
-            bar_y = py - 8
+            # 一般狀態（如 WEAK）畫在頭頂
+            bar_x = px - width // 2  # 因為 px 是中心，所以要減去半寬
+            bar_y = py - char_visual_height - 10  # 腳底 - 身高 - 偏移 = 頭頂上方
             pygame.draw.rect(win, (50, 50, 50), (bar_x, bar_y, width, height))
-            pygame.draw.rect(win, color, (bar_x, bar_y, int(width * ratio), height))
+            pygame.draw.rect(win, (255, 255, 0), (bar_x, bar_y, int(width * ratio), height))
 
     def update_hit_timer(self):
         if self.hit_timer > 0:
@@ -1170,13 +1165,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if self.on_hit_timer > 0:
             self.on_hit_timer -= 1
         if self.combat_timer > 0:
-            #血越少醒的越快
-            if self.health > self.max_hp*0.75:
-                self.combat_timer -= 1
-            elif self.health > self.max_hp*0.5:
-                self.combat_timer -= 2
-            elif self.health > self.max_hp*0.25:
-                self.combat_timer -= 4
+            self.combat_timer -= 1
 
         # 每禎遞減攻擊計時器
         #死亡消失
@@ -1482,42 +1471,25 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     self.apply_skill_effect_components(atk_data)
 
     def draw_hp_bar(self, win, px, py):
-        # max_hp = 100
-        # bar_width = int(self.width * TILE_SIZE)
-        # hp_ratio = self.health / max_hp
-        # hp_color = (200, 0, 0)
-        # bg_color = (50, 50, 50)
-        # bar_height = 4
-        # bar_y = py - 14  # 高於角色頭部
-        # pygame.draw.rect(win, bg_color, (px, bar_y, bar_width, bar_height))
-        # pygame.draw.rect(win, hp_color, (px, bar_y, int(bar_width * hp_ratio), bar_height))
         # 若死亡則不顯示血條
         if self.combat_state == CombatState.DEAD:
             return
 
         bar_width = int(self.width * TILE_SIZE)
         bar_height = 4
-        bar_y = py - 14  # 血條在角色頭上方
-
+        # --- 關鍵修正：py 是腳底，要減去身高 ---
+        char_visual_height = int(self.height * TILE_SIZE)
+        bar_y = py - char_visual_height - 18  # 放在比 combat bar 更高一點的地方
         # 🟥 計算比例（最大值避免為 0）
-        max_hp = getattr(self, "max_hp", 100)
-        max_hp = max(max_hp, 1)  # 防止除以 0
+        max_hp = max(getattr(self, "max_hp", 100), 1)
         hp_ratio = self.health / max_hp
 
-        # 🎨 顏色樣式根據角色類型切換
-        if hasattr(self, 'name') and self.name == 'player':
-            hp_color = (200, 0, 0)  # 玩家 → 紅色
-            bg_color = (50, 0, 0)
-            border_color = (255, 200, 200)
-        else:
-            hp_color = (255, 215, 0)  # 敵人
-            bg_color = (0, 0, 50)
-            border_color = (200, 200, 255)
+        # 修正繪製 X 座標，px 是中心點
+        draw_x = px - bar_width // 2
+        pygame.draw.rect(win, (50, 0, 0), (draw_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(win, (200, 0, 0), (draw_x, bar_y, int(bar_width * hp_ratio), bar_height))
+        pygame.draw.rect(win, (255, 200, 200), (draw_x, bar_y, bar_width, bar_height), 1)
 
-        # 🖌️ 繪製背景與血量條
-        pygame.draw.rect(win, bg_color, (px, bar_y, bar_width, bar_height))
-        pygame.draw.rect(win, hp_color, (px, bar_y, int(bar_width * hp_ratio), bar_height))
-        pygame.draw.rect(win, border_color, (px, bar_y, bar_width, bar_height), 1)
     def create_flying_object(self, item_to_create='fireball'):
         from Items import Fireball, Bullet
         rebuild_map_info = [self.terrain, self.map_w, self.map_h]
@@ -1761,12 +1733,17 @@ class Player(CharacterBase):
         try_brust = intent.get("button_pressed")
         # 檢查是否至少按下了兩個攻擊鍵，且目前不是無敵狀態
         if try_brust and sum(try_brust) >= 2 and self.invincible_timer <= 0:
+            print(f"[BRUST] {self.name} 強制發動爆氣！")
+            self.into_normal_state()  # 解除受創狀態
+            self.rigid_timer = 0    #解除無法操作
+            self.attack(AttackType.BRUST)  # 呼叫攻擊
             if self.mp > 0:  # 如果有爆氣資源
-                print(f"[BRUST] {self.name} 強制發動爆氣！")
-                self.into_normal_state()  # 解除受創狀態
-                self.attack(AttackType.BRUST)  # 呼叫攻擊
                 self.mp -= 1
-                return  # 爆氣是最高優先級，直接結束輸入處理
+            else:
+                self.health -= min(20, self.health-1)
+            return  # 爆氣是最高優先級，直接結束輸入處理
+
+
 
         # 2. 呼叫父類別處理一般攻擊與移動
         super().handle_input(intent)
@@ -1815,6 +1792,8 @@ class Player(CharacterBase):
         if self.held_by:
             print(f'{self.name} 被持有 {self.held_by.name}')
         if self.health < 50 and self.health > 0:
+            if not self.has_stand:
+                self.mp += 3
             self.has_stand = True
             self.super_armor_timer = 1
             #持續霸體
@@ -1873,19 +1852,14 @@ class Player(CharacterBase):
             frame = pygame.transform.flip(frame, True, False)
 
         # 計算畫面座標
-        px = int(self.x * TILE_SIZE) - cam_x
-        # py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
         terrain_z_offset = self.z * Z_DRAW_OFFSET
         falling_z_offset = 0
         if self.is_falling():
             falling_z_offset = self.falling_y_offset * Z_FALL_OFSSET
-        py = int((self.map_h - self.y - self.height) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
 
-        cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
-        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
-        cy = int((self.map_h - (
-                    self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
-
+        # cx = int((self.x + self.width / 2) * TILE_SIZE) - cam_x
+        # cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset + falling_z_offset) - cam_y + tile_offset_y
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
         draw_y = cy - frame_rect.height

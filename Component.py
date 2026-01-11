@@ -130,6 +130,15 @@ class ComponentHost:
         # fallback 預設：回傳 None，讓開發者知道需要自行實作
         raise NotImplementedError(f"{self.__class__.__name__} 沒有實作 get_throw_attack_data()")
 
+    def calculate_cx_cy(owner, cam_x, cam_y, tile_offset_y):
+        """計算物件『腳底中心』在螢幕上的座標"""
+        terrain_z_offset = owner.z * Z_DRAW_OFFSET
+        # cx: 腳底中心 X
+        cx = int((owner.x + owner.width / 2) * TILE_SIZE) - cam_x
+        # cy: 腳底中心 Y (不扣除 owner.height)
+        cy = int((owner.map_h - owner.y) * TILE_SIZE - owner.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        return cx, cy
+
 class HoldableComponent(Component):
     def __init__(self, owner):
         super().__init__()
@@ -461,6 +470,10 @@ class AuraEffectComponent(Component):
         rect = draw_image.get_rect()
         draw_x = cx - rect.width // 2
         #draw_y = center_y - rect.height // 2
-        draw_y = center_y - rect.height*3//4
+        # draw_y = center_y - rect.height*3//4
+        # 對準角色正中心 (腰部)
+        char_center_y = cy - (self.owner.height * TILE_SIZE // 2)
+        # 讓靈氣素材的中心點對準角色中心
+        draw_y = char_center_y - rect.height // 2
         win.blit(draw_image, (draw_x, draw_y))
 

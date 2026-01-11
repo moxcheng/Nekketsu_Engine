@@ -195,7 +195,7 @@ def two_side_hitbox_func(x, y, facing, actor=None):
         h = 2.5
     # 2. 計算攻擊觸及距離（reach）
     #    舉例：讓 reach 跟寬度成比例
-    reach = 0.9 + 0.6 * (w / 1.5)
+    reach = 0.9 + 0.6 * w
     # 3. 垂直覆蓋範圍也用角色高度來估
     y_top = y - 0.2
     y_bottom = y + h * 0.6

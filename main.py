@@ -678,7 +678,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 px, py = player.x, player.y
                 # enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                    "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
-                enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
+                enemy2 = Enemy(px + 3, py, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
                 # enemy2.dummy = True
                 enemy2.max_hp = 300
                 enemy2.health = 300
@@ -705,7 +705,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                             x_dis = random.randint(0, 10)
                         else:
                             x_dis = random.randint(-10, 0)
-                        y_dis = random.randint(-2, 2)
+                        y_dis = random.randint(0, 2)
                         px, py = player.x, player.y
                         # e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
                         #                "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
