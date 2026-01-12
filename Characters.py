@@ -151,7 +151,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.combat_state = CombatState.NORMAL
         self.combat_timer = 0
         self.hit_count = 0.0
-        self.max_hits_before_weak = 3.0
+        self.max_hits_before_weak = 12.0
         self.recovery_rate = 0.01
         self.max_hp=100
         self.health = self.max_hp
@@ -244,6 +244,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.afterimage_enabled = False  # 是否開啟殘影
         self.afterimage_timer = 0
         self.cached_pivot = (self.x, self.y)
+        #輸入緩衝
+        self.input_buffer = None  # 存儲指令字串，例如 'z_attack', 'jump'
+        self.input_buffer_timer = 0  # 緩衝剩餘幀數
+        self.BUFFER_MAX_FRAMES = 6  # 緩衝窗口大小
 
     def update_afterimages(self):
         # 只有在特定狀態或開啟標記時才記錄
@@ -1032,7 +1036,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             # 普通攻擊後的邏輯
             #print(f'{self.name} CombatState {self.combat_state.name}')
             if self.combat_state == CombatState.NORMAL:
-                self.hit_count += 1
+                self.hit_count += attack_data.get_damage()
                 if self.hit_count >= self.max_hits_before_weak:
                     self.into_weak_state()
             elif self.combat_state == CombatState.WEAK:
@@ -1548,8 +1552,52 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 print(f"[{self.name}] 成功掛載特效元件: {comp_name} ({comp_key})")
             else:
                 print(f"[WARN] 無法找到特效元件類別: {comp_name}")
+    def queue_command(self, cmd):
+        """將指令塞入緩衝，這會在 handle_input 中被呼叫"""
+        self.input_buffer = cmd
+        self.input_buffer_timer = self.BUFFER_MAX_FRAMES
 
+    def execute_command(self, cmd):
+        """真正執行招式的入口，此時才判定人物狀態"""
+        # 1. 處理移動/特殊指令
+        if cmd == 'jump':
+            if not self.is_jump:
+                self.jump()
+            return
+        elif cmd == 'brust':
+            self.attack(AttackType.BRUST)
+            return
 
+        # 2. 處理攻擊指令：對齊你原有的 resolve_attack_table 邏輯
+        # cmd 可能為 'z_attack', 'x_attack', 'c_attack'
+        if cmd in self.attack_table:
+            # 這裡呼叫你原有的函式來判斷目前是 default / run / high_jump
+            # 確保緩衝出來的拳，會根據「執行那一刻」的速度或狀態來決定招式
+            self.attack_intent = cmd
+            print(f'cmd={cmd}')
+            skill_data = self.resolve_attack_table()
+            if skill_data and skill_data not in ['pickup_item']:
+                self.attack(skill_data)
+
+    def try_consume_buffer(self):
+        """檢查當前狀態是否可以執行緩衝中的指令"""
+        if not self.input_buffer: return
+        # 狀態判斷 A: 正常行動 (招式結束或 IDLE)
+        can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL
+        # 狀態判斷 B: 受身系統 (在擊飛狀態快落地時按跳)
+        is_tech_roll = (self.combat_state == CombatState.KNOCKBACK and
+                        self.jump_z < 0.8 and self.input_buffer == 'jump')
+        if can_act:
+            cmd = self.input_buffer
+            self.input_buffer = None  # 清空
+            self.execute_command(cmd)
+        elif is_tech_roll:
+            print(f"✨ {self.name} 受身成功！")
+            self.input_buffer = None
+            self.into_normal_state()
+            self.invincible_timer = 20  # 給予短暫無敵
+            # 額外的小位移彈開
+            self.knockback_vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):
         super().__init__(x, y, map_info)
@@ -1705,7 +1753,13 @@ class Player(CharacterBase):
             # 設定爆氣後的屬性
             atk_data = attack_data_dict[AttackType.BRUST]
             self.invincible_timer = atk_data.duration
-            self.set_rigid(atk_data.duration)
+            #self.set_rigid(atk_data.duration)
+            self.rigid_timer = 0
+            self.into_normal_state()
+            if self.mp > 0:
+                self.mp -= 1
+            else:
+                self.health -= min(20, self.health-1)
             return
 
         if self.attack_state:
@@ -1728,22 +1782,44 @@ class Player(CharacterBase):
 
 
     def handle_input(self, keys):
+        # 1. 偵測按鍵
+        z = keys[pygame.K_z]
+        x = keys[pygame.K_x]
+        c = keys[pygame.K_c]
+        jump = keys[pygame.K_SPACE]
+        u = keys[pygame.K_UP]
+        d = keys[pygame.K_DOWN]
+        l = keys[pygame.K_LEFT]
+        r = keys[pygame.K_RIGHT]
+
+        # 2. 優先判定 BRUST (組合鍵優先權最高，不進緩衝直接發動)
+        if (z + x + c) >= 2:
+            if self.attack_state is None:  # 只有非攻擊時能主動爆氣
+                self.execute_command('brust')
+                return  # 發動組合鍵後，不進行後續單鍵緩衝
+
+        # 3. 單鍵緩衝判定 (若在硬直中按鍵，會被 queue 起來)
+        down_recovery = (u+d+l+r)*2
+        if z:
+            self.queue_command('z_attack')
+        elif x:
+            self.queue_command('x_attack')
+        elif c:
+            self.queue_command('c_attack')
+        elif jump:
+            self.queue_command('jump')
+
+        if self.combat_state == CombatState.DOWN:
+            #搖搖桿會早點恢復
+            faster = min(down_recovery, self.combat_timer)
+            self.combat_timer -= faster
+            self.rigid_timer -= faster
+
+        # 4. 嘗試消耗緩衝 (如果剛好是 IDLE 狀態，這一幀就會執行)
+        self.try_consume_buffer()
+
+        # 5. 處理移動意圖 (移動不緩衝，因為移動是持續性的)
         intent = self.input_intent(keys)
-        # 1. 偵測爆氣 (Z+X+C)
-        try_brust = intent.get("button_pressed")
-        # 檢查是否至少按下了兩個攻擊鍵，且目前不是無敵狀態
-        if try_brust and sum(try_brust) >= 2 and self.invincible_timer <= 0:
-            print(f"[BRUST] {self.name} 強制發動爆氣！")
-            self.into_normal_state()  # 解除受創狀態
-            self.rigid_timer = 0    #解除無法操作
-            self.attack(AttackType.BRUST)  # 呼叫攻擊
-            if self.mp > 0:  # 如果有爆氣資源
-                self.mp -= 1
-            else:
-                self.health -= min(20, self.health-1)
-            return  # 爆氣是最高優先級，直接結束輸入處理
-
-
 
         # 2. 呼叫父類別處理一般攻擊與移動
         super().handle_input(intent)
@@ -1782,6 +1858,12 @@ class Player(CharacterBase):
 
     #這是player的update
     def update(self):
+        # 1. 處理緩衝計時
+        if self.input_buffer_timer > 0:
+            self.input_buffer_timer -= 1
+            if self.input_buffer_timer == 0:
+                self.input_buffer = None
+        # 2. 原有的狀態更新 (update_combat_state, etc.)
         self.update_common_timer()
         if self.health_visual > self.health:
             self.health_visual -= 0.5
