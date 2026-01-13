@@ -84,6 +84,7 @@ class Item(ComponentHost, HoldFlyLogicMixin):
             damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
             effects=[AttackEffect.SHORT_STUN],
             frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
+            frame_map_ratio = [12, 20]
         )
     # def get_swing_attack_data(self, attacker):
     #     return AttackData(

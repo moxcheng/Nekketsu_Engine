@@ -108,7 +108,7 @@ class ComponentHost:
     def override_attack_intent(self, intent: str) -> str:
         """讓所有元件有機會改寫攻擊意圖"""
         for component in self.components.values():
-            print(f'ComponentHost 的 override_attack_intent')
+            #print(f'ComponentHost 的 override_attack_intent')
             new_intent = component.override_attack_intent(intent)
             if new_intent:
                 return new_intent
@@ -151,7 +151,10 @@ class HoldableComponent(Component):
         obj_name = ''
         if self.held_object:
             obj_name = self.held_object.name
-        print(f'HoldableComponent 的 override_attack_intent====={intent}====({obj_name})')
+        #print(f'HoldableComponent 的 override_attack_intent====={intent}====({obj_name})')
+        # 取得持有者當前的輸入狀態
+        # 假設 Player.input_intent 會把按鍵狀態存入最後的意圖中，或者直接讀取 owner 的 last_intent
+        is_down_holding = self.owner.last_intent.get('down_pressed', False)
 
         if self.held_object:
             print(f'手上持有{self.held_object.name}')
@@ -159,7 +162,7 @@ class HoldableComponent(Component):
                 return "swing_item"
             elif intent == "x_attack":
                 return "throw_item"
-        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0:
+        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and is_down_holding:
             return "pickup_item"
         return intent
 
@@ -280,6 +283,12 @@ class HoldableComponent(Component):
 
             if hasattr(self.owner, "on_picked_up"):
                 self.held_object.on_picked_up(self.owner)
+            if hasattr(self.owner, "input_buffer") and hasattr(self.owner, "input_buffer_timer"):
+                self.owner.input_buffer = None
+                self.owner.input_buffer_timer = 0
+                self.owner.attack_state = None
+                self.owner.set_rigid(8)
+                #a=input('stop54321')
             self.target_item = None
         else:
             print(f"[WARN] 嘗試撿取但附近沒有目標物")

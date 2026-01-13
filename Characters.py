@@ -248,6 +248,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.input_buffer = None  # 存儲指令字串，例如 'z_attack', 'jump'
         self.input_buffer_timer = 0  # 緩衝剩餘幀數
         self.BUFFER_MAX_FRAMES = 6  # 緩衝窗口大小
+        self.is_mashing = False
+        self.death_knockback = False
 
     def update_afterimages(self):
         # 只有在特定狀態或開啟標記時才記錄
@@ -548,6 +550,13 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             draw_x += random.randint(-2, 2)
             draw_y += random.randint(-2, 2)
 
+            # --- 抖動回饋整合 ---
+        if self.is_mashing:
+            # 產生 -2 到 2 像素的隨機偏移
+            import random
+            draw_x += random.randint(-2, 2)
+            draw_y += random.randint(-2, 2)
+
         self.update_afterimages()
         # 2. 繪製殘影
         for img in self.afterimage_list:
@@ -655,7 +664,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             real_intent = self.override_attack_intent(self.attack_intent)
             print(f'意圖:{self.attack_intent} -> {real_intent}')
             if real_intent == 'pickup_item' and not self.is_jump():
-                self.get_component("holdable").try_pickup()
+                # self.get_component("holdable").try_pickup()
+                # self.input_buffer = None
+                # self.input_buffer_timer = 0
+                # print('reslove_attack_table - real_intent = pickup_item')
                 return real_intent
             atk_table = self.attack_table.get(real_intent, {})            
             attack = atk_table.get('default', None)
@@ -760,6 +772,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.hit = False
         self.hit_timer = 0
         self.hit_count = 0.0
+        self.is_mashing = False
         print(f'{self.name} 回到正常')
 
     def check_ground_contact(self):
@@ -822,70 +835,118 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         ty = int(self.y + 0.5)
 
         target_z = self.get_tile_z(tx, ty)
+        if target_z is None:
+            return True  # 超出索引視同撞牆
         if target_z is not None:
             # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
             if target_z - self.z >= 2:
                 return True
 
         return False
+    # def update_physics_only(self):
+    #     if self.knockback_vel_z != 0:
+    #         self.jump_z += self.knockback_vel_z
+    #         self.knockback_vel_z = self.knockback_vel_z - GRAVITY  # 重力加速度
+    #         #print(f'{self.name} knockback with vel_z={self.knockback_vel_z} jump_z={self.jump_z}')
+    #
+    #         if self.jump_z <= 0:
+    #             self.jump_z = 0
+    #             self.knockback_vel_z = 0
+    #             #self.check_ground_contact()
+    #
+    #     # ✅ 若正在跳躍中，僅更新跳躍高度與落下，不進行碰撞判定
+    #     if self.jump_z != 0 and not self.held_by:
+    #         #排除被拿著的狀態
+    #         self.jump_z += self.jump_z_vel
+    #         self.jump_z_vel -= GRAVITY  # ✅ 注意這裡保持一致，不要重複扣太快
+    #
+    #         if self.jump_z <= 0:
+    #             self.jump_z = 0
+    #             self.jump_z_vel = 0
+    #             self.check_ground_contact()
+    #     # ✅ 處理垂直跳躍或擊飛
+    #
+    #
+    #     # ✅ 處理水平擊退
+    #     if self.super_armor_timer <= 0 and self.combat_state != CombatState.DOWN:
+    #         #鋼體不擊退
+    #         if self.knockback_vel_x != 0:
+    #             self.x += self.knockback_vel_x
+    #             self.knockback_vel_x *= 0.85  # 摩擦力衰減
+    #             #print(f'{self.name} knockback_vel_x={self.knockback_vel_x}')
+    #             if abs(self.knockback_vel_x) < 0.1:
+    #                 self.knockback_vel_x = 0
+    #
+    #     # 水平擊退與撞牆偵測
+    #     if self.combat_state == CombatState.KNOCKBACK:
+    #         if self.knockback_vel_x != 0:
+    #             next_x = self.x + self.knockback_vel_x
+    #
+    #             if self.check_wall_collision(next_x):
+    #                 # 撞牆反應：
+    #                 print(f"[PHYSICS] {self.name} 撞牆了！, ({self.x}, {self.y})")
+    #                 self.knockback_vel_x = -self.knockback_vel_x * 0.2  # 反彈
+    #
+    #                 # 如果還在空中，讓它垂直落下；如果接近地面，直接進入倒地
+    #                 if self.jump_z <= 0.5:
+    #                     self.into_down_state()
+    #
+    #                 # 選配：加入撞牆震動
+    #                 if self.scene:
+    #                     self.scene.trigger_shake(10,5)
+    #             else:
+    #                 self.x = next_x
+    #                 self.knockback_vel_x *= 0.85
+    #
+    #                 if abs(self.knockback_vel_x) < 0.05:
+    #                     self.knockback_vel_x = 0
+    # Characters.py -> CharacterBase.update_physics_only
+
     def update_physics_only(self):
+        # --- 1. 處理垂直位移 (保持原樣) ---
         if self.knockback_vel_z != 0:
             self.jump_z += self.knockback_vel_z
-            self.knockback_vel_z = self.knockback_vel_z - GRAVITY  # 重力加速度
-            #print(f'{self.name} knockback with vel_z={self.knockback_vel_z} jump_z={self.jump_z}')
-
+            self.knockback_vel_z -= GRAVITY
             if self.jump_z <= 0:
                 self.jump_z = 0
                 self.knockback_vel_z = 0
-                #self.check_ground_contact()
 
-        # ✅ 若正在跳躍中，僅更新跳躍高度與落下，不進行碰撞判定
         if self.jump_z != 0 and not self.held_by:
-            #排除被拿著的狀態
             self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= GRAVITY  # ✅ 注意這裡保持一致，不要重複扣太快
-
+            self.jump_z_vel -= GRAVITY
             if self.jump_z <= 0:
                 self.jump_z = 0
                 self.jump_z_vel = 0
                 self.check_ground_contact()
-        # ✅ 處理垂直跳躍或擊飛
 
+        # --- 2. 整合水平位移與邊界偵測 ---
+        # 只有在有水平速度且非霸體、非倒地（或是正在受身/擊飛狀態）時處理
+        if self.knockback_vel_x != 0 and self.super_armor_timer <= 0:
 
-        # ✅ 處理水平擊退
-        if self.super_armor_timer <= 0 and self.combat_state != CombatState.DOWN:
-            #鋼體不擊退
-            if self.knockback_vel_x != 0:
-                self.x += self.knockback_vel_x
-                self.knockback_vel_x *= 0.85  # 摩擦力衰減
-                #print(f'{self.name} knockback_vel_x={self.knockback_vel_x}')
-                if abs(self.knockback_vel_x) < 0.1:
-                    self.knockback_vel_x = 0
+            # 預測下一幀的位置
+            next_x = self.x + self.knockback_vel_x
 
-        # 水平擊退與撞牆偵測
-        if self.combat_state == CombatState.KNOCKBACK:
-            if self.knockback_vel_x != 0:
-                next_x = self.x + self.knockback_vel_x
-
-                if self.check_wall_collision(next_x):
-                    # 撞牆反應：
-                    print(f"[PHYSICS] {self.name} 撞牆了！, ({self.x}, {self.y})")
+            # 進行邊界檢查 (包含地圖邊緣與牆壁)
+            if self.check_wall_collision(next_x):
+                # 觸發撞牆反應
+                if self.combat_state == CombatState.KNOCKBACK:
+                    print(f"[PHYSICS] {self.name} 撞牆了！位置: {self.x:.2f}")
                     self.knockback_vel_x = -self.knockback_vel_x * 0.2  # 反彈
-
-                    # 如果還在空中，讓它垂直落下；如果接近地面，直接進入倒地
                     if self.jump_z <= 0.5:
                         self.into_down_state()
-
-                    # 選配：加入撞牆震動
                     if self.scene:
-                        self.scene.trigger_shake(10,5)
+                        self.scene.trigger_shake(10, 5)
                 else:
-                    self.x = next_x
-                    self.knockback_vel_x *= 0.85
+                    # 若不是受擊狀態只是普通位移撞牆，則速度歸零
+                    self.knockback_vel_x = 0
+            else:
+                # 沒撞牆，安全套用位移
+                self.x = next_x
 
-                    if abs(self.knockback_vel_x) < 0.05:
-                        self.knockback_vel_x = 0
-
+            # 速度衰減
+            self.knockback_vel_x *= 0.85
+            if abs(self.knockback_vel_x) < 0.05:
+                self.knockback_vel_x = 0
     def draw_combat_bar(self, win, px, py):
         if self.combat_state == CombatState.NORMAL:
             return
@@ -965,8 +1026,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         return True
 
     def get_swing_attack_data(self, attacker):
-        duration = 30
-        if self.rigid_timer < 30:
+        duration = 32
+        if self.rigid_timer < 32:
+            #return None
             duration = self.rigid_timer
         if duration <= 12:
             return None
@@ -1173,7 +1235,17 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         # 每禎遞減攻擊計時器
         #死亡消失
-        if self.health <= 0 and self.combat_state != CombatState.DEAD:
+        if self.health <= 0 and self.combat_state not in [CombatState.KNOCKBACK] and self.death_knockback == False:
+            if self.facing == DirState.LEFT:
+                self.knockback_vel_x = 0.5
+            else:
+                self.knockback_vel_x = -0.5
+            self.knockback_vel_z = 0.1
+            self.jump_z = 0.3
+            self.combat_state = CombatState.KNOCKBACK
+            self.death_knockback = True
+
+        if self.health <= 0 and self.combat_state not in [CombatState.DEAD]:
             if not self.is_knockbacking() and self.jump_z <= 0:
                 self.into_dead_state()
 
@@ -1416,6 +1488,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 if hasattr(comp, "handle_action"):
                     comp.handle_action('pickup_item')
                     self.attack_intent = None
+                    self.input_buffer = None
+                    self.input_buffer_timer = 0
         elif intent_act is not None:
             #打出對應招式
             print('{} 出招 {}'.format(self.name, intent['action']))
@@ -1558,6 +1632,13 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.input_buffer_timer = self.BUFFER_MAX_FRAMES
 
     def execute_command(self, cmd):
+        if cmd == 'pickup_item' and not self.is_jump():
+            self.get_component("holdable").try_pickup()
+            self.input_buffer = None
+            self.input_buffer_timer = 0
+            print('execute_command - pickup_item')
+            self.attack_intent = None
+            return
         """真正執行招式的入口，此時才判定人物狀態"""
         # 1. 處理移動/特殊指令
         if cmd == 'jump':
@@ -1576,14 +1657,34 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.attack_intent = cmd
             print(f'cmd={cmd}')
             skill_data = self.resolve_attack_table()
+            print(f'resolve_cmd={cmd}')
             if skill_data and skill_data not in ['pickup_item']:
                 self.attack(skill_data)
 
+
     def try_consume_buffer(self):
         """檢查當前狀態是否可以執行緩衝中的指令"""
-        if not self.input_buffer: return
+        if not self.input_buffer: return False
+
+        # 這裡先檢查元件是否有改寫意圖的需求
+        final_intent = self.input_buffer
+        for comp in self.components.values():
+            overridden = comp.override_attack_intent(self.input_buffer)
+            if overridden != self.input_buffer:
+                final_intent = overridden
+                break
+
+        # 如果被改寫成 pickup_item，我們就執行 final_intent 並清空緩衝
+        if final_intent == 'pickup_item' and self.attack_state is None:
+            print("try_consome buffer final_intent = pickup_item")
+            self.execute_command('pickup_item')
+            self.input_buffer = None  # 徹底清除，防止 z_attack 殘留
+            self.input_buffer_timer = 0
+            self.attack_intent = None
+            return True
+
         # 狀態判斷 A: 正常行動 (招式結束或 IDLE)
-        can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL
+        can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL and not self.is_locked()
         # 狀態判斷 B: 受身系統 (在擊飛狀態快落地時按跳)
         is_tech_roll = (self.combat_state == CombatState.KNOCKBACK and
                         self.jump_z < 0.8 and self.input_buffer == 'jump')
@@ -1591,6 +1692,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             cmd = self.input_buffer
             self.input_buffer = None  # 清空
             self.execute_command(cmd)
+            return True
         elif is_tech_roll:
             print(f"✨ {self.name} 受身成功！")
             self.input_buffer = None
@@ -1598,6 +1700,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.invincible_timer = 20  # 給予短暫無敵
             # 額外的小位移彈開
             self.knockback_vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
+            return True
+        return False
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):
         super().__init__(x, y, map_info)
@@ -1634,6 +1738,7 @@ class Player(CharacterBase):
             self.super_move_animator = SpriteAnimator(config.get("special_move"), {"frame_width":96, "frame_height":96, "anim_map":None})
         self.super_move_staging = config.get("super_move_staging")
         self.super_move_max_time = 0
+        self.last_dir_input = [0,0,0,0]
 
 
         #for dir in ['left', 'right', 'up', 'down']:
@@ -1678,7 +1783,10 @@ class Player(CharacterBase):
         if self.attack_intent:
             #attack_intent = z/x/c_attack, 對應到招式表
             attack_type = self.resolve_attack_table()
-            self.attack_intent = None
+            if attack_type in ['pickup_item']:
+                self.input_buffer_timer = 0
+                self.input_buffer = None
+                self.attack_intent = None
 
         jump_intent = None
         if self.jump_intent_trigger:
@@ -1710,7 +1818,15 @@ class Player(CharacterBase):
         # 攻擊期間不接受其他輸入:取消攻擊
         # if self.state == MoveState.ATTACK:
         #     return
-
+        # 將入隊邏輯移到這裡，這只會在按下的一瞬間觸發一次
+        if key == pygame.K_z:
+            self.queue_command('z_attack')
+        elif key == pygame.K_x:
+            self.queue_command('x_attack')
+        elif key == pygame.K_c:
+            self.queue_command('c_attack')
+        elif key == pygame.K_SPACE and not self.is_jump():
+            self.queue_command('jump')
 
         if key in KEY_TO_ACTION:
             print(f'{KEY_TO_ACTION[key]} trigger')
@@ -1799,29 +1915,57 @@ class Player(CharacterBase):
                 return  # 發動組合鍵後，不進行後續單鍵緩衝
 
         # 3. 單鍵緩衝判定 (若在硬直中按鍵，會被 queue 起來)
-        down_recovery = (u+d+l+r)*2
-        if z:
-            self.queue_command('z_attack')
-        elif x:
-            self.queue_command('x_attack')
-        elif c:
-            self.queue_command('c_attack')
-        elif jump:
+
+        # if z:
+        #     self.queue_command('z_attack')
+        # elif x:
+        #     self.queue_command('x_attack')
+        # elif c:
+        #     self.queue_command('c_attack')
+        if jump:
             self.queue_command('jump')
 
-        if self.combat_state == CombatState.DOWN:
-            #搖搖桿會早點恢復
-            faster = min(down_recovery, self.combat_timer)
-            self.combat_timer -= faster
-            self.rigid_timer -= faster
 
         # 4. 嘗試消耗緩衝 (如果剛好是 IDLE 狀態，這一幀就會執行)
-        self.try_consume_buffer()
+        did_action = self.try_consume_buffer()
+        if did_action:
+            print(f'[{self.current_frame}]handle_input: did action = {did_action}')
+
 
         # 5. 處理移動意圖 (移動不緩衝，因為移動是持續性的)
         intent = self.input_intent(keys)
 
+        if did_action:
+            print(f'[{self.current_frame}]handle_input: earse intent state\n{intent}')
+
+
+        # 偵測方向是否有變化
+        input_changed = []
+        current_dir_input = [u, d, l, r]
+        for lst, cur in zip(current_dir_input, self.last_dir_input):
+            input_changed.append(1 if lst != cur else 0)
+        dir_changed = False
+        if (input_changed[0] > 0 and input_changed[1] > 0) or (input_changed[2] > 0 and input_changed[3] > 0):
+            dir_changed = True
+
+        self.last_dir_input = current_dir_input
+
+        # 偵測是否有任何攻擊鍵按下 (z, x, c)
+        any_button_pressed = any(intent.get('button_pressed', [False] * 3))
+
+        if self.combat_state == CombatState.DOWN:
+            #print(f"dir_changed={dir_changed}, any_button_pressed={any_button_pressed}")
+            recovery_bonus = 0
+            if dir_changed: recovery_bonus += 5  # 搖晃搖桿獎勵
+            if any_button_pressed: recovery_bonus += 2  # 狂按按鈕獎勵
+            self.is_mashing = True if recovery_bonus > 0 else False
+
+            # 套用加速
+            self.combat_timer -= recovery_bonus
+            self.rigid_timer -= recovery_bonus
+
         # 2. 呼叫父類別處理一般攻擊與移動
+
         super().handle_input(intent)
 
 

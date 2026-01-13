@@ -140,7 +140,7 @@ class AttackData:
         #if sum(frame_map_ratio) != self.duration:
         # sun = sum(frame_map_ratio)
         # print(f'frame_map_ratio={frame_map_ratio} sum={sun}, duration={self.duration}')
-        assert sum(frame_map_ratio) == self.duration, "frame_map 長度需與 duration 相符"
+        assert sum(frame_map_ratio) == self.duration, "frame_map 長度({})需與 duration{} 相符".format(sum(frame_map_ratio), duration)
         self.cancel_table = cancel_table or {}
         self.physical_change = physical_change or {}
         self.effect_component_config = effect_component_config or {}
