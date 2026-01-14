@@ -186,7 +186,7 @@ def front_hitbox_func(x, y, facing, actor=None):
     else:
         return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom}
 
-def two_side_hitbox_func(x, y, facing, actor=None):
+def front_hitbox_func2(x, y, facing, actor=None):
     if actor is not None:
         w = getattr(actor, "width", 1.5)
         h = getattr(actor, "height", 2.5)
@@ -196,6 +196,47 @@ def two_side_hitbox_func(x, y, facing, actor=None):
     # 2. 計算攻擊觸及距離（reach）
     #    舉例：讓 reach 跟寬度成比例
     reach = 0.9 + 0.6 * w
+    # 3. 垂直覆蓋範圍也用角色高度來估
+    y_top = y+h*0.5
+    y_bottom = y_top + h*0.4
+
+    if facing == DirState.RIGHT:
+        return {'x1': x + 0.5, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom}
+    else:
+        return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom}
+
+def swing_hitbox_func(x, y, facing, actor=None):
+
+    if actor is not None:
+        w = getattr(actor, "width", 1.5)
+        h = getattr(actor, "height", 2.5)
+        item_w = getattr(actor.get_component("holdable").held_object, "width", 1.5)
+        item_h = getattr(actor.get_component("holdable").held_object, "heihgt", 1.5)
+    else:
+        w = 1.5
+        h = 2.5
+        item_w, item_h = 1.5, 2.5
+    # 2. 計算攻擊觸及距離（reach）
+    #    舉例：讓 reach 跟寬度成比例
+    reach = 0.9 + (item_w+item_h)/2
+    # 3. 垂直覆蓋範圍也用角色高度來估
+    y_top = y + h*0.5
+    y_bottom = y_top + (item_w+item_h)/2
+
+    if facing == DirState.RIGHT:
+        return {'x1': x + 0.5, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom}
+    else:
+        return {'x1': x - reach, 'x2': x - 0.5, 'y1': y_top, 'y2': y_bottom}
+def two_side_hitbox_func(x, y, facing, actor=None):
+    if actor is not None:
+        w = getattr(actor, "width", 1.5)
+        h = getattr(actor, "height", 2.5)
+    else:
+        w = 1.5
+        h = 2.5
+    # 2. 計算攻擊觸及距離（reach）
+    #    舉例：讓 reach 跟寬度成比例
+    reach = 0.9 + 0.8 * w
     # 3. 垂直覆蓋範圍也用角色高度來估
     y_top = y - 0.2
     y_bottom = y + h * 0.6
@@ -241,8 +282,8 @@ def kick_hitbox_func(x, y, facing, actor=None):
     #    舉例：讓 reach 跟寬度成比例
     reach = 0.9 + 0.6 * (w / 1.5)
     # 3. 垂直覆蓋範圍也用角色高度來估
-    y_top = y+h*0.6
-    y_bottom = y + h * 0.8
+    y_top = y+h*0.4
+    y_bottom = y_top + h * 0.2
 
     if facing == DirState.RIGHT:
         return {'x1': x + 0.2, 'x2': x + reach, 'y1': y_top , 'y2': y_bottom}
@@ -279,6 +320,19 @@ attack_data_dict = {
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio = [15,10,35] #必須與duration等長
     ),
+    AttackType.PUSH: AttackData(
+        attack_type=AttackType.PUSH,
+        duration=60,
+        trigger_frame=30,
+        recovery=15,
+        hitbox_func=front_hitbox_func2,
+        condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
+        knock_back_power=[1.5, 2.0],
+        damage=20,
+        # frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
+        frame_map_ratio=[15, 10, 35]  # 必須與duration等長
+    ),
     AttackType.PUNCH: AttackData(
         attack_type=AttackType.PUNCH,
         duration=32,
@@ -299,8 +353,8 @@ attack_data_dict = {
         recovery=2,
         hitbox_func=punch_hitbox_func,
         condition_func=lambda actor: True,
-        effects=[AttackEffect.SHORT_STUN],
-        damage=5,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
+        damage=8,
         frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
         frame_map_ratio=[8, 16, 8],
         knock_back_power=[0.5,1.0],
@@ -354,8 +408,8 @@ attack_data_dict = {
         recovery=5,
         hitbox_func=kick_hitbox_func,
         condition_func=lambda actor: True,
-        effects=[AttackEffect.SHORT_STUN],
-        damage=7,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
+        damage=8,
         frame_map=[1] * 12 + [0] * 24,
         frame_map_ratio=[12, 24],
         knock_back_power=[1.0,0.2],
@@ -406,18 +460,19 @@ attack_data_dict = {
         recovery=10,
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: True,
-        force_move=0.2,
+        force_move=0.3,
         effects=[AttackEffect.SHORT_STUN],
         knock_back_power=[0.5,0.2],
         damage = 5,
         frame_map_ratio = [10,20]
     ),
+
     AttackType.SWING: AttackData(
         attack_type=AttackType.SWING,
         duration=32,
         trigger_frame=12,
         recovery=16,
-        hitbox_func=punch_hitbox_func,
+        hitbox_func=swing_hitbox_func,
         effects=[AttackEffect.SHORT_STUN],
         damage = 10,
         frame_map = [0]*12 + [1]*20,   #必須與duration等長

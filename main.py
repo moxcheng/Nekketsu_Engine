@@ -617,12 +617,13 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     #產生小兵list
     import random
     #shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
-    shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG]
+    #shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, ]
+    shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, NPC_SHUKI_NEW_1_CONFIG]
     x_pool = list(range(-1*total_enemy, total_enemy))
     random.shuffle(x_pool)
     for i in range(total_enemy):
         rng = random.Random()  # 自動用系統 entropy seed
-        choosed_idx = random.randint(0,3)
+        choosed_idx = random.randint(0,4)
         x_dis = x_pool[i]
         y_dis = random.randint(-1, 1)
         e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, config_dict = shuki_list[choosed_idx])
@@ -632,18 +633,21 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         e.scene=scene
         enemy_list.append(e)
         #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
-
+    enemy_popup_latency = 8
+    enemy_popup_cooldown = 0
     #a=input('press to start')
     while True:
         current_enemy = len(scene.get_units_by_side('enemy_side'))
         max_enemy = 3+destroyed_enemy
-        if created_enemy < total_enemy and current_enemy < max_enemy:
+        enemy_popup_cooldown -= 1
+        if created_enemy < total_enemy and current_enemy < max_enemy and enemy_popup_cooldown <= 0:
             enemy_to_add = max_enemy-current_enemy
             for i in range(enemy_to_add):
                 print(f'加入{enemy_list[created_enemy].name} ({created_enemy}/{total_enemy}), 現在{current_enemy} enemy_to_add{enemy_to_add}')
                 scene.register_unit(enemy_list[created_enemy], side='enemy_side', tags=['enemy', 'interactable'], type='character')
                 created_enemy += 1
                 current_enemy += 1
+                enemy_popup_cooldown = enemy_popup_latency
                 if created_enemy >= total_enemy:
                     break
 

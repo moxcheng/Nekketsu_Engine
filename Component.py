@@ -259,7 +259,7 @@ class HoldableComponent(Component):
         item_name = ''
         if result:
             item_name = self.target_item.name
-        print(f'HoldableComponent 的 find_nearby_item 可互動物件:{unit_names} 尋找可拾取物件:{result}:{item_name}')
+        #print(f'HoldableComponent 的 find_nearby_item 可互動物件:{unit_names} 尋找可拾取物件:{result}:{item_name}')
         # 若無任何可撿物件，清空 target
         if result == False:
             self.target_item = None
@@ -274,7 +274,7 @@ class HoldableComponent(Component):
 
     def try_pickup(self):
         """實際執行撿起行為"""
-        print(f'HoldableComponent 的 try_pickup')
+        #print(f'HoldableComponent 的 try_pickup')
         if self.target_item:
             #如果有找到目標
             self.held_object = self.target_item

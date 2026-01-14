@@ -7,7 +7,7 @@ FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
 
 PLAYER_KONOMI_CONFIG={
     "name": "player",
-    "image_path": "..//Assets_Drive//konomi_test_42frame.png",
+    "image_path": "..//Assets_Drive//konomi_test_44frame.png",
     "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
     "super_move_staging": {
         "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
@@ -35,12 +35,12 @@ PLAYER_KONOMI_CONFIG={
             "jump": [[5, 6]],  # 須修正與Z軸的關係
             "fall": [[6]],
             "flykick": [[8]],
-            "punch": [[9], [10, 11], [12]],
+            "punch": [[9], [11], [12]],
             "special_punch": [[18], [19], [9]],
             "kick": [[13, 7], [14]],
             "special_kick": [[24, 25], [26]],
             "bash": [[15, 16], [17]],
-            "palm": [[20, 21], [22]],
+            "push": [[20], [21],[22]],
             "upper": [[23]],
             "pose_1": [[27]],
             "on_hit": [[28, 29]],
@@ -50,17 +50,71 @@ PLAYER_KONOMI_CONFIG={
             "down": [[37]],
             "dead": [[38]],
             "brust": [[40], [39]],
-            "slash": [[20, 10], [21], [23]],
+            "slash": [[20], [9], [23]],
             "mahahpunch": [[9], [10], [11], [12], [11], [10], [11], [12], [11], [10], [11], [12], [11], [10], [11],
                            [12]],
             "meteofall": [[41]],
             "ranbu": [[9, 10, 11, 12, 14, 13, 18, 11, 23, 26, 24, 40, 39, 41], [5, 23]],
             "swing": [[9], [11]],
-            "throw": [[27], [22]]
+            "throw": [[27], [42,43]]
         }
     },
     "popup":["landing"],
-    "stand":None
+    "stand":None,
+    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL},
+                             'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'run':AttackType.PUSH},
+                             'c_attack':{'default': AttackType.SLASH, 'run': AttackType.PUSH},
+                             'swing_item':{'default': AttackType.SWING},
+                             'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}},
+    "skill_overrides": {
+        AttackType.SPECIAL_PUNCH: {"effect_component_config":{
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_snack.png", # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 150,
+                "frame_width": 192,
+                "frame_height": 192
+            }
+        }},
+        AttackType.SPECIAL_KICK: {"effect_component_config": {
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_scopion.png",  # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 150,
+                "frame_width": 192,
+                "frame_height": 192,
+                "anim_speed": 12
+            }
+        }},
+        AttackType.PUSH: {"effect_component_config":{
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_tiger2.png",  # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 150,
+                "frame_width": 192,
+                "frame_height": 192,
+                "anim_speed":15
+            }
+        }},
+        AttackType.BASH: {"effect_component_config":{
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_dragon.png",  # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 150,
+                "frame_width": 192,
+                "frame_height": 192
+            }
+        },
+        "damage": 16}
+    },
 }
 PLAYER_REN_CONFIG={
     'name': "player",
@@ -119,7 +173,8 @@ basic_anim_map1 = {
     'pose_1': [[6]],
     "knockback": [[12], [19]],
     "mahahpunch": [[4], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5]],
-    "brust": [[6], [7]]
+    "brust": [[6], [7]],
+    "popup":[[24,25,26,27]]
 }
 
 NPC_SHUKI_0_CONFIG={
@@ -132,6 +187,7 @@ NPC_SHUKI_0_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": ELITE_COMBOS,
+    "popup":["anim"],
     "ai_move_speed": 0.15,
     "attack_cooldown": 40
 }
@@ -145,6 +201,7 @@ NPC_SHUKI_1_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": DEFAULT_COMBOS,
+    "popup":["anim"],
     "ai_move_speed": 0.2,
     "attack_cooldown": 35
 }
@@ -158,6 +215,7 @@ NPC_SHUKI_2_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": ELITE_COMBOS,
+    "popup":["anim"],
     "ai_move_speed": 0.18,
     "attack_cooldown": 40
 }
@@ -171,6 +229,7 @@ NPC_SHUKI_3_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": DEFAULT_COMBOS,
+    "popup":["anim"],
     "ai_move_speed": 0.25,
     "attack_cooldown": 40
 }
@@ -187,4 +246,42 @@ NPC_SHUKI_BOSS_CONFIG={
     "popup":["landing","shake"],
     "ai_move_speed":0.15,
     "attack_cooldown":30
+}
+NPC_SHUKI_NEW_1_CONFIG={
+    'name': "shuki_new1",
+    "image_path": "..\\Assets_Drive\\madou\\shuki_new1.png",
+    "scale":1.3,
+    "animator_config":{
+        "frame_width":128,
+        "frame_height":128,
+        "anim_map":{
+            "stand":[[0]],"walk":[[1,2,5,4]],
+            "run": [[1, 2, 5,15,16]],
+            "punch": [[4,7], [8], [5]],
+            "special_punch": [[9], [10], [11]],
+            "bash": [[16, 17]],
+            "jump": [[12, 13]],
+            "fall": [[8]],
+            "flykick": [[14]],
+            "kick": [[13], [14]],
+            "special_kick": [[9,10], [11]],
+            "on_fly": [[24]],
+            "slash": [[17], [11], [10]],
+            "on_hit": [[20]],
+            "weak": [[21]],
+            "down": [[22]],
+            "dead": [[23]],
+            'swing': [[18], [19]],
+            'throw': [[18], [19]],
+            'meteofall': [[14]],
+            'pose_1': [[9]],
+            "knockback": [[24,25,26], [27,22]],
+            "brust": [[4], [9]],
+            "popup":[[28,29,30,31]]
+        }
+    },
+    "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH,AttackType.KICK,AttackType.SPECIAL_KICK, AttackType.SLASH],
+    "popup":["anim"],
+    "ai_move_speed": 0.25,
+    "attack_cooldown": 35
 }

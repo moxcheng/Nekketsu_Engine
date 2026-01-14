@@ -250,6 +250,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.BUFFER_MAX_FRAMES = 6  # 緩衝窗口大小
         self.is_mashing = False
         self.death_knockback = False
+        self.skill_overrides = {}  # 預設為空
 
     def update_afterimages(self):
         # 只有在特定狀態或開啟標記時才記錄
@@ -368,7 +369,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             AttackType.BASH:"bash",AttackType.SLASH:"slash",AttackType.KICK:"kick",AttackType.FLY_KICK:"flykick",
             AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
             AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
-            AttackType.BRUST:"brust"
+            AttackType.BRUST:"brust",AttackType.PUSH:"push"
         }
         move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run"}
         common_anim_material = ['burn']
@@ -443,7 +444,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         else:
             #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
-            if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust',
+            if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust','push',
                              'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw']:
                 index_map = self.frame_map_cache.get(anim_name)
                 if not index_map:
@@ -481,24 +482,33 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         # 新規則<--
 
-        if self.popup and 'landing' in self.popup:
-            if self.jump_z > 0 and self.current_frame < self.summon_sickness:
-                #調整為跳躍動作
-                frames = self.animator.anim_map.get('fall')[0]
-                frame = self.animator.get_frame_by_index(frames[0])
-            if self.jump_z <= 0 and self.current_frame < self.summon_sickness:
-                self.check_ground_contact()
-                frames = self.animator.anim_map.get('pose_1')[0]
-                frame = self.animator.get_frame_by_index(frames[0])
-                if 'shake' in self.popup:
-                    self.scene.trigger_shake(20,15)
-                    print(f'{self.name}, x y z = {self.x, self.y, self.z}, jump_z = {self.jump_z}')
-                self.popup = None
-                self.summon_sickness = 0
+        if self.popup:
+            if 'landing' in self.popup:
+                if self.jump_z > 0 and self.current_frame < self.summon_sickness:
+                    #調整為跳躍動作
+                    frames = self.animator.anim_map.get('fall')[0]
+                    frame = self.animator.get_frame_by_index(frames[0])
+                if self.jump_z <= 0 and self.current_frame < self.summon_sickness:
+                    self.check_ground_contact()
+                    frames = self.animator.anim_map.get('pose_1')[0]
+                    frame = self.animator.get_frame_by_index(frames[0])
+                    if 'shake' in self.popup:
+                        self.scene.trigger_shake(20,15)
+                        print(f'{self.name}, x y z = {self.x, self.y, self.z}, jump_z = {self.jump_z}')
+                    self.popup = None
+                    self.summon_sickness = 0
+            if self.popup and 'anim' in self.popup and self.current_frame < self.summon_sickness:
+                frames = self.animator.anim_map.get('popup')[0]
+                popup_frame_cnt = len(frames)
+                frame_idx = min(int(popup_frame_cnt * self.current_frame / self.summon_sickness),
+                                popup_frame_cnt - 1)
+                frame = self.animator.get_frame_by_index(frames[frame_idx])
         elif self.popup is None and self.current_frame < self.summon_sickness:
+        #if self.current_frame < self.summon_sickness:
             # 使用 max(0, 255 - countdown) 的簡潔寫法處理 Alpha
             alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
             frame.set_alpha(alpha)
+
 
         self.current_anim_frame = frame
 
@@ -516,6 +526,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 #for swing---
         # 1. 檢測自己是否正在被「揮舞」
         swing_offset_x,swing_offset_y = 0,0
+        if self.held_by:
+            swing_offset_y =  -self.held_by.height*TILE_SIZE*0.8
         if self.held_by and self.held_by.attack_state and self.held_by.attack_state.name == 'swing':
             #is_being_swung = True
             print(f'{self.name} 被揮舞!')
@@ -523,7 +535,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if self.held_by.facing == DirState.LEFT:
                 dir = -1
             swing_offset_x = dir*int(self.held_by.width * TILE_SIZE * 0.6)
-            swing_offset_y = self.held_by.height*TILE_SIZE*0.5
+            swing_offset_y += self.held_by.height*TILE_SIZE*0.4
 #--------
 
 
@@ -681,6 +693,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     attack=atk_table.get('highjump_fall', None)
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
+                print(f'>>> run attack = {attack}<<<<')
         if attack in [AttackType.PUNCH, AttackType.KICK]:
             enemy_side = 'enemy_side' if self.side == 'player_side' else 'player_side'
             # 定義偵測中心（通常在角色前方一點）
@@ -1037,7 +1050,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             duration=duration,
             trigger_frame=12,
             recovery=16,
-            hitbox_func=item_hitbox,
+            hitbox_func=swing_hitbox_func,
             damage=lambda _: self.throw_damage if hasattr(self, 'swing_damage') else 11,
             knock_back_power=[0.3,0.2],
             effects=[AttackEffect.FORCE_DOWN],
@@ -1501,9 +1514,32 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.attack_intent = None  # ✅ 清除
 
     def set_attack_by_skill(self, skill):
-        atk_data = attack_data_dict.get(skill)
+        # 1. 取得原始模板數據
+        base_data = attack_data_dict.get(skill)
+        if not base_data or not base_data.can_use(self):
+            return
+
+        # 2. 數據合併：建立一個本次攻擊專用的 atk_data
+        # 我們不修改全域字典，而是建立一個屬性完全相同的複製品
+        import copy
+        atk_data = copy.copy(base_data)
+        # 3. 套用角色/技能特定覆蓋 (例如：靈氣圖、特效配置)
+        custom_override = self.skill_overrides.get(skill)
+        if custom_override:
+            # 將 custom_override 字典中的內容，直接更新到 atk_data 的屬性中
+            for key, value in custom_override.items():
+                if hasattr(atk_data, key):
+                    setattr(atk_data, key, value)
+
+        # 4. 套用組件/道具動態修正 (例如：裝備增加 20% 傷害)
+        # 這裡實作您擔心的擴充性：遍歷所有組件來修改這個臨時的 atk_data
+        for comp in self.components.values():
+            if hasattr(comp, "modify_attack_data"):
+                comp.modify_attack_data(atk_data)
+
         if atk_data is not None:
             if atk_data.can_use(self):
+                custom_config = self.skill_overrides.get(skill)
                 if skill in SWING_ATTACKS:
                     item = self.get_component("holdable").held_object
                     if item:
@@ -1544,9 +1580,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 else:
                     self.attack_state = AttackState(self, atk_data)
                     self.state = MoveState.ATTACK
-
-                if atk_data:
+                # --- 修正：套用特效組件邏輯 ---
+                if atk_data.effect_component_config:
                     self.apply_skill_effect_components(atk_data)
+                # if atk_data:
+                #     self.apply_skill_effect_components(atk_data)
 
     def draw_hp_bar(self, win, px, py):
         # 若死亡則不顯示血條
@@ -1657,7 +1695,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.attack_intent = cmd
             print(f'cmd={cmd}')
             skill_data = self.resolve_attack_table()
-            print(f'resolve_cmd={cmd}')
             if skill_data and skill_data not in ['pickup_item']:
                 self.attack(skill_data)
 
@@ -1719,16 +1756,19 @@ class Player(CharacterBase):
         self.name='player'
         self.side = 'player_side'
         self.popup=config.get("popup")
+        self.skill_overrides = config.get("skill_overrides", {})
         # self.attack_map = {
         #     "z_attack": lambda: AttackType.BASH if self.state == MoveState.RUN else AttackType.PUNCH,
         #     "x_attack": lambda: AttackType.KICK,
         #     "c_attack": lambda: AttackType.SLASH
         # }
-        self.attack_table = {'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL},
+        print('PLAYER config attack_table={}'.format(config.get("attack_table")))
+        self.attack_table = config.get("attack_table") or {'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL},
                              'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK},
                              'c_attack':{'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
                              'swing_item':{'default': AttackType.SWING},
                              'throw_item':{'default': AttackType.THROW,'jump':AttackType.THROW}}
+        print('PLAYER config attack_table={}'.format(self.attack_table))
 
         self.animator = SpriteAnimator(image_path=config.get("image_path"), config_dict=config.get("animator_config"))  # 載入素材
         if config.get("stand"):
@@ -1928,15 +1968,15 @@ class Player(CharacterBase):
 
         # 4. 嘗試消耗緩衝 (如果剛好是 IDLE 狀態，這一幀就會執行)
         did_action = self.try_consume_buffer()
-        if did_action:
-            print(f'[{self.current_frame}]handle_input: did action = {did_action}')
+        # if did_action:
+        #     print(f'[{self.current_frame}]handle_input: did action = {did_action}')
 
 
         # 5. 處理移動意圖 (移動不緩衝，因為移動是持續性的)
         intent = self.input_intent(keys)
 
-        if did_action:
-            print(f'[{self.current_frame}]handle_input: earse intent state\n{intent}')
+        # if did_action:
+        #     print(f'[{self.current_frame}]handle_input: earse intent state\n{intent}')
 
 
         # 偵測方向是否有變化
@@ -2299,7 +2339,7 @@ class Enemy(CharacterBase):
         self.default_color=(100,100,255)
         self.jump_color=(100,150,255)
         self.fall_color=(50, 100, 255)
-        self.summon_sickness = 150
+        self.summon_sickness = 60
         self.name=config_dict.get("name", "default")
         self.combo_count = 0
         self.combos = config_dict.get("combos", DEFAULT_COMBOS)

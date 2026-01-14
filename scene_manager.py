@@ -104,7 +104,7 @@ class SceneManager:
         elif type == 'hitstop':
             new_effect = VisualEffect(x, y, z, self.hitstop_effect_frames, anim_speed=2, alpha=200, flip=flip)
         elif type == 'brust':
-            new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=4, alpha=200)
+            new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=2, alpha=200)
         if new_effect:
             self.visual_effects.append(new_effect)
 
