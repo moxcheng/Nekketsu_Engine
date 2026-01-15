@@ -187,7 +187,7 @@ NPC_SHUKI_0_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": ELITE_COMBOS,
-    "popup":["anim"],
+    "popup":["anim", 'fade-in'],
     "ai_move_speed": 0.15,
     "attack_cooldown": 40
 }
@@ -201,7 +201,7 @@ NPC_SHUKI_1_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": DEFAULT_COMBOS,
-    "popup":["anim"],
+    "popup":["anim", 'fade-in'],
     "ai_move_speed": 0.2,
     "attack_cooldown": 35
 }
@@ -215,7 +215,7 @@ NPC_SHUKI_2_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": ELITE_COMBOS,
-    "popup":["anim"],
+    "popup":["anim", 'fade-in'],
     "ai_move_speed": 0.18,
     "attack_cooldown": 40
 }
@@ -229,7 +229,7 @@ NPC_SHUKI_3_CONFIG={
         "anim_map":basic_anim_map1
     },
     "combos": DEFAULT_COMBOS,
-    "popup":["anim"],
+    "popup":["anim", 'fade-in'],
     "ai_move_speed": 0.25,
     "attack_cooldown": 40
 }

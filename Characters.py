@@ -503,11 +503,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 frame_idx = min(int(popup_frame_cnt * self.current_frame / self.summon_sickness),
                                 popup_frame_cnt - 1)
                 frame = self.animator.get_frame_by_index(frames[frame_idx])
-        elif self.popup is None and self.current_frame < self.summon_sickness:
-        #if self.current_frame < self.summon_sickness:
-            # 使用 max(0, 255 - countdown) 的簡潔寫法處理 Alpha
-            alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
-            frame.set_alpha(alpha)
+            if self.popup and 'fade-in' in self.popup and self.current_frame < self.summon_sickness:
+            #if self.current_frame < self.summon_sickness:
+                # 使用 max(0, 255 - countdown) 的簡潔寫法處理 Alpha
+                alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
+                frame.set_alpha(alpha)
 
 
         self.current_anim_frame = frame
@@ -601,11 +601,16 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.current_anim_draw_y = draw_y+swing_offset_y
         #win.blit(frame, (draw_x, draw_y))
 
-        aura_comp = self.get_component("aura_effect")
-        if aura_comp:
-            # 傳入所有繪圖所需參數
-            #print(f'{aura_comp} enable')
-            aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
+        # 新增：讓所有組件（包括 AuraEffect 或 StatusAura）進行繪製
+        for component in self.components.values():
+            if hasattr(component, "draw"):
+                component.draw(win, cam_x, cam_y, tile_offset_y)
+
+        # aura_comp = self.get_component("aura_effect")
+        # if aura_comp:
+        #     # 傳入所有繪圖所需參數
+        #     #print(f'{aura_comp} enable')
+        #     aura_comp.draw(win, cam_x, cam_y, tile_offset_y)
         # print(f'{self.name} draw debug {self.current_frame}')
         if DEBUG:
             self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
@@ -738,6 +743,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         return self.on_hit_timer > 0
     def is_invincible(self):
         return self.invincible_timer > 0
+    def is_super_armor(self):
+        return self.super_armor_timer > 0
     # def is_knockbacking(self):
     #     return abs(self.knockback_vel_x) > 0.0 or self.knockback_vel_z < 0.0
     # Characters.py
@@ -785,6 +792,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.hit = False
         self.hit_timer = 0
         self.hit_count = 0.0
+        self.rigid_timer = 0
+        self.combat_timer = 0
         self.is_mashing = False
         print(f'{self.name} 回到正常')
 
@@ -1123,7 +1132,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.super_armor_timer = self.rigid_timer
 
     def apply_attack_effects(self, attacker, attack_data):
-        if self.invincible_timer > 0 or self.super_armor_timer > 0:
+        if self.is_invincible() or self.is_super_armor():
             #無敵或鋼體時不接受特殊狀態
             return
         #處理攻擊特效
@@ -1277,6 +1286,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         if self.attack_state:
             self.attack_state.update()
+
+        if (self.is_super_armor() or self.is_invincible()) and not self.get_component("status_aura"):
+            from Component import StatusAuraComponent
+            self.add_component("status_aura", StatusAuraComponent())
 
 
 
@@ -1581,7 +1594,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                     self.attack_state = AttackState(self, atk_data)
                     self.state = MoveState.ATTACK
                 # --- 修正：套用特效組件邏輯 ---
-                if atk_data.effect_component_config:
+                if atk_data and atk_data.effect_component_config:
                     self.apply_skill_effect_components(atk_data)
                 # if atk_data:
                 #     self.apply_skill_effect_components(atk_data)

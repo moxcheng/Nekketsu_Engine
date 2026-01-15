@@ -351,7 +351,8 @@ class HoldFlyLogicMixin:
                     hit_someone = True
                     if self.thrown_by and self.thrown_by.attack_state and self.thrown_by.attack_state.data.attack_type in THROW_ATTACKS:
                         unit.on_hit(self.thrown_by, self.thrown_by.attack_state.data)
-                        print(f'{self.name} 的 thrown_by {self.thrown_by} 的 attack_state.data.attack_type {self.thrown_by.attack_state.data.attack_type}')
+                        if self.thrown_by.attack_state:
+                            print(f'{self.name} 的 thrown_by {self.thrown_by} 的 attack_state.data.attack_type {self.thrown_by.attack_state.data.attack_type}')
                     elif self.attacker_attack_data:
                         unit.on_hit(self.thrown_by, self.attacker_attack_data)
                         print(f'{self.name} 的 thrown_by {self.thrown_by}, attack_data {self.attacker_attack_data}')
@@ -486,3 +487,61 @@ class AuraEffectComponent(Component):
         draw_y = char_center_y - rect.height // 2
         win.blit(draw_image, (draw_x, draw_y))
 
+class StatusAuraComponent(Component):
+    """
+    專門顯示霸體(黃)或無敵(白)狀態的特效組件
+    """
+    def __init__(self):
+        super().__init__()
+        self.timer = 0
+
+    def update(self):
+        self.timer += 1
+        # 如果角色既沒有霸體也沒有無敵，就自我移除
+        # 如果兩者皆為 False，則從角色身上移除此組件
+        if not (self.owner.is_invincible() or self.owner.is_super_armor()):
+            self.owner.remove_component("status_aura")
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        if not self.owner: return
+        if self.owner.combat_state in [CombatState.DOWN, CombatState.DEAD]: return
+        if self.owner.current_frame <= self.owner.summon_sickness: return
+
+        # 1. 決定基礎顏色 (使用 0.0 ~ 1.0 的浮點數來計算亮度)
+        # 讓亮度在 0.2 ~ 0.8 之間震盪
+        brightness = 0.1 + 0.1 * math.sin(self.timer * 0.4)
+
+        # 2. 根據亮度縮放 RGB 數值
+        if getattr(self.owner, "is_invincible", False):
+            base_color = (255, 255, 255)  # 白色
+        elif getattr(self.owner, "is_super_armor", False):
+            base_color = (255, 255, 0)  # 黃色
+        else:
+            return
+
+        # 關鍵：將 RGB 乘以亮度
+        current_color = (
+            int(base_color[0] * brightness),
+            int(base_color[1] * brightness),
+            int(base_color[2] * brightness)
+        )
+
+        if hasattr(self.owner, "animator") and self.owner.current_anim_frame:
+            frame = self.owner.current_anim_frame
+
+            # 使用 pygame.mask 獲取形狀
+            char_mask = pygame.mask.from_surface(frame)
+
+            # 3. 填滿縮放後的顏色 (此處 alpha 設為 255 或不設，因為加法模式主要看 RGB)
+            fill_surf = char_mask.to_surface(setcolor=current_color, unsetcolor=(0, 0, 0, 0))
+
+            # 取得位置
+            cx, cy = self.owner.cached_pivot
+            draw_x = cx - frame.get_width() // 2
+            draw_y = cy - frame.get_height()
+
+            # if self.owner.facing == DirState.LEFT:
+            #     fill_surf = pygame.transform.flip(fill_surf, True, False)
+
+            # 4. 使用 BLEND_RGB_ADD (不處理 Alpha 的加法，效能較好且效果正確)
+            win.blit(fill_surf, (draw_x, draw_y), special_flags=pygame.BLEND_RGB_ADD)
