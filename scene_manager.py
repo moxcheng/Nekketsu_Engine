@@ -86,12 +86,61 @@ class SceneManager:
         self.hit_effect_frames = self.load_effect_assets(path="..//Assets_Drive//on_hit_effect.png", frame_w=45, frame_h=45)  # 預載特效圖
         self.hitstop_effect_frames = self.load_effect_assets(path="..//Assets_Drive//hit_stop1.png", frame_w=128, frame_h=128)  # 預載特效圖
         self.brust_effect_frames = self.load_effect_assets(path="..//Assets_Drive//brust.png", frame_w=128,frame_h=128)  # 預載特效圖
+        self.guard_effect_frames = self.load_effect_assets(path="..//Assets_Drive//guard_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
         self.shake_intensity = 0
         self.default_font_36 = pygame.font.SysFont("Arial Black", 36)   #預載入文字
         self.hit_stop_timer = 0
+        #AI攻擊用
+        self.attack_tokens = 3  # 同時最多敵人可以進攻
+        self.token_holders = {}  # 紀錄目前持有權杖的單位
+        self.frame_count = 0
+
+    def update_tokens(self):
+        """每幀更新權杖狀態，處理過期回收"""
+        expired_units = []
+        for unit, timer in self.token_holders.items():
+            # 減少計時器
+            self.token_holders[unit] -= 1
+            # 1. 檢查是否死亡或被移除，2. 檢查計時器是否歸零
+            if not unit.is_alive() or self.token_holders[unit] <= 0:
+                expired_units.append(unit)
+        for unit in expired_units:
+            print(f"[TOKEN] 回收 {unit.name} 的權杖 (超時或死亡)")
+            del self.token_holders[unit]
+        # --- 新增：強制作戰機制 ---
+        # 如果目前沒有人領取權杖，但場上還有敵人
+        token_holders = [e.name for e in self.token_holders]
+        #print(f'SCENE [{self.frame_count}], TOKEN [{token_holders}]')
+        if len(self.token_holders) == 0:
+            enemies = self.get_units_by_side('enemy_side')
+            alive_enemies = [e for e in enemies if e.is_alive()]
+
+            if alive_enemies:
+                # 隨機挑選一名幸運兒，無視其性格強制發放
+                import random
+                lucky_guy = random.choice(alive_enemies)
+                self.request_token(lucky_guy)
+                print(f"[TOKEN] 強制指派進攻權給: {lucky_guy.name}")
+                #lucky_guy.say("我...我上就是了啊啊啊!")
+
+    def request_token(self, unit):
+        """AI 申請進攻權"""
+        if unit in self.token_holders:
+            return True  # 已經持有了
+
+        if len(self.token_holders) < self.attack_tokens:
+            self.token_holders[unit] = 300  # 給予 180 幀 (約 3 秒) 的進攻窗口
+            print(f"[TOKEN] 發放權杖給 {unit.name}")
+            return True
+        return False
+
+    def refresh_token(self, unit):
+        """當 AI 攻擊時，重置其權杖計時器"""
+        if unit in self.token_holders:
+            self.token_holders[unit] = 300
 
     def trigger_hit_stop(self, frames):
         """觸發時間凍結"""
@@ -105,8 +154,12 @@ class SceneManager:
             new_effect = VisualEffect(x, y, z, self.hitstop_effect_frames, anim_speed=2, alpha=200, flip=flip)
         elif type == 'brust':
             new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=2, alpha=200)
+        elif type == 'guard':
+            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=180)
         if new_effect:
             self.visual_effects.append(new_effect)
+
+
 
 
 
@@ -354,7 +407,7 @@ class SceneManager:
             c.owner = None
 
     def update_all(self):
-
+        self.frame_count+=1
         enemy_remove_count = 0
         # 如果處於 Hit Stop 期間，倒數計時並跳過邏輯更新
         if self.hit_stop_timer > 0:
@@ -363,6 +416,7 @@ class SceneManager:
             return enemy_remove_count# 關鍵：直接回傳，不執行下方的 units.update()
 
         self.script_runner.update()
+        self.update_tokens()
         for unit in self.interactables:
             #如果劇情模式開啟，且這個單位不在受控名單中 → 跳過更新
             if self.script_runner.active and self.lock_others_during_script:

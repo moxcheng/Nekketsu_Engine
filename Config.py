@@ -2,7 +2,7 @@
 # === 設定 ===
 WIDTH, HEIGHT = 800, 600
 TILE_SIZE = 40
-FPS = 45
+FPS = 60
 GRAVITY = 0.05
 
 WHITE = (255, 255, 255)
@@ -26,5 +26,7 @@ Z_DRAW_OFFSET = 10  # 每層 Z 軸對應視覺高度差（像素）
 Z_FALL_OFSSET = Z_DRAW_OFFSET/15    #每一個Z =15掉落frame
 
 ON_HIT_SHORT_STUN_TIME = 15
+ON_GUARD_STUN_TIME = 7
+ON_GUARD_MAX_WINDOW = 10    #可以觸發guard的最大時間
 
 

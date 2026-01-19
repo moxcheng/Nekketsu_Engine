@@ -7,7 +7,7 @@ FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
 
 PLAYER_KONOMI_CONFIG={
     "name": "player",
-    "image_path": "..//Assets_Drive//konomi_test_44frame.png",
+    "image_path": "..//Assets_Drive//konomi_test_45frame.png",
     "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
     "super_move_staging": {
         "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
@@ -53,10 +53,11 @@ PLAYER_KONOMI_CONFIG={
             "slash": [[20], [9], [23]],
             "mahahpunch": [[9], [10], [11], [12], [11], [10], [11], [12], [11], [10], [11], [12], [11], [10], [11],
                            [12]],
-            "meteofall": [[41]],
+            "meteofall": [[44]],
             "ranbu": [[9, 10, 11, 12, 14, 13, 18, 11, 23, 26, 24, 40, 39, 41], [5, 23]],
             "swing": [[9], [11]],
-            "throw": [[27], [42,43]]
+            "throw": [[27], [42,43]],
+            "guard":[[41]]
         }
     },
     "popup":["landing"],
@@ -174,7 +175,8 @@ basic_anim_map1 = {
     "knockback": [[12], [19]],
     "mahahpunch": [[4], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5]],
     "brust": [[6], [7]],
-    "popup":[[24,25,26,27]]
+    "popup":[[24,25,26,27]],
+    "guard":[[1]]
 }
 
 NPC_SHUKI_0_CONFIG={
@@ -277,7 +279,8 @@ NPC_SHUKI_NEW_1_CONFIG={
             'pose_1': [[9]],
             "knockback": [[24,25,26], [27,22]],
             "brust": [[4], [9]],
-            "popup":[[28,29,30,31]]
+            "popup":[[28,29,30,31]],
+            "guard":[[1]]
         }
     },
     "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH,AttackType.KICK,AttackType.SPECIAL_KICK, AttackType.SLASH],

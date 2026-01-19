@@ -9,6 +9,7 @@ class MoveState(Enum):
     JUMP = auto()
     FALL = auto()
     ATTACK = auto()
+    GUARD = auto()
 
 class CombatState(Enum):
     NORMAL = auto()

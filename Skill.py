@@ -425,7 +425,8 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN],
         knock_back_power=[0.5,0.2],
         damage=12,
-        frame_map_ratio = [999]
+        frame_map_ratio = [999],
+        hit_stop_frames=5
     ),
     AttackType.METEOFALL: AttackData(
         attack_type=AttackType.METEOFALL,

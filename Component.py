@@ -72,8 +72,8 @@ class ComponentHost:
             move_rate = ctrl.get('speed', 0.05)
             self.x += dx / dist * move_rate
             self.y += dy / dist * move_rate
-            if hasattr(self, 'facing') and dx != 0:
-                self.facing = DirState.RIGHT if dx > 0 else DirState.LEFT
+            # if hasattr(self, 'facing') and dx != 0:
+            #     self.facing = DirState.RIGHT if dx > 0 else DirState.LEFT
             if hasattr(self, 'state'):
                 self.state = MoveState.WALK
         elif act == 'attack' and hasattr(self, 'attack'):
@@ -132,7 +132,9 @@ class ComponentHost:
 
     def calculate_cx_cy(owner, cam_x, cam_y, tile_offset_y):
         """計算物件『腳底中心』在螢幕上的座標"""
-        terrain_z_offset = owner.z * Z_DRAW_OFFSET
+        safe_z = owner.z if owner.z is not None else 0
+        #safe_z = owner.z
+        terrain_z_offset = safe_z * Z_DRAW_OFFSET
         # cx: 腳底中心 X
         cx = int((owner.x + owner.width / 2) * TILE_SIZE) - cam_x
         # cy: 腳底中心 Y (不扣除 owner.height)
@@ -154,7 +156,8 @@ class HoldableComponent(Component):
         #print(f'HoldableComponent 的 override_attack_intent====={intent}====({obj_name})')
         # 取得持有者當前的輸入狀態
         # 假設 Player.input_intent 會把按鍵狀態存入最後的意圖中，或者直接讀取 owner 的 last_intent
-        is_down_holding = self.owner.last_intent.get('down_pressed', False)
+
+        (u,d,l,r) = self.owner.last_intent.get('dirs', False)
 
         if self.held_object:
             print(f'手上持有{self.held_object.name}')
@@ -162,7 +165,7 @@ class HoldableComponent(Component):
                 return "swing_item"
             elif intent == "x_attack":
                 return "throw_item"
-        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and is_down_holding:
+        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and d:
             return "pickup_item"
         return intent
 
@@ -353,7 +356,7 @@ class HoldFlyLogicMixin:
                         unit.on_hit(self.thrown_by, self.thrown_by.attack_state.data)
                         if self.thrown_by.attack_state:
                             print(f'{self.name} 的 thrown_by {self.thrown_by} 的 attack_state.data.attack_type {self.thrown_by.attack_state.data.attack_type}')
-                    elif self.attacker_attack_data:
+                    elif hasattr(self, "attacker_attack_data") and self.attacker_attack_data:
                         unit.on_hit(self.thrown_by, self.attacker_attack_data)
                         print(f'{self.name} 的 thrown_by {self.thrown_by}, attack_data {self.attacker_attack_data}')
                     self.hitting.append(unit)

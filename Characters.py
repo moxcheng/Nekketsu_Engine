@@ -5,6 +5,7 @@ from State_enum import *
 from Skill import *
 from Component import ComponentHost, HoldFlyLogicMixin
 from CharactersConfig import *
+import random
 
 DEBUG = False
 
@@ -174,6 +175,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         
         self.state = MoveState.STAND
         self.last_intent = {'direction': None, 'horizontal': None}
+        self.last_intent = None
         self.current_frame = 0
         self.facing = DirState.RIGHT
         self.combat_timer_max = 1  # 預設非 0，避免除以 0，會隨狀態切換更新
@@ -197,7 +199,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
-        self.throw_power = 0.5  #投擲基本力量
+        self.throw_power = 0.3  #投擲基本力量
         
 
         self.jump_key_block = False #避免長按連續跳躍
@@ -252,6 +254,40 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.death_knockback = False
         self.skill_overrides = {}  # 預設為空
 
+        # AI行為控制
+        self.morale = 1.0  # 士氣：1.0 是正常，低於 0.3 會恐慌
+        self.aggressiveness = 0.8  # 攻擊性：影響進攻距離的判斷
+        self.personality = random.choice(['brave', 'coward', 'cautious'])
+        self.ai_target_cache = None
+        self.ai_recalc_timer = 0
+
+    def trigger_guard_success(self, attacker, attack_data):
+        """
+        熱血物語式格擋成功：將攻擊前搖轉化為防禦。
+        """
+        # 1. 播放格擋特效
+        if self.scene:
+            # 計算命中位置 (利用現有的碰撞檢測函數)
+            hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+            self.scene.create_effect(hit_x, hit_y, hit_z, 'guard')  # 需在 SceneManager 實作此類別
+            self.scene.trigger_hit_stop(5)  # 短暫的命中凍結增加力道感
+            self.scene.trigger_shake(duration=10, intensity=3)
+
+        # 2. 狀態轉換：中斷攻擊，進入格擋
+        self.attack_state = None
+        self.state = MoveState.GUARD  # 確保 State_enum 有定義 GUARD
+        # 3. 物理反饋：小退一步 (向後推)
+        knock_dir = -1 if self.facing == DirState.RIGHT else 1
+        self.x = min(self.map_w-self.width/2, max(self.width/2, (self.x+knock_dir * 1.5))) # 直接位移或設定一個極短的 knockback_vel_x
+
+        # 4. 設定短硬直 (格擋硬直)
+        # 這裡的硬直要比受傷短，讓玩家有機會快速反擊
+        self.set_rigid(ON_GUARD_STUN_TIME)
+        self.on_hit_timer = ON_GUARD_STUN_TIME
+        # 5. 傷害減免 (選擇性)
+        # 即使格擋成功，也可以考慮扣除極少量生命值或 MP
+        # self.health -= 1
+        print(f"[GUARD] {self.name} 成功招架了 {attacker.name} 的攻擊！")
     def update_afterimages(self):
         # 只有在特定狀態或開啟標記時才記錄
         if self.afterimage_enabled or (
@@ -371,7 +407,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
             AttackType.BRUST:"brust",AttackType.PUSH:"push"
         }
-        move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run"}
+        move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run", MoveState.GUARD:"guard"}
         common_anim_material = ['burn']
         #決定anim_frame
         anim_name = 'stand'
@@ -381,6 +417,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             anim_name = "knockback"
         elif self.combat_state in combat_state_anim_map:     #判斷戰鬥狀態動畫
             anim_name = combat_state_anim_map[self.combat_state]
+        elif self.state == MoveState.GUARD:
+            #防禦動畫的優先度高於攻擊
+            anim_name = "guard"
         elif self.is_on_hit():
             anim_name = "on_hit"
         elif self.attack_state:
@@ -693,8 +732,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 attack = atk_table.get('jump', None)
                 # [新增判斷] 如果是高跳 + 按著 Down 鍵，則使用 highjump 招式
                 # 檢查 self.last_intent['down_pressed'] 是否為 True (即按下 Down 鍵)
-                is_down_pressed = self.last_intent.get('down_pressed', False)
-                if self.high_jump and is_down_pressed:
+                u,d,l,r = self.last_intent.get('dirs', False)
+                if self.high_jump and d:
                     attack=atk_table.get('highjump_fall', None)
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
@@ -774,7 +813,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def into_down_state(self):
         self.combat_state = CombatState.DOWN
         self.invincible_timer = 40
-        knockout_time = 80+int(100*self.health/self.max_hp)
+        knockout_time = 120+int(100*(1-self.health/self.max_hp))
         #血越少越快醒
         self.combat_timer = knockout_time
         self.combat_timer_max = knockout_time
@@ -795,7 +834,12 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.rigid_timer = 0
         self.combat_timer = 0
         self.is_mashing = False
+        #清除快取意圖
+        self.clean_input_buffer()
         print(f'{self.name} 回到正常')
+    def clean_input_buffer(self):
+        self.input_buffer = None
+        self.input_buffer_timer = 0
 
     def check_ground_contact(self):
         # 🧠 檢查腳底對應的 tile z 值
@@ -843,7 +887,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             return True
         return False
 
-    # Characters.py
+
+    def say(self, txt):
+        #def say(self, unit, text, duration=90, direction='up'):
+        if self.scene:
+            self.scene.say(self, txt)
 
     def check_wall_collision(self, next_x):
         """偵測 next_x 是否撞牆或超出地圖邊界"""
@@ -865,64 +913,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 return True
 
         return False
-    # def update_physics_only(self):
-    #     if self.knockback_vel_z != 0:
-    #         self.jump_z += self.knockback_vel_z
-    #         self.knockback_vel_z = self.knockback_vel_z - GRAVITY  # 重力加速度
-    #         #print(f'{self.name} knockback with vel_z={self.knockback_vel_z} jump_z={self.jump_z}')
-    #
-    #         if self.jump_z <= 0:
-    #             self.jump_z = 0
-    #             self.knockback_vel_z = 0
-    #             #self.check_ground_contact()
-    #
-    #     # ✅ 若正在跳躍中，僅更新跳躍高度與落下，不進行碰撞判定
-    #     if self.jump_z != 0 and not self.held_by:
-    #         #排除被拿著的狀態
-    #         self.jump_z += self.jump_z_vel
-    #         self.jump_z_vel -= GRAVITY  # ✅ 注意這裡保持一致，不要重複扣太快
-    #
-    #         if self.jump_z <= 0:
-    #             self.jump_z = 0
-    #             self.jump_z_vel = 0
-    #             self.check_ground_contact()
-    #     # ✅ 處理垂直跳躍或擊飛
-    #
-    #
-    #     # ✅ 處理水平擊退
-    #     if self.super_armor_timer <= 0 and self.combat_state != CombatState.DOWN:
-    #         #鋼體不擊退
-    #         if self.knockback_vel_x != 0:
-    #             self.x += self.knockback_vel_x
-    #             self.knockback_vel_x *= 0.85  # 摩擦力衰減
-    #             #print(f'{self.name} knockback_vel_x={self.knockback_vel_x}')
-    #             if abs(self.knockback_vel_x) < 0.1:
-    #                 self.knockback_vel_x = 0
-    #
-    #     # 水平擊退與撞牆偵測
-    #     if self.combat_state == CombatState.KNOCKBACK:
-    #         if self.knockback_vel_x != 0:
-    #             next_x = self.x + self.knockback_vel_x
-    #
-    #             if self.check_wall_collision(next_x):
-    #                 # 撞牆反應：
-    #                 print(f"[PHYSICS] {self.name} 撞牆了！, ({self.x}, {self.y})")
-    #                 self.knockback_vel_x = -self.knockback_vel_x * 0.2  # 反彈
-    #
-    #                 # 如果還在空中，讓它垂直落下；如果接近地面，直接進入倒地
-    #                 if self.jump_z <= 0.5:
-    #                     self.into_down_state()
-    #
-    #                 # 選配：加入撞牆震動
-    #                 if self.scene:
-    #                     self.scene.trigger_shake(10,5)
-    #             else:
-    #                 self.x = next_x
-    #                 self.knockback_vel_x *= 0.85
-    #
-    #                 if abs(self.knockback_vel_x) < 0.05:
-    #                     self.knockback_vel_x = 0
-    # Characters.py -> CharacterBase.update_physics_only
 
     def update_physics_only(self):
         # --- 1. 處理垂直位移 (保持原樣) ---
@@ -1200,9 +1190,28 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #attacker.attack_state.has_hit = True
             attacker.attack_state.has_hit.append(self)
 
+        #格擋判定
+        can_guard = (self.attack_state and not self.is_invincible()
+                     and not self.is_super_armor() and self.facing != attacker.facing)
+        if can_guard:
+            if not self.attack_state.should_trigger_hit() and self.attack_state.frame_index < ON_GUARD_MAX_WINDOW:
+                #前搖狀態中才能格擋
+                basic_guard_rate = 1.0 if self.name == 'player' else self.morale
+                bonus_rate = 0.2 if self.personality == 'cautious' else 0.0
+                if random.random() < (basic_guard_rate + bonus_rate):
+                    self.trigger_guard_success(attacker, attack_data)
+                    print(f'{self.name} 成功招架')
+                    return
 
         damage_st, damage = self.take_damage(attacker, attack_data)
         st = st + f' {damage_st}'
+        morale_decay = (damage/self.max_hp)
+        if self.personality == 'brave':
+            morale_decay /= 2
+        elif self.personality == 'coward':
+            morale_decay *= 1.3
+        self.morale -= morale_decay
+
         # CombatState 處理
         if self.combat_state != CombatState.DEAD:
             self.resolve_combat_state_on_hit(attack_data)
@@ -1333,8 +1342,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
                 if self not in opponent.attack_state.has_hit:
                     # hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
-
-
                     if self.held_by is None:
                         #避免打到自己
                         self.on_hit(opponent, opponent.attack_state.data)
@@ -1514,8 +1521,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 if hasattr(comp, "handle_action"):
                     comp.handle_action('pickup_item')
                     self.attack_intent = None
-                    self.input_buffer = None
-                    self.input_buffer_timer = 0
+                    self.clean_input_buffer()
         elif intent_act is not None:
             #打出對應招式
             print('{} 出招 {}'.format(self.name, intent['action']))
@@ -1685,8 +1691,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def execute_command(self, cmd):
         if cmd == 'pickup_item' and not self.is_jump():
             self.get_component("holdable").try_pickup()
-            self.input_buffer = None
-            self.input_buffer_timer = 0
+            self.clean_input_buffer()
             print('execute_command - pickup_item')
             self.attack_intent = None
             return
@@ -1728,8 +1733,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if final_intent == 'pickup_item' and self.attack_state is None:
             print("try_consome buffer final_intent = pickup_item")
             self.execute_command('pickup_item')
-            self.input_buffer = None  # 徹底清除，防止 z_attack 殘留
-            self.input_buffer_timer = 0
+            self.clean_input_buffer()
             self.attack_intent = None
             return True
 
@@ -1740,18 +1744,169 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                         self.jump_z < 0.8 and self.input_buffer == 'jump')
         if can_act:
             cmd = self.input_buffer
-            self.input_buffer = None  # 清空
+            self.clean_input_buffer()
             self.execute_command(cmd)
             return True
         elif is_tech_roll:
             print(f"✨ {self.name} 受身成功！")
-            self.input_buffer = None
             self.into_normal_state()
             self.invincible_timer = 20  # 給予短暫無敵
             # 額外的小位移彈開
             self.knockback_vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
             return True
         return False
+
+    import math
+    import random
+
+    def distance_to_target(self, target):
+        dx = target.x - self.x
+        dy = target.y - self.y
+        return (dx ** 2 + dy ** 2) ** 0.5
+
+    # Characters.py -> ai_move_logic
+
+    # Characters.py -> ai_move_logic
+
+    def ai_move_logic(self, target, intent, far_speed=0.5, near_speed=0.3):
+        if self.attack_state or self.is_locked() or self.state == MoveState.ATTACK:
+            return
+
+        # 初始化必要的 AI 變數
+        if not hasattr(self, 'ai_target_cache'): self.ai_target_cache = None
+        if not hasattr(self, 'ai_recalc_timer'): self.ai_recalc_timer = 0
+
+        p_dx = target.x - self.x
+        p_dy = target.y - self.y
+        dist_to_player = (p_dx ** 2 + p_dy ** 2) ** 0.5
+        morale_factor = 1.0 if self.morale > 0.5 else 0.6
+
+        # 始終看向玩家
+        if abs(p_dx) > 0.01:
+            intent['direction'] = DirState.RIGHT if p_dx > 0 else DirState.LEFT
+
+        has_token = self in self.scene.token_holders
+        self.ai_recalc_timer = max(0, self.ai_recalc_timer - 1)
+
+        # 決定移動目標點
+        if has_token:
+            # 1. 有 Token：目的地指向 Player
+            target_x, target_y = target.x, target.y
+            #move_speed = far_speed * morale_factor
+            move_speed = far_speed
+
+            if dist_to_player < self.width/2: move_speed = 0  # 抵達出招距離
+        else:
+            # 2. 沒 Token：執行繞背路徑邏輯
+            # 判斷是否需要重新計算目標 (冷卻結束 或 距離玩家過遠)
+            need_recalc = (self.ai_recalc_timer <= 0) or (dist_to_player > 8.0)
+
+            if need_recalc:
+                # 計算新目標點：環繞半徑 4.0 ~ 6.0
+                orbit_radius = 4.5 if self.personality == 'brave' else 6.0
+                # 50% 機率計算玩家背後，50% 玩家側面
+                angle_offset = random.uniform(math.pi * 0.6,
+                                              math.pi * 1.4) if random.random() < 0.5 else random.uniform(0.3, 1.2)
+                base_angle = math.atan2(p_dy, p_dx)
+                final_angle = base_angle + angle_offset
+
+                self.ai_target_cache = (
+                    target.x + math.cos(final_angle) * orbit_radius,
+                    target.y + math.sin(final_angle) * orbit_radius
+                )
+                self.ai_recalc_timer = random.randint(240, 360)  # 1~2秒重新計算一次
+
+            target_x, target_y = self.ai_target_cache
+            move_speed = far_speed * 0.7 * morale_factor
+
+
+        # 執行位移計算：向量一體化 (解決分開 dx/dy 的生硬感)
+        mv_dx = target_x - self.x
+        mv_dy = target_y - self.y
+        move_dist = (mv_dx ** 2 + mv_dy ** 2) ** 0.5
+
+        if move_dist > 0.1 and move_speed > 0:
+            # 斜向移動直接線性插值
+            norm_x = mv_dx / move_dist
+            norm_y = mv_dy / move_dist
+
+            # 如果沒 Token，疊加一個垂直於目標的微小向量來實現「弧形移動」感
+            if not has_token:
+                side_x, side_y = -norm_y, norm_x  # 取得法向量
+                norm_x += side_x * 0.3
+                norm_y += side_y * 0.3
+                # 重新正規化
+                new_dist = (norm_x ** 2 + norm_y ** 2) ** 0.5
+                norm_x, norm_y = norm_x / new_dist, norm_y / new_dist
+
+            intent['dx'] = norm_x * move_speed
+            intent['dy'] = norm_y * move_speed
+            intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
+        else:
+            intent['dx'], intent['dy'] = 0, 0
+            intent['horizontal'] = MoveState.STAND
+
+    def ai_jump_logic(self, target, intent):
+        dx = target.x - self.x
+        dy = target.y - self.y
+        dz = abs((target.z) - (self.z))
+
+        tile_x = int(self.x + (0.4 if dx > 0 else -0.4))
+        tile_y = int(self.y + (0.4 if dy > 0 else -0.4))
+        next_tile_z = self.get_tile_z(tile_x, tile_y)
+
+        if self.jump_z == 0 and next_tile_z is not None:
+            dz_to_next_tile = next_tile_z - self.z
+            if dz >= 2 and dz_to_next_tile >= 2:
+                intent['jump'] = True
+                intent['dx'] = dx
+                intent['dy'] = dy
+                intent['direction'] = DirState.RIGHT if dx > 0 else DirState.LEFT
+                intent['horizontal'] = MoveState.STAND
+                print(f'{self.name} 試圖跳躍!')
+
+    def ai_attack_logic(self, target, intent, act='support'):
+        attack_chance = self.aggressiveness
+        if self.morale < 0.3:
+            attack_chance *= 0.5
+        dx = target.x - self.x
+        dy = target.y - self.y
+        dz = abs((target.z) - (self.z))
+        dist = (dx ** 2 + dy ** 2) ** 0.5
+        if act == 'support':
+            if dy < 0.5 and dz < 1.5 and unit.attack_cooldown <= 0:
+                if dist > 1:
+                    intent['action'] = AttackType.BULLET
+                else:
+                    intent['action'] = AttackType.SLASH
+                self.attack_cooldown = self.attack_cooldown_duration
+                self.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
+                self.attack_cooldown = self.attack_cooldown_duration
+        else:
+            if random.random() < attack_chance:
+                if hasattr(self, "scale"):
+                    attack_range = 2 * self.scale
+                else:
+                    attack_range = 2
+                if dist <= attack_range and dz < 1.0:
+                    if self.attack_cooldown <= 0:
+                        intent['action'] = self.combos[int(self.combo_count) % len(self.combos)]
+                        self.combo_count += 1
+                        self.attack_cooldown = self.attack_cooldown_duration
+                        # unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
+
+    def ai_mental_logic(self, target):
+        emotional_change = 0.05
+        if self.personality:
+            if self.personality == 'brave':
+                # unit.morale = min(1.0, unit.morale + emotional_change*(unit.max_hp - unit.health)/unit.max_hp)
+                self.aggressive = min(1.0, 0.5 + emotional_change * (self.max_hp - self.health) / self.max_hp)
+                # 勇敢者血越少越進取
+            elif self.personality == 'coward':
+                self.aggresive = max(0.2, 0.5 - (self.max_hp - self.health) / self.max_hp)
+                # 膽小者血越少越消極
+            elif self.personality == 'cautious':
+                self.aggresive = min(0.7, max(0.3, self.morale))
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):
         super().__init__(x, y, map_info)
@@ -1837,8 +1992,7 @@ class Player(CharacterBase):
             #attack_intent = z/x/c_attack, 對應到招式表
             attack_type = self.resolve_attack_table()
             if attack_type in ['pickup_item']:
-                self.input_buffer_timer = 0
-                self.input_buffer = None
+                self.clean_input_buffer()
                 self.attack_intent = None
 
         jump_intent = None
@@ -1847,13 +2001,21 @@ class Player(CharacterBase):
             jump_intent = True
             self.jump_intent_trigger = False
 
-        down_pressed = keys[pygame.K_DOWN]
         zxc_buttons = [keys[pygame.K_z], keys[pygame.K_x], keys[pygame.K_c]]
         dx = dir_h*0.5
-        dy = dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
+        #dy = dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
         if self.x+dx < 0 or self.x+dx+self.width >= self.map_w:
             dx = 0.0
 
+        #按鍵快照
+        up_pressed = keys[pygame.K_UP]
+        down_pressed = keys[pygame.K_DOWN]
+        left_pressed = keys[pygame.K_LEFT]
+        right_pressed = keys[pygame.K_RIGHT]
+        # 組合鍵快照 (Z, X, C)
+        z_pressed = keys[pygame.K_z]
+        x_pressed = keys[pygame.K_x]
+        c_pressed = keys[pygame.K_c]
         return {
             'horizontal': horizontal,
             'direction': direction,
@@ -1861,7 +2023,9 @@ class Player(CharacterBase):
             "dy": dir_v * 0.5 if not self.is_jump() or self.is_falling() else dir_v * 0.2,
             'jump': jump_intent,
             'action': attack_type,
-            'down_pressed': down_pressed, # <--- 新增
+            'buttons': (z_pressed, x_pressed, c_pressed),  # 方便解構
+            'dirs': (up_pressed, down_pressed, left_pressed, right_pressed),  # 新增方向快照
+            #'down_pressed': down_pressed, # <--- 新增
             'button_pressed': zxc_buttons
         }
 
@@ -1962,7 +2126,17 @@ class Player(CharacterBase):
         r = keys[pygame.K_RIGHT]
 
         # 2. 優先判定 BRUST (組合鍵優先權最高，不進緩衝直接發動)
-        if (z + x + c) >= 2:
+        if u and x and z:
+            # 觸發：霸體 Buff (上 + Z + X)
+            if self.mp >= 2 and self.super_armor_timer <= 0:
+                print(f"{self.name} 集中精神，進入霸體狀態！")
+                self.mp -= 2
+                self.super_armor_timer = 300  # 持續 5 秒 (假設 60FPS)
+                self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
+                #def say(self, unit, text, duration=90, direction='up'):
+                self.say("喔喔喔喔喔")
+                return  # 攔截，不執行後續普通攻擊
+        elif (z + x + c) >= 2:
             if self.attack_state is None:  # 只有非攻擊時能主動爆氣
                 self.execute_command('brust')
                 return  # 發動組合鍵後，不進行後續單鍵緩衝
@@ -2227,9 +2401,14 @@ class Ally(CharacterBase):
             return intent
 
         # 分開邏輯模組處理
-        ai_jump_logic(self, target, intent)
-        ai_attack_logic(self, target, intent, act='support')
-        ai_move_logic(self, target, intent, far_speed = self.ai_move_speed, near_speed = self.ai_move_speed*0.6)
+        #print(f'[{self.current_frame}]{self.name} pre=facing{self.facing}')
+        self.ai_mental_logic(target)
+        intent['direction'] = self.facing
+        #print(f'[{self.current_frame}]{self.name} mid=facing{self.facing}')
+        self.ai_jump_logic(target, intent)
+        self.ai_attack_logic(target, intent, act='support')
+        self.ai_move_logic(target, intent, far_speed = self.ai_move_speed, near_speed = self.ai_move_speed*0.6)
+        #print(f'[{self.current_frame}]{self.name} post=facing{self.facing}')
         return intent
 
     def attack(self, skill):
@@ -2260,81 +2439,46 @@ class Ally(CharacterBase):
                 self.jump_z_vel = 0
                 self.color = self.default_color
 
-def ai_move_logic(unit, target, intent, far_speed = 0.5, near_speed=0.3):
-    if unit.attack_state or unit.is_locked() or unit.state == MoveState.ATTACK:
-        #攻擊時不移動
-        return
-    dx = target.x - unit.x
-    dy = target.y - unit.y
-    dist = (dx ** 2 + dy ** 2) ** 0.5
+# def ai_move_logic(unit, target, intent, far_speed = 0.5, near_speed=0.3):
+#     if unit.attack_state or unit.is_locked() or unit.state == MoveState.ATTACK:
+#         #攻擊時不移動
+#         return
+#     morale_factor = 1.0 if unit.morale > 0.5 else 0.6
+#
+#     dx = target.x - unit.x
+#     dy = target.y - unit.y
+#     dist = (dx ** 2 + dy ** 2) ** 0.5
+#
+#     # 增加非理性行為：如果敵人性格膽小且血量低，dist < 5 時反而會後退 (Kite)
+#     if unit.personality == 'coward' and unit.health < (unit.max_hp * 0.3) and unit.morale < 0.8:
+#         move_speed = -0.4  # 往反方向跑，不再是木樁
+#         unit.morale += 0.005
+#     else:
+#         if dist > 10.0:
+#             move_speed = 1* morale_factor  # approach fast
+#         elif dist > 4.0 and unit.personality not in ['coward', 'cautious']:
+#             move_speed = 0.5* morale_factor  # approach slow
+#         elif dist > 2.0 and unit.personality not in ['coward', 'cautious']:
+#             move_speed = far_speed* morale_factor
+#         elif dist > unit.width*0.5:
+#             move_speed = near_speed* morale_factor
+#         else:
+#             move_speed = 0.0  # keep distance
+#
+#     move_dx = 0.5 if dx > 0.2 else -0.5 if dx < -0.2 else 0
+#     move_dy = 0.5 if dy > 0.2 else -0.5 if dy < -0.2 else 0
+#     intent['dx'] = move_dx * move_speed
+#     intent['dy'] = move_dy * move_speed
+#
+#     if intent['dx'] > 0:
+#         intent['direction'] = DirState.RIGHT
+#         intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
+#     elif intent['dx'] < 0:
+#         intent['direction'] = DirState.LEFT
+#         intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
 
-    if dist > 10.0:
-        move_speed = 1  # approach fast
-    elif dist > 4.0:
-        move_speed = 0.5  # approach slow
-    elif dist > 2.0:
-        move_speed = far_speed
-    elif dist > 1.0:
-        move_speed = near_speed
-    else:
-        move_speed = 0.0  # keep distance
 
-    move_dx = 0.5 if dx > 0.2 else -0.5 if dx < -0.2 else 0
-    move_dy = 0.5 if dy > 0.2 else -0.5 if dy < -0.2 else 0
-    intent['dx'] = move_dx * move_speed
-    intent['dy'] = move_dy * move_speed
 
-    if intent['dx'] > 0:
-        intent['direction'] = DirState.RIGHT
-        intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
-    elif intent['dx'] < 0:
-        intent['direction'] = DirState.LEFT
-        intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
-
-def ai_jump_logic(unit, target, intent):
-    dx = target.x - unit.x
-    dy = target.y - unit.y
-    dz = abs((target.z) - (unit.z))
-
-    tile_x = int(unit.x + (0.4 if dx > 0 else -0.4))
-    tile_y = int(unit.y + (0.4 if dy > 0 else -0.4))
-    next_tile_z = unit.get_tile_z(tile_x, tile_y)
-
-    if unit.jump_z == 0 and next_tile_z is not None:
-        dz_to_next_tile = next_tile_z - unit.z
-        if dz >= 2 and dz_to_next_tile >= 2:
-            intent['jump'] = True
-            intent['dx'] = dx
-            intent['dy'] = dy
-            intent['direction'] = DirState.RIGHT if dx > 0 else DirState.LEFT
-            intent['horizontal'] = MoveState.STAND
-            print(f'{unit.name} 試圖跳躍!')
-
-def ai_attack_logic(unit, target, intent, act='support'):
-    dx = target.x - unit.x
-    dy = target.y - unit.y
-    dz = abs((target.z) - (unit.z))
-    dist = (dx ** 2 + dy ** 2) ** 0.5
-    if act == 'support':
-        if dy < 0.5 and dz < 1.5 and unit.attack_cooldown <= 0:
-            if dist > 1:
-                intent['action'] = AttackType.BULLET
-            else:
-                intent['action'] = AttackType.SLASH
-            unit.attack_cooldown = unit.attack_cooldown_duration
-            unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
-            unit.attack_cooldown = unit.attack_cooldown_duration
-    else:
-        if hasattr(unit, "scale"):
-            attack_range = 3*unit.scale
-        else:
-            attack_range = 3
-        if dist <= attack_range and dz < 1.0:
-            if unit.attack_cooldown <= 0:
-                intent['action'] = unit.combos[int(unit.combo_count) % len(unit.combos)]
-                unit.combo_count += 1
-                unit.attack_cooldown = unit.attack_cooldown_duration
-                unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
 
 from CharactersConfig import *
 class Enemy(CharacterBase):
@@ -2414,8 +2558,29 @@ class Enemy(CharacterBase):
 
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
-        intent = self.decide_intent(players[0])
-        if self.current_frame >= self.summon_sickness:
+
+        # --- 進攻權杖管理 ---
+        scene = self.scene
+        # 1. 如果正在攻擊，重置權杖計時器
+        if self.attack_state:
+            scene.refresh_token(self)
+
+        # 2. 如果沒有權杖，且士氣高昂/性格勇敢，嘗試申請
+        has_token = self in scene.token_holders
+        if not has_token and (self.morale > 0.4 or self.personality == 'brave'):
+            players = self.scene.get_units_by_side('player_side')
+            if players and abs(players[0].x - self.x) < 8:  # 靠近玩家才申請
+                scene.request_token(self)
+        intent = None
+        if (self.current_frame + id(self))%3 == 0:
+            intent = self.decide_intent(players[0])
+        elif self.last_intent:
+            #如果攻擊過一次就不再繼續攻擊
+            if self.last_intent.get('action') is not None:
+                self.last_intent['action'] = None
+            intent = self.last_intent
+
+        if self.current_frame >= self.summon_sickness and intent:
             self.handle_input(intent)
         self.update_physics_only()
         self.handle_movement()
@@ -2439,11 +2604,11 @@ class Enemy(CharacterBase):
             return intent
 
         # 分開邏輯模組處理
-        ai_jump_logic(self, target, intent)
-        ai_attack_logic(self, target, intent, act='Enemy')
-        ai_move_logic(self, target, intent, far_speed=self.ai_move_speed, near_speed=self.ai_move_speed*0.6)
-
-
+        self.ai_mental_logic(target)
+        self.ai_mental_logic(target)
+        self.ai_jump_logic(target, intent)
+        self.ai_attack_logic(target, intent, act='Enemy')
+        self.ai_move_logic(target, intent, far_speed=self.ai_move_speed, near_speed=self.ai_move_speed*0.6)
 
         return intent
 
