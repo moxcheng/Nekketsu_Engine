@@ -599,6 +599,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     #掛載component
     player.health=500
     player.max_hp = 500
+    player.mp=3
     player.add_component("holdable", HoldableComponent(player))
     player.scene = scene
     scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')

@@ -3,7 +3,7 @@ from Config import *
 #from enum import Enum, auto
 from State_enum import *
 from Skill import *
-from Component import ComponentHost, HoldFlyLogicMixin
+from Component import ComponentHost, HoldFlyLogicMixin, StandComponent
 from CharactersConfig import *
 import random
 
@@ -260,6 +260,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.personality = random.choice(['brave', 'coward', 'cautious'])
         self.ai_target_cache = None
         self.ai_recalc_timer = 0
+        self.draw_alpha=255
 
     def trigger_guard_success(self, attacker, attack_data):
         """
@@ -444,6 +445,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             st = st + f'Cbt={self.combat_state.name}'
         #print(f'[{self.current_frame}] {st} anim_name {anim_name}')
         #common material anime
+        #print(f'{self.name} anim_name {anim_name}')
         if anim_name in common_anim_material:
             if anim_name == 'burn':
                 # 👇 繪製燃燒效果（如果標記為 get_burning）
@@ -488,7 +490,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 index_map = self.frame_map_cache.get(anim_name)
                 if not index_map:
                     index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, self.animator.anim_map.get(anim_name))
-                    print(f'cache {anim_name}')
+                    #print(f'{self.name} cache {anim_name} = {index_map}')
                     self.frame_map_cache[anim_name] = index_map.copy()
                 use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
                 frame_index = index_map[use_index]
@@ -545,12 +547,13 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             if self.popup and 'fade-in' in self.popup and self.current_frame < self.summon_sickness:
             #if self.current_frame < self.summon_sickness:
                 # 使用 max(0, 255 - countdown) 的簡潔寫法處理 Alpha
-                alpha = min(255, int((self.current_frame / self.summon_sickness) * 255))
-                frame.set_alpha(alpha)
+                alpha_value = min(255, int((self.current_frame / self.summon_sickness) * 255))
+                frame.set_alpha(alpha_value)
 
 
         self.current_anim_frame = frame
-
+        if self.draw_alpha != 255:
+            frame.set_alpha(self.draw_alpha)
         # 計算畫面座標
         terrain_z_offset = self.z * Z_DRAW_OFFSET
         falling_z_offset = 0
@@ -1156,6 +1159,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
     def take_damage(self, attacker, attack_data):
         #damage = getattr(attack_data, 'damage', 5)
         damage = attack_data.get_damage(attacker)
+        print(f'{self.name}受到{attacker.name}的{attack_data.attack_type.name} {damage}點傷害')
         #根據敵我進行傷害加成
         self.health -= damage
         # if self.health <= 0 and self.knockback_vel_z <= 0 and self.knockback_vel_x <= 0 and self.jump_z <= 0:
@@ -1554,7 +1558,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         # 這裡實作您擔心的擴充性：遍歷所有組件來修改這個臨時的 atk_data
         for comp in self.components.values():
             if hasattr(comp, "modify_attack_data"):
+                ori_damage = atk_data.get_damage()
                 comp.modify_attack_data(atk_data)
+                new_damage = atk_data.get_damage()
+                print(f'modified {atk_data.attack_type.name}: damage {ori_damage}->{new_damage}')
 
         if atk_data is not None:
             if atk_data.can_use(self):
@@ -1947,12 +1954,22 @@ class Player(CharacterBase):
         self.super_move_staging = config.get("super_move_staging")
         self.super_move_max_time = 0
         self.last_dir_input = [0,0,0,0]
+        self.stand_config = config.get("stand_config", None)
 
 
         #for dir in ['left', 'right', 'up', 'down']:
         for dir in DirState:
             self.key_down_frame[dir] = None
             self.last_step_frame[dir] = -9999
+
+    def activate_stand(self):
+        # 避免重複掛載
+        if self.stand_config is None:
+            return
+        if self.get_component("stand_logic"):
+            return
+        self.add_component("stand_logic", StandComponent(self.stand_config, duration=900))
+        # 之後在 update_components() 就會自動執行 StandComponent.update
 
     def recently_stepped(self, direction, current_frame):
         last_frame = self.last_step_frame.get(direction)
@@ -2131,10 +2148,11 @@ class Player(CharacterBase):
             if self.mp >= 2 and self.super_armor_timer <= 0:
                 print(f"{self.name} 集中精神，進入霸體狀態！")
                 self.mp -= 2
-                self.super_armor_timer = 300  # 持續 5 秒 (假設 60FPS)
+                self.super_armor_timer = 900  # 持續 5 秒 (假設 60FPS)
                 self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
                 #def say(self, unit, text, duration=90, direction='up'):
-                self.say("喔喔喔喔喔")
+                self.activate_stand()
+                self.say("無窮之鎖,煌星")
                 return  # 攔截，不執行後續普通攻擊
         elif (z + x + c) >= 2:
             if self.attack_state is None:  # 只有非攻擊時能主動爆氣
@@ -2439,46 +2457,47 @@ class Ally(CharacterBase):
                 self.jump_z_vel = 0
                 self.color = self.default_color
 
-# def ai_move_logic(unit, target, intent, far_speed = 0.5, near_speed=0.3):
-#     if unit.attack_state or unit.is_locked() or unit.state == MoveState.ATTACK:
-#         #攻擊時不移動
-#         return
-#     morale_factor = 1.0 if unit.morale > 0.5 else 0.6
-#
-#     dx = target.x - unit.x
-#     dy = target.y - unit.y
-#     dist = (dx ** 2 + dy ** 2) ** 0.5
-#
-#     # 增加非理性行為：如果敵人性格膽小且血量低，dist < 5 時反而會後退 (Kite)
-#     if unit.personality == 'coward' and unit.health < (unit.max_hp * 0.3) and unit.morale < 0.8:
-#         move_speed = -0.4  # 往反方向跑，不再是木樁
-#         unit.morale += 0.005
-#     else:
-#         if dist > 10.0:
-#             move_speed = 1* morale_factor  # approach fast
-#         elif dist > 4.0 and unit.personality not in ['coward', 'cautious']:
-#             move_speed = 0.5* morale_factor  # approach slow
-#         elif dist > 2.0 and unit.personality not in ['coward', 'cautious']:
-#             move_speed = far_speed* morale_factor
-#         elif dist > unit.width*0.5:
-#             move_speed = near_speed* morale_factor
-#         else:
-#             move_speed = 0.0  # keep distance
-#
-#     move_dx = 0.5 if dx > 0.2 else -0.5 if dx < -0.2 else 0
-#     move_dy = 0.5 if dy > 0.2 else -0.5 if dy < -0.2 else 0
-#     intent['dx'] = move_dx * move_speed
-#     intent['dy'] = move_dy * move_speed
-#
-#     if intent['dx'] > 0:
-#         intent['direction'] = DirState.RIGHT
-#         intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
-#     elif intent['dx'] < 0:
-#         intent['direction'] = DirState.LEFT
-#         intent['horizontal'] = MoveState.RUN if move_speed > 0.3 else MoveState.WALK
+class StandEntity(Ally):
+    def __init__(self, owner, config_dict):
+        super().__init__(owner.x, owner.y, owner.z, [owner.terrain, owner.map_w, owner.map_h], config_dict)
+        self.owner = owner
+        self.invincible_timer = 999999
+        self.dummy = True  # 確保不執行 AI
+        # 替身不參與受擊，判定由主人承擔
+        self.health = 1
+    def update(self):
+        # 僅執行視覺與動畫計時器的基本更新
+        self.current_frame += 1
+        if self.attack_state:
+            self.attack_state.update()
+        else:
+            self.state=MoveState.STAND
+        #不與其他單位互動
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        # 使用特殊濾鏡（例如 BLEND_RGB_ADD）增強靈體感
+        # 此處呼叫 simplified_draw 或直接在 draw 中設定 alpha
 
+        comp = self.owner.get_component("stand_logic")
+        alpha_remain = 255
+        if comp and hasattr(comp, "duration"):
+            # 取得螢幕位置
+            cx, cy = self.cached_pivot
+            bar_w = 40
+            bar_h = 4
+            draw_x = cx - bar_w // 2
+            draw_y = cy + 10  # 放在腳下
 
+            # 計算比例 (假設初始 duration 為 900)
+            # 如果想要動態，可以在 StandComponent 紀錄一個 initial_duration
+            max_d = 900.0
+            ratio = max(0, comp.duration / max_d)
+            self.draw_alpha = int(255*ratio)
 
+            # 繪製背景與進度
+            pygame.draw.rect(win, (50, 50, 50), (draw_x, draw_y, bar_w, bar_h))
+            pygame.draw.rect(win, (200, 100, 255), (draw_x, draw_y, int(bar_w * ratio), bar_h))
+            pygame.draw.rect(win, (255, 255, 255), (draw_x, draw_y, bar_w, bar_h), 1)
+        super().draw(win, cam_x, cam_y, tile_offset_y)
 
 from CharactersConfig import *
 class Enemy(CharacterBase):

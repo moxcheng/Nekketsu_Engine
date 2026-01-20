@@ -5,10 +5,35 @@ DEFAULT_COMBOS = [AttackType.PUNCH, AttackType.PUNCH, AttackType.KICK, AttackTyp
 ELITE_COMBOS = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
 FIRE_MAGE_COMBOS = [AttackType.FIREBALL]
 
+
+STAND_KONOMI_CONFIG={
+    "name": "stand_player",
+    "image_path": "..//Assets_Drive//konomi_stand_128.png",
+    "x_offset": 0.5,
+    "y_offset": -0.1,
+    "animator_config": {
+        "frame_width": 128,
+        "frame_height": 128,
+        "anim_map": {
+            "stand": [[0]],
+            "punch":[[1],[3],[2]],
+            "kick":[[9,10],[6,11]],
+            "slash":[[4],[5],[7]]
+        }
+    },
+    "skill_map":{
+        AttackType.PUNCH:[AttackType.PUNCH, AttackType.SPECIAL_PUNCH, AttackType.MAHAHPUNCH],
+        AttackType.KICK:[AttackType.KICK, AttackType.SPECIAL_KICK, AttackType.FLY_KICK],
+        AttackType.SLASH:[AttackType.SLASH,AttackType.PUSH, AttackType.METEOFALL]
+    }
+
+}
+
 PLAYER_KONOMI_CONFIG={
     "name": "player",
     "image_path": "..//Assets_Drive//konomi_test_45frame.png",
     "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
+    "stand_config": STAND_KONOMI_CONFIG,
     "super_move_staging": {
         "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
                                 "..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
@@ -117,6 +142,7 @@ PLAYER_KONOMI_CONFIG={
         "damage": 16}
     },
 }
+
 PLAYER_REN_CONFIG={
     'name': "player",
     "image_path": "..//Assets_Drive//yamashiro_96.png",

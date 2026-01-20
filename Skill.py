@@ -147,6 +147,7 @@ class AttackData:
         self.dialogue = dialogue
         self.frame_map_ratio=frame_map_ratio
         self.hit_stop_frames = hit_stop_frames  # 凍結幀數 (通常 3~8 幀就很強烈)
+        self.damage_multiplier = 1.0
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -161,8 +162,8 @@ class AttackData:
             return self.hitbox_func(x, y, facing)
     def get_damage(self, attacker=None):
         if callable(self.damage):
-            return self.damage(attacker)
-        return self.damage
+            return int(self.damage(attacker)*self.damage_multiplier)
+        return int(self.damage*self.damage_multiplier)
 
 
 

@@ -349,8 +349,6 @@ class HoldFlyLogicMixin:
                 if self.check_collision(unit):
                     self.on_hit_unit(unit)
                     print(f'{unit.name} 被飛行物體 {self.name} 打中!')
-                    #unit.take_damage(attacker=self,attack_data=attack_data_dict[AttackType.THROW_CRASH])
-
                     hit_someone = True
                     if self.thrown_by and self.thrown_by.attack_state and self.thrown_by.attack_state.data.attack_type in THROW_ATTACKS:
                         unit.on_hit(self.thrown_by, self.thrown_by.attack_state.data)
@@ -548,3 +546,77 @@ class StatusAuraComponent(Component):
 
             # 4. 使用 BLEND_RGB_ADD (不處理 Alpha 的加法，效能較好且效果正確)
             win.blit(fill_surf, (draw_x, draw_y), special_flags=pygame.BLEND_RGB_ADD)
+
+
+# Component.py
+
+class StandComponent(Component):
+    def __init__(self, stand_config, duration=900):
+        super().__init__()
+        self.config = stand_config
+        self.stand = None
+        self.active_timer = 0
+        self.x_offset = stand_config.get("x_offset", 0.3)
+        self.y_offset = stand_config.get("y_offset", -0.1)
+        self.skill_map = stand_config.get("skill_map", None)
+        self.duration=duration
+
+    def on_attach(self, owner):
+        from Characters import StandEntity
+        super().on_attach(owner)
+        # 建立連結但不一定立刻顯示
+        self.stand = StandEntity(owner, self.config)
+        owner.scene.register_unit(self.stand, side="stand", type='stand')
+        #"stand"side 不會與其他單位互動
+        owner.stand = self.stand  # 讓 Player 類別直接持有引用
+
+    def update(self):
+        # 同步位置與面向
+        # 1. 處理生命週期：時間到則註銷
+        self.duration -= 1
+        if self.duration <= 0 or not self.owner.is_alive():
+            self.cleanup()
+            return
+
+        # 2. 同步視覺位置 (Slave 模式)
+        self.sync_visuals()
+
+    def sync_visuals(self):
+        # 簡單的跟隨邏輯，確保替身在主人背後浮動
+        owner, stand = self.owner, self.stand
+        target_x = owner.x - (self.x_offset if owner.facing == DirState.RIGHT else -1*self.x_offset)
+        stand.x = target_x
+        stand.y = owner.y + self.y_offset
+        stand.jump_z = owner.jump_z + math.sin(owner.current_frame * 0.1) * 0.3
+        stand.facing = owner.facing
+        # 動作同步修正
+        if owner.attack_state:
+            # 如果主人在攻擊，同步或映射招式
+            if self.skill_map:
+                for mapped_skill, owner_skills in self.skill_map.items():
+                    if owner.attack_state.data.attack_type in owner_skills:
+                        if not stand.attack_state:
+                            stand.set_attack_by_skill(mapped_skill)
+        else:
+            # 如果主人停止攻擊，替身也必須立刻停止
+            stand.attack_state = None
+            stand.state = MoveState.STAND
+
+    def cleanup(self):
+        """銷毀替身並從主人身上移除引用"""
+        if self.stand and self.owner.scene:
+            self.owner.scene.mark_for_removal(self.stand)  # 通知場景回收
+        self.owner.stand = None  # 清除主人的 slave 指向
+        self.owner.remove_component("stand_logic")  # 移除此組件自身
+
+    def modify_attack_data(self, atk_data):
+        """核心：當替身在場時，修改玩家的攻擊屬性"""
+        # 1. 擴大判定範圍 (視覺上替身手比玩家長)
+        atk_data.range_multiplier = 1.8
+        # 2. 增加傷害或特定效果
+        atk_data.damage_multiplier = 1.5
+        # 3. 如果需要，加入不可格擋效果
+        # atk_data.effects.append(AttackEffect.UNGUARDABLE)
+        self.stand.set_attack_by_skill(atk_data)
+
+        # 4. 指令推播：讓替身播放動作 (多對一映射)
