@@ -12,11 +12,11 @@ class Item(ComponentHost, HoldFlyLogicMixin):
         self.name = name
         self.x = x
         self.y = y
-        self.width = 1
-        self.height = 1
+        self.width = 1.0
+        self.height = 1.0
         self.weight = weight
-        self.jump_z_vel = 0
-        self.jump_z = 0  # 可選：讓 item 可以「拋起」
+        self.jump_z_vel = 0.0
+        self.jump_z = 0.0  # 可選：讓 item 可以「拋起」
         self.color = (150, 150, 150)  # 預設灰色
         self.timer = 0
         self.flying = False
@@ -64,14 +64,23 @@ class Item(ComponentHost, HoldFlyLogicMixin):
         self.z = self.get_tile_z(self.x, self.y)
 
 
+    # def get_interact_box(self):
+    #     return {
+    #         'x1': self.x,
+    #         'x2': self.x + self.width,
+    #         'y1': self.y,
+    #         'y2': self.y + self.height,
+    #         'z1': self.jump_z,
+    #         'z2': self.jump_z + self.height
+    #     }
+
+    # 修改 Item 的 box 獲取方式
     def get_interact_box(self):
         return {
-            'x1': self.x,
-            'x2': self.x + self.width,
-            'y1': self.y,
-            'y2': self.y + self.height,
-            'z1': self.jump_z,
-            'z2': self.jump_z + self.height
+            'x1': self.x, 'x2': self.x + self.width,
+            'y1': self.y, 'y2': self.y + self.height,
+            'z1': self.z+self.jump_z, 'z2':self.z+self.jump_z+self.height,
+            'z_abs': self.z + self.jump_z  # 🟢 加入地面高度 z
         }
 
     def get_swing_attack_data(self, attacker):
@@ -107,6 +116,7 @@ class Item(ComponentHost, HoldFlyLogicMixin):
         effects=[AttackEffect.SHORT_STUN],
         damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 7,
         frame_map = [0]*16 + [1]*16,   #必須與duration等長
+        frame_map_ratio=[16, 16]
     )
 
     def is_out_of_bounds(self):
@@ -116,8 +126,8 @@ class Item(ComponentHost, HoldFlyLogicMixin):
 class Rock(Item):
     def __init__(self, x, y, map_info):
         super().__init__(name="小石頭", x=x, y=y, map_info=map_info, weight=0.03)
-        self.width = 1
-        self.height = 1
+        self.width = 1.0
+        self.height = 1.0
         self.vz = 0
         self.color = (80, 80, 220)
         self.fly_color = (40, 80, 220)
@@ -150,8 +160,8 @@ class Fireball(Item):
         self.facing = owner.facing
         self.speed = 0.1  # 自訂速度
         self.timer = 90  # 最多存活幀數
-        self.width = 1
-        self.height = 1
+        self.width = 1.0
+        self.height = 1.0
         self.vz = 0
         self.breakthrough = False
         self.hitting = []
@@ -159,7 +169,7 @@ class Fireball(Item):
         self.swing_damge = 0
         self.raw_image = pygame.image.load("..\\Assets_Drive\\hadouken.png").convert_alpha()
         self.image = self.raw_image
-        self.attacker_attack_data = None
+
         self.ignore_side = [owner.side]
         if self.facing == DirState.LEFT:
             self.image = pygame.transform.flip(self.raw_image, True, False)
@@ -203,13 +213,13 @@ class Fireball(Item):
 
 class Bullet(Item):
     def __init__(self, x, y, map_info, owner=None):
-        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
+        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.01)
         self.owner = owner
         self.facing = owner.facing
         self.speed = 0.5  # 自訂速度
         self.timer = 90  # 最多存活幀數
-        self.width = 1
-        self.height = 1
+        self.width = 1.0
+        self.height = 1.0
         self.vz = 0
         self.breakthrough = False
         self.hitting = []
@@ -217,7 +227,6 @@ class Bullet(Item):
         self.swing_damge = 0
         self.raw_image = pygame.image.load("..\\Assets_Drive\\bullet.png").convert_alpha()
         self.image = self.raw_image
-        self.attacker_attack_data = None
         self.ignore_side = [owner.side]
         if self.facing == DirState.LEFT:
             self.image = pygame.transform.flip(self.raw_image, True, False)
@@ -260,12 +269,7 @@ class Bullet(Item):
         frame_map_ratio = [16,32]
     )
 
-def is_box_overlap(box1, box2):
-    return (
-        box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1'] and
-        box1['y1'] <= box2['y2'] and box1['y2'] >= box2['y1'] and
-        box1['z1'] <= box2['z2'] and box1['z2'] >= box2['z1']
-    )
+from PhysicsUtils import is_box_overlap
 
 class Coin(Item):
     def __init__(self, x, y, map_info):
@@ -281,8 +285,8 @@ class Coin(Item):
             for i in range(self.num_frames)
         ]
 
-        self.width = 1
-        self.height = 1
+        self.width = 1.0
+        self.height = 1.0
         self.timer = 600
         self.money = 0
         self.z = self.get_tile_z(x, y)

@@ -764,12 +764,13 @@ def get_cjk_font(size=20, prefer='jp'):
     return pygame.font.Font(font_path.get(prefer, 'jp'), size)
 
 class SpeechBubble:
-    def __init__(self, target, text, duration=90, direction='up'):
+    def __init__(self, target, text, duration=90, direction='up', alpha=200):
         self.target = target  # 綁定角色或物件
         self.text = text
         self.duration = duration
         self.direction = direction
         self.offset = (0, 1.2) if direction == 'up' else (0, -0.5)
+        self.alpha = alpha
 
     def update(self):
         self.duration -= 1
@@ -777,37 +778,83 @@ class SpeechBubble:
     def is_alive(self):
         return self.duration > 0
 
-    def draw(self, win, cam_x, cam_y, tile_offset_y, font):
+    # def draw(self, win, cam_x, cam_y, tile_offset_y, font):
+    #     x = self.target.x + self.offset[0]
+    #     y = self.target.y + self.offset[1]
+    #     screen_x = int(x * TILE_SIZE) - cam_x
+    #     screen_y = int((self.target.map_h - y) * TILE_SIZE - cam_y + tile_offset_y)
+    #
+    #     # 🗨️ 氣泡樣式
+    #     padding = 6
+    #     lines = self.wrap_text(font, self.text, max_width=160)
+    #     bubble_w = max(font.size(line)[0] for line in lines) + padding * 2
+    #     bubble_h = len(lines) * font.get_height() + padding * 2
+    #
+    #     # 🟩 框的位置（顯示在頭上）
+    #     bubble_rect = pygame.Rect(screen_x - bubble_w // 2, screen_y - bubble_h - self.target.height*TILE_SIZE, bubble_w, bubble_h)
+    #
+    #     pygame.draw.rect(win, (255, 255, 255), bubble_rect)
+    #     pygame.draw.rect(win, (0, 0, 0), bubble_rect, 2)
+    #
+    #     # 🔺 尾巴（向下）
+    #     tail = [
+    #         (bubble_rect.centerx, bubble_rect.bottom),
+    #         (bubble_rect.centerx - 6, bubble_rect.bottom + 8),
+    #         (bubble_rect.centerx + 6, bubble_rect.bottom + 8)
+    #     ]
+    #     pygame.draw.polygon(win, (255, 255, 255), tail)
+    #     pygame.draw.polygon(win, (0, 0, 0), tail, 2)
+    #
+    #     # 📝 繪製文字
+    #     for i, line in enumerate(lines):
+    #         text_surf = font.render(line, True, (0, 0, 0))
+    #         win.blit(text_surf, (bubble_rect.left + padding, bubble_rect.top + padding + i * font.get_height()))
+    def draw(self, win, cam_x, cam_y, tile_offset_y, font):  # 新增 alpha 參數
+        if self.duration < 20:
+            alpha = int(self.alpha * (self.duration / 20))  # 最後 20 幀漸漸變透明
+        else:
+            alpha = self.alpha
         x = self.target.x + self.offset[0]
         y = self.target.y + self.offset[1]
         screen_x = int(x * TILE_SIZE) - cam_x
         screen_y = int((self.target.map_h - y) * TILE_SIZE - cam_y + tile_offset_y)
 
-        # 🗨️ 氣泡樣式
         padding = 6
         lines = self.wrap_text(font, self.text, max_width=160)
         bubble_w = max(font.size(line)[0] for line in lines) + padding * 2
         bubble_h = len(lines) * font.get_height() + padding * 2
 
-        # 🟩 框的位置（顯示在頭上）
-        bubble_rect = pygame.Rect(screen_x - bubble_w // 2, screen_y - bubble_h - self.target.height*TILE_SIZE, bubble_w, bubble_h)
+        # 建立一個足以容納氣泡（含尾巴）的臨時 Surface
+        # 寬度加上外框，高度預留 10 像素給尾巴
+        temp_surf = pygame.Surface((bubble_w + 4, bubble_h + 10), pygame.SRCALPHA)
+        temp_surf.fill((0, 0, 0, 0))  # 填充全透明背景
 
-        pygame.draw.rect(win, (255, 255, 255), bubble_rect)
-        pygame.draw.rect(win, (0, 0, 0), bubble_rect, 2)
+        # 在 temp_surf 上繪製，座標改為從 (0,0) 開始計算的相對座標
+        bubble_rect = pygame.Rect(2, 0, bubble_w, bubble_h)
 
-        # 🔺 尾巴（向下）
+        # 繪製矩形框（傳入包含 Alpha 的 RGBA 顏色）
+        pygame.draw.rect(temp_surf, (255, 255, 255, alpha), bubble_rect)
+        pygame.draw.rect(temp_surf, (0, 0, 0, alpha), bubble_rect, 2)
+
+        # 🔺 尾巴（座標相對於 temp_surf）
         tail = [
             (bubble_rect.centerx, bubble_rect.bottom),
             (bubble_rect.centerx - 6, bubble_rect.bottom + 8),
             (bubble_rect.centerx + 6, bubble_rect.bottom + 8)
         ]
-        pygame.draw.polygon(win, (255, 255, 255), tail)
-        pygame.draw.polygon(win, (0, 0, 0), tail, 2)
+        pygame.draw.polygon(temp_surf, (255, 255, 255, alpha), tail)
+        pygame.draw.polygon(temp_surf, (0, 0, 0, alpha), tail, 2)
 
         # 📝 繪製文字
         for i, line in enumerate(lines):
             text_surf = font.render(line, True, (0, 0, 0))
-            win.blit(text_surf, (bubble_rect.left + padding, bubble_rect.top + padding + i * font.get_height()))
+            text_surf.set_alpha(alpha)  # 設定文字透明度
+            temp_surf.blit(text_surf, (bubble_rect.left + padding, bubble_rect.top + padding + i * font.get_height()))
+
+        # 最後把做好的 temp_surf 貼到 win
+        final_x = screen_x - bubble_w // 2
+        final_y = screen_y - bubble_h - int(self.target.height * TILE_SIZE)
+        win.blit(temp_surf, (final_x, final_y))
 
     def wrap_text(self, font, text, max_width):
         words = text.split(' ')

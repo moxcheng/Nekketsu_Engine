@@ -591,7 +591,8 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     stage_cleared = False
     #宣告玩家單位
     tile_offset_y = 0
-    px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
+    #px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
+    px, py = 16.0, 2.0
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
     #player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
     player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
@@ -607,6 +608,11 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     bubble = SpeechBubble(player, "場景1開始！", 120)
     scene.speech_bubbles = [bubble]
     boss_barserker = False
+
+    rock = Rock(x=player.x - 1.5, y=player.y, map_info=map_info)
+    rock.scene=scene
+    scene.register_unit(rock, side='netural', tags=['item', 'interactable'], type='item')
+
 
     #小兵清單
     enemy_list = []

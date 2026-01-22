@@ -23,12 +23,7 @@ def suspend(info=''):
         # 避免 CPU 吃滿（加一點等待）
         pygame.time.delay(100)
 
-def is_box_overlap(box1, box2):
-    return (
-        box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1'] and
-        box1['y1'] <= box2['y2'] and box1['y2'] >= box2['y1'] and
-        box1['z1'] <= box2['z2'] and box1['z2'] >= box2['z1']
-    )
+from PhysicsUtils import is_box_overlap
 
 def get_overlap_center(box1, box2):
     """
@@ -146,6 +141,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.map_w = map_info[1]
         self.map_h = map_info[2]
         self.z = self.get_tile_z(x, y)
+        self.vz = 0
 
         self.color = (0,0,0)
         # 受創系統
@@ -194,12 +190,12 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         self.scene = None
 
-        self.weight = 0.05 # 作為投擲用物件
+        self.weight = 0.15 # 作為投擲用物件
         self.flying = False
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
-        self.throw_power = 0.3  #投擲基本力量
+        self.throw_power = 0.6  #投擲基本力量
         
 
         self.jump_key_block = False #避免長按連續跳躍
@@ -261,6 +257,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.ai_target_cache = None
         self.ai_recalc_timer = 0
         self.draw_alpha=255
+        self.breakthrough=False
+        self.attacker_attack_data=None
 
     def trigger_guard_success(self, attacker, attack_data):
         """
@@ -780,7 +778,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.rigid_timer = max(self.rigid_timer, duration)
 
     def is_locked(self):
-        return self.rigid_timer > 0 or self.combat_state == CombatState.DOWN or self.combat_state == CombatState.KNOCKBACK
+        return self.rigid_timer > 0 or self.combat_state in [CombatState.DOWN, CombatState.KNOCKBACK]
     def is_on_hit(self):
         return self.on_hit_timer > 0
     def is_invincible(self):
@@ -820,6 +818,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         #血越少越快醒
         self.combat_timer = knockout_time
         self.combat_timer_max = knockout_time
+        self.knockback_vel_x = 0.0
+        self.knockback_vel_z = 0.0
         self.hit_count = 0.0
         self.set_rigid(knockout_time)
         self.state = MoveState.STAND
@@ -836,6 +836,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.hit_count = 0.0
         self.rigid_timer = 0
         self.combat_timer = 0
+        self.knockback_vel_x = 0.0
+        #self.knockback_vel_z = 0.0
         self.is_mashing = False
         #清除快取意圖
         self.clean_input_buffer()
@@ -896,26 +898,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if self.scene:
             self.scene.say(self, txt)
 
-    def check_wall_collision(self, next_x):
-        """偵測 next_x 是否撞牆或超出地圖邊界"""
-        # 1. 檢查地圖左右邊界
-        if next_x < 0 or next_x+self.width > self.map_w:
-            return True
 
-        # 2. 檢查地形高度差 (牆壁)
-        # 取得角色當前高度與前方地塊高度
-        tx = int(next_x + (0.8 if self.knockback_vel_x > 0 else 0.2))
-        ty = int(self.y + 0.5)
-
-        target_z = self.get_tile_z(tx, ty)
-        if target_z is None:
-            return True  # 超出索引視同撞牆
-        if target_z is not None:
-            # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
-            if target_z - self.z >= 2:
-                return True
-
-        return False
 
     def update_physics_only(self):
         # --- 1. 處理垂直位移 (保持原樣) ---
@@ -937,7 +920,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         # --- 2. 整合水平位移與邊界偵測 ---
         # 只有在有水平速度且非霸體、非倒地（或是正在受身/擊飛狀態）時處理
         if self.knockback_vel_x != 0 and self.super_armor_timer <= 0:
-
             # 預測下一幀的位置
             next_x = self.x + self.knockback_vel_x
 
@@ -1423,6 +1405,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             
             xy_hitbox['z1'] = self.z+self.jump_z
             xy_hitbox['z2'] = self.z+self.jump_z+self.height
+            xy_hitbox['z_abs'] = self.z+self.jump_z
             if self.attack_state.is_fly_attack:
                 xy_hitbox['z1'] = self.z
             return xy_hitbox
@@ -1430,7 +1413,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
         return None
     def get_hurtbox(self):
-        return {'x1': self.x, 'x2':self.x+self.width, 'y1':self.y, 'y2':self.y+self.height, 'z1':self.z+self.jump_z, 'z2':self.z+self.jump_z+self.height}
+        return {'x1': self.x, 'x2':self.x+self.width, 'y1':self.y, 'y2':self.y+self.height, 'z1':self.z+self.jump_z,
+                'z2':self.z+self.jump_z+self.height, 'z_abs': self.z+self.jump_z}
 
     def get_interact_box(self):
         #物件互動使用(非傷害)
@@ -1440,7 +1424,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             'y1': self.y,
             'y2': self.y + self.height*0.5,
             'z1': self.jump_z,
-            'z2': self.jump_z+self.height
+            'z2': self.jump_z+self.height,
+            'z_abs': self.z+self.jump_z
         }
 
     def stop_print_info(self):
@@ -2149,7 +2134,8 @@ class Player(CharacterBase):
                 print(f"{self.name} 集中精神，進入霸體狀態！")
                 self.mp -= 2
                 self.super_armor_timer = 900  # 持續 5 秒 (假設 60FPS)
-                self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
+                #self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
+                self.execute_command('brust')
                 #def say(self, unit, text, duration=90, direction='up'):
                 self.activate_stand()
                 self.say("無窮之鎖,煌星")
@@ -2470,6 +2456,8 @@ class StandEntity(Ally):
         self.current_frame += 1
         if self.attack_state:
             self.attack_state.update()
+        elif self.state in [MoveState.WALK, MoveState.RUN]:
+            self.state = MoveState.WALK
         else:
             self.state=MoveState.STAND
         #不與其他單位互動
@@ -2489,8 +2477,7 @@ class StandEntity(Ally):
 
             # 計算比例 (假設初始 duration 為 900)
             # 如果想要動態，可以在 StandComponent 紀錄一個 initial_duration
-            max_d = 900.0
-            ratio = max(0, comp.duration / max_d)
+            ratio = max(0, comp.duration / comp.max_duration)
             self.draw_alpha = int(255*ratio)
 
             # 繪製背景與進度

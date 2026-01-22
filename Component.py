@@ -300,26 +300,71 @@ Z_TORRENCE = 10.0
 class HoldFlyLogicMixin:
     #被拾取/被投擲共通邏輯
 
+    def check_wall_collision(self, next_x):
+        """偵測 next_x 是否撞牆或超出地圖邊界"""
+        # 1. 檢查地圖左右邊界
+        if next_x < 0 or next_x+self.width > self.map_w:
+            return True
+
+        # 2. 檢查地形高度差 (牆壁)
+        # 取得角色當前高度與前方地塊高度
+        if hasattr(self, "knockback_vel_x"):
+            vel_x = self.knockback_vel_x
+        else:
+            vel_x = self.vel_x
+        tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
+        ty = int(self.y + 0.5)
+
+        target_z = self.get_tile_z(tx, ty)
+        if target_z is None:
+            return True  # 超出索引視同撞牆
+        if target_z is not None:
+            # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
+            if target_z - self.z >= 2:
+                return True
+
+        return False
 
     def update_hold_fly_position(self):
         hit_someone = False
         if self.held_by:
             self.on_held_location()
         elif self.flying:
-            next_x = self.x+self.vel_x
             #可能是item或character, 只有character需要反彈
-            wall_collied = False
-            if hasattr(self, "check_wall_collision"):
-                wall_collied = self.check_wall_collision(self.x+self.vel_x)
-            if wall_collied:
-                #撞牆反彈
-                self.vel_x = 0.2*self.vel_x
-                print('飛行撞牆反彈')
-                if self.scene:
+            next_x = self.x + self.vel_x
+            #print(f'{self.name} {self.x}->{next_x} ({self.map_w}) ({self.width})')
+            # 🟢 修正點 1: 確保所有飛行物(含Item)都執行撞牆偵測
+            if self.check_wall_collision(next_x):
+                # 🟢 修正點 2: 真正的反彈 (速度取負值) 並加入動量損耗
+                # 修正您原本 0.2*vel_x 導致持續向牆內擠壓的問題
+                self.vel_x = -self.vel_x * 0.1  # 反向彈回 40% 速度
+
+                # 🟢 修正點 3: 撞牆時給予微小的向上彈力，防止直接滑落
+                self.vz = 0.3
+
+                print(f'[PHYSICS] {self.name} 撞牆反彈! 新速度: {self.vel_x:.2f}')
+                if self.scene and self.weight > 0.1:
                     self.scene.trigger_shake(10, 5)
+
+                # 為了避免連續觸發，此幀不執行位移更新
+                return hit_someone
+
+            # 正常位移更新
             self.x += self.vel_x
-            #print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
             hit_someone = self.on_fly_z()
+            # if self.check_wall_collision(next_x):
+            #
+            # if hasattr(self, "check_wall_collision"):
+            #     wall_collied = self.check_wall_collision(self.x+self.vel_x)
+            # if wall_collied:
+            #     #撞牆反彈
+            #     self.vel_x = 0.2*self.vel_x
+            #     print('飛行撞牆反彈')
+            #     if self.scene and self.weight > 0.1:
+            #         self.scene.trigger_shake(10, 5)
+            # self.x += self.vel_x
+            # #print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
+            # hit_someone = self.on_fly_z()
         return hit_someone
     def on_held_location(self):
         # 若被持有，位置跟隨持有者（偏移值可以視覺調整）
@@ -333,36 +378,60 @@ class HoldFlyLogicMixin:
         self.hitting = []
         #print(f'{self.name} (x={self.x}, y={self.y}, z={self.z}, jump_z={self.jump_z}, jump_z_vel = {self.jump_z_vel}')
         #print('on_held_location')
+
     def on_fly_z(self):
-        # 飛行中邏輯
         hit_someone = False
-        self.vz -= self.weight
+        # 1. 拋物線重力感：減低下降速度 (weight 影響下墜快慢)
+        self.vz -= self.weight * 0.5  # 降低重力常數讓拋物線更明顯
         self.jump_z += self.vz
-        #print(f'{self.name} jump_z = {self.jump_z}')
+
         for unit in self.scene.get_units_with_type('character'):
-            if hasattr(self, 'ignore_side') and hasattr(unit, 'side'):
-                if unit.side in self.ignore_side:
-                    continue
-            if unit == self or unit in self.hitting:
+            if not unit.is_alive() or unit in ([self, self.thrown_by] + self.hitting):
                 continue
-            if unit.is_alive():
-                if self.check_collision(unit):
-                    self.on_hit_unit(unit)
-                    print(f'{unit.name} 被飛行物體 {self.name} 打中!')
-                    hit_someone = True
-                    if self.thrown_by and self.thrown_by.attack_state and self.thrown_by.attack_state.data.attack_type in THROW_ATTACKS:
-                        unit.on_hit(self.thrown_by, self.thrown_by.attack_state.data)
-                        if self.thrown_by.attack_state:
-                            print(f'{self.name} 的 thrown_by {self.thrown_by} 的 attack_state.data.attack_type {self.thrown_by.attack_state.data.attack_type}')
-                    elif hasattr(self, "attacker_attack_data") and self.attacker_attack_data:
-                        unit.on_hit(self.thrown_by, self.attacker_attack_data)
-                        print(f'{self.name} 的 thrown_by {self.thrown_by}, attack_data {self.attacker_attack_data}')
-                    self.hitting.append(unit)
-                    if hasattr(self, 'breakthrough') and not self.breakthrough:
-                        self.down_to_ground()
-                        break  # 如果沒有貫通, 命中後結束飛行
+            if hasattr(self, 'ignore_side') and unit.side in self.ignore_side:
+                continue
+
+            if self.check_collision(unit):
+                hit_someone = True
+                self.hitting.append(unit)
+
+                # --- 核心改動：動量損耗與物理反饋 ---
+                # 2. 根據重量比計算動量損失 (模擬大撞小/小撞大)
+                # 假設 self.weight 是 0.1, unit 預設也是 0.1 (可透過 getattr 抓取)
+                target_weight = getattr(unit, 'weight', 0.1)
+                momentum_loss = min(0.8, target_weight / (self.weight + 0.01) * 0.5)
+
+                # 減損 X 軸速度
+                impact_vel = self.vel_x
+                self.vel_x *= (1.0 - momentum_loss)
+
+                # 3. 擊中後的微幅彈起 (增加打擊的震動感)
+                self.vz = abs(impact_vel) * 0.2
+
+                # 觸發受擊
+                atk_data = self.attacker_attack_data  # 優先使用物件自帶的備份數據
+                if not atk_data and self.thrown_by:
+                    # 如果自帶數據為空，才去嘗試找投擲者的當前狀態，並增加安全門檻
+                    if hasattr(self.thrown_by, 'attack_state') and self.thrown_by.attack_state:
+                        atk_data = self.thrown_by.attack_state.data
+                if atk_data:
+                    unit.on_hit(self.thrown_by, atk_data)
+
+                # 4. 判斷是否停止飛行 (動量過低時才落地)
+                is_breakthrough = getattr(self, 'breakthrough', False)
+                if not is_breakthrough and abs(self.vel_x) < 0.05:
+                    self.down_to_ground()
+                    return hit_someone
+
+        # --- 5. 觸地彈跳邏輯 (取代直接 down_to_ground) ---
         if self.jump_z <= 0:
-            self.down_to_ground()
+            self.jump_z = 0
+            if abs(self.vz) > 0.1:  # 如果掉落速度夠快，就彈起來
+                self.vz = -self.vz * 0.4  # 彈起高度衰減
+                self.vel_x *= 0.6  # 地面摩擦力
+            else:
+                self.down_to_ground()
+
         return hit_someone
     def down_to_ground(self):
         self.jump_z = 0
@@ -559,6 +628,7 @@ class StandComponent(Component):
         self.x_offset = stand_config.get("x_offset", 0.3)
         self.y_offset = stand_config.get("y_offset", -0.1)
         self.skill_map = stand_config.get("skill_map", None)
+        self.max_duration = duration
         self.duration=duration
 
     def on_attach(self, owner):
@@ -600,7 +670,10 @@ class StandComponent(Component):
         else:
             # 如果主人停止攻擊，替身也必須立刻停止
             stand.attack_state = None
-            stand.state = MoveState.STAND
+            if owner.state in [MoveState.WALK, MoveState.JUMP, MoveState.RUN]:
+                stand.state = MoveState.WALK
+            else:
+                stand.state = MoveState.STAND
 
     def cleanup(self):
         """銷毀替身並從主人身上移除引用"""

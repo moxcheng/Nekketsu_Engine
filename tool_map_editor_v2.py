@@ -5,9 +5,9 @@ import pandas as pd
 
 # === 設定參數 ===
 TILE_SIZE = 40
-MAP_PATH = "map.csv"
-BG_PATH = "background.png"
-SAVE_PATH = "edited_map.csv"
+MAP_PATH = "..\\Assets_Drive\\map.csv"
+BG_PATH = "..\\Assets_Drive\\madou\\7thTeam.png"
+SAVE_PATH = "..\\Assets_Drive\\edited_map.csv"
 
 # === 載入地圖資料 ===
 terrain = pd.read_csv(MAP_PATH, header=None).values

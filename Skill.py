@@ -92,6 +92,7 @@ class ThrowAttackState(AttackState):
         self.thrown = False
         self.holdable = character.get_component("holdable")
         self.name = 'throw'
+        self.attacker_attack_data = None
 
     def update(self):
         super().update()
@@ -162,8 +163,8 @@ class AttackData:
             return self.hitbox_func(x, y, facing)
     def get_damage(self, attacker=None):
         if callable(self.damage):
-            return int(self.damage(attacker)*self.damage_multiplier)
-        return int(self.damage*self.damage_multiplier)
+            return int(self.damage(attacker)*self.damage_multiplier+0.5)
+        return int(self.damage*self.damage_multiplier+0.5)
 
 
 

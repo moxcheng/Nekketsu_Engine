@@ -16,6 +16,7 @@ STAND_KONOMI_CONFIG={
         "frame_height": 128,
         "anim_map": {
             "stand": [[0]],
+            "walk":[[8]],
             "punch":[[1],[3],[2]],
             "kick":[[9,10],[6,11]],
             "slash":[[4],[5],[7]]
