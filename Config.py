@@ -29,4 +29,29 @@ ON_HIT_SHORT_STUN_TIME = 15
 ON_GUARD_STUN_TIME = 7
 ON_GUARD_MAX_WINDOW = 10    #可以觸發guard的最大時間
 
+# === 物理系統全局參數 ===
+
+# --- 1. 水平位移與摩擦 ---
+FRICTION_AIR = 0.85       # 非飛行狀態下的水平速度衰減
+FRICTION_GROUND = 0.6    # 落地彈跳時的水平摩擦力
+STOP_THRESHOLD = 0.05    # 速度低於此值則歸零
+
+# --- 2. 撞牆與反彈 ---
+WALL_BOUNCE_REBOUND = 0.3 # 撞牆後的反向速度係數
+WALL_BOUNCE_UP_VZ = 0.15   # 撞牆後的向上微彈力
+
+# --- 3. 拋物線與重力 ---
+FLY_GRAVITY_MULT = 0.5   # 飛行物件受重力的加權係數
+GROUND_BOUNCE_REBOUND = 0.4 # 觸地彈跳的垂直反彈係數
+BOUNCE_THRESHOLD_VZ = 0.1 # 觸地時 vz 超過此值才觸發彈跳
+
+# --- 4. 動量與碰撞損耗 ---
+UNIT_IMPACT_MOMENTUM_LOSS_MAX = 0.8 # 撞擊人物時的最大動量損失
+UNIT_IMPACT_UP_VZ_FACTOR = 0.2      # 撞擊人物後的垂直彈起係數
+
+# --- 5. 環境傷害門檻 (擬真化建議值) ---
+WALL_IMPACT_DAMAGE_THRESHOLD = 0.2  # 撞牆受傷的速度門檻
+WALL_IMPACT_DAMAGE_MULT = 15        # 撞牆傷害倍率
+FALL_DAMAGE_THRESHOLD = 0.3         # 墜地受傷的垂直速度門檻
+FALL_DAMAGE_MULT = 20               # 墜地傷害倍率
 

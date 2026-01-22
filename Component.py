@@ -81,8 +81,8 @@ class ComponentHost:
             self.external_control = None
         elif act == 'knockback' and hasattr(self, 'combat_state'):
             self.combat_state = CombatState.KNOCKBACK
-            self.knockback_vel_x = ctrl.get('vx', 0.0)
-            self.knockback_vel_z = ctrl.get('vz', 0.0)
+            self.vel_x = ctrl.get('vx', 0.0)
+            self.vz = ctrl.get('vz', 0.0)
             self.external_control = None
         elif act == 'set_z' and hasattr(self, 'z'):
             self.z = ctrl.get('value', 0)
@@ -308,8 +308,8 @@ class HoldFlyLogicMixin:
 
         # 2. 檢查地形高度差 (牆壁)
         # 取得角色當前高度與前方地塊高度
-        if hasattr(self, "knockback_vel_x"):
-            vel_x = self.knockback_vel_x
+        if hasattr(self, "vel_x"):
+            vel_x = self.vel_x
         else:
             vel_x = self.vel_x
         tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
@@ -335,12 +335,18 @@ class HoldFlyLogicMixin:
             #print(f'{self.name} {self.x}->{next_x} ({self.map_w}) ({self.width})')
             # 🟢 修正點 1: 確保所有飛行物(含Item)都執行撞牆偵測
             if self.check_wall_collision(next_x):
-                # 🟢 修正點 2: 真正的反彈 (速度取負值) 並加入動量損耗
-                # 修正您原本 0.2*vel_x 導致持續向牆內擠壓的問題
-                self.vel_x = -self.vel_x * 0.1  # 反向彈回 40% 速度
+                if self.unit_type == 'character':
+                    # 🟢 修正後的撞牆傷害：加入 0.2 的速度門檻
+                    impact_speed = abs(self.vel_x)
+                    if impact_speed > 0.2:
+                        # 只有超過門檻的部分才計算傷害，倍率調低至 15
+                        wall_damage = int((impact_speed - 0.2) * 15)
+                        if wall_damage > 0:
+                            wall_atk = AttackData(AttackType.THROW_CRASH, 1, 0, None, damage=wall_damage)
+                            self.on_hit(None, wall_atk)  # 傳 None 表示環境傷害
 
-                # 🟢 修正點 3: 撞牆時給予微小的向上彈力，防止直接滑落
-                self.vz = 0.3
+                self.vel_x = -self.vel_x * WALL_BOUNCE_REBOUND
+                self.vz = WALL_BOUNCE_REBOUND
 
                 print(f'[PHYSICS] {self.name} 撞牆反彈! 新速度: {self.vel_x:.2f}')
                 if self.scene and self.weight > 0.1:
@@ -352,19 +358,6 @@ class HoldFlyLogicMixin:
             # 正常位移更新
             self.x += self.vel_x
             hit_someone = self.on_fly_z()
-            # if self.check_wall_collision(next_x):
-            #
-            # if hasattr(self, "check_wall_collision"):
-            #     wall_collied = self.check_wall_collision(self.x+self.vel_x)
-            # if wall_collied:
-            #     #撞牆反彈
-            #     self.vel_x = 0.2*self.vel_x
-            #     print('飛行撞牆反彈')
-            #     if self.scene and self.weight > 0.1:
-            #         self.scene.trigger_shake(10, 5)
-            # self.x += self.vel_x
-            # #print(f'{self.name}: x({self.x:.2f})+ {self.vel_x}')
-            # hit_someone = self.on_fly_z()
         return hit_someone
     def on_held_location(self):
         # 若被持有，位置跟隨持有者（偏移值可以視覺調整）
@@ -382,7 +375,7 @@ class HoldFlyLogicMixin:
     def on_fly_z(self):
         hit_someone = False
         # 1. 拋物線重力感：減低下降速度 (weight 影響下墜快慢)
-        self.vz -= self.weight * 0.5  # 降低重力常數讓拋物線更明顯
+        self.vz -= self.weight * FLY_GRAVITY_MULT  # 降低重力常數讓拋物線更明顯
         self.jump_z += self.vz
 
         for unit in self.scene.get_units_with_type('character'):
@@ -399,14 +392,14 @@ class HoldFlyLogicMixin:
                 # 2. 根據重量比計算動量損失 (模擬大撞小/小撞大)
                 # 假設 self.weight 是 0.1, unit 預設也是 0.1 (可透過 getattr 抓取)
                 target_weight = getattr(unit, 'weight', 0.1)
-                momentum_loss = min(0.8, target_weight / (self.weight + 0.01) * 0.5)
+                momentum_loss = min(UNIT_IMPACT_MOMENTUM_LOSS_MAX, target_weight / (self.weight + 0.01) * 0.5)
 
                 # 減損 X 軸速度
                 impact_vel = self.vel_x
                 self.vel_x *= (1.0 - momentum_loss)
 
                 # 3. 擊中後的微幅彈起 (增加打擊的震動感)
-                self.vz = abs(impact_vel) * 0.2
+                self.vz = abs(impact_vel) * UNIT_IMPACT_UP_VZ_FACTOR
 
                 # 觸發受擊
                 atk_data = self.attacker_attack_data  # 優先使用物件自帶的備份數據
@@ -417,6 +410,14 @@ class HoldFlyLogicMixin:
                 if atk_data:
                     unit.on_hit(self.thrown_by, atk_data)
 
+                # 🟢 新增：飛行者(self)也要受傷
+                if self.unit_type == 'character':
+                    # 傷害值可以根據當前速度 vel_x 決定，越快越痛
+                    impact_damage = int(abs(impact_vel) * 20)
+                    # 建立一個虛擬的攻擊數據，代表「撞擊傷害」
+                    collision_atk = AttackData(AttackType.THROW_CRASH, 1, 0, None, damage=impact_damage)
+                    self.on_hit(unit, collision_atk)  # 這裡 unit 變成攻擊來源
+
                 # 4. 判斷是否停止飛行 (動量過低時才落地)
                 is_breakthrough = getattr(self, 'breakthrough', False)
                 if not is_breakthrough and abs(self.vel_x) < 0.05:
@@ -426,9 +427,17 @@ class HoldFlyLogicMixin:
         # --- 5. 觸地彈跳邏輯 (取代直接 down_to_ground) ---
         if self.jump_z <= 0:
             self.jump_z = 0
-            if abs(self.vz) > 0.1:  # 如果掉落速度夠快，就彈起來
-                self.vz = -self.vz * 0.4  # 彈起高度衰減
-                self.vel_x *= 0.6  # 地面摩擦力
+            impact_vz = abs(self.vz)
+            if impact_vz > BOUNCE_THRESHOLD_VZ:  # 彈跳判定
+                # 🟢 修正後的墜地傷害：加入 0.3 的垂直速度門檻
+                if self.unit_type == 'character' and impact_vz > 0.3:
+                    fall_damage = int((impact_vz - 0.3) * 20)
+                    if fall_damage > 0:
+                        fall_atk = AttackData(AttackType.THROW_CRASH, 1, 0, None, damage=fall_damage)
+                        self.on_hit(None, fall_atk)
+
+                self.vz = -self.vz * GROUND_BOUNCE_REBOUND  # 彈起高度
+                self.vel_x *= FRICTION_GROUND  # 地面摩擦
             else:
                 self.down_to_ground()
 
@@ -437,7 +446,7 @@ class HoldFlyLogicMixin:
         self.jump_z = 0
         self.vz = 0
         self.flying = False
-        self.jump_z_vel = 0
+        self.vz = 0
         print(f"[LOG] {self.name} 落地了")
     def check_collision(self, target):
         my_box = self.get_interact_box()

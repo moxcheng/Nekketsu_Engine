@@ -1,13 +1,15 @@
-from Component import ComponentHost, HoldFlyLogicMixin
+#from Component import ComponentHost, HoldFlyLogicMixin
+from Entity import Entity
 from Config import TILE_SIZE
 import pygame
 from State_enum import *
 from Skill import *
 
 
-class Item(ComponentHost, HoldFlyLogicMixin):
+class Item(Entity):
+    #Entity def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
     def __init__(self, name, x, y, map_info, weight=0.1):
-        super().__init__()
+        super().__init__(x, y, map_info, weight=weight)
         self.unit_type = 'item'
         self.name = name
         self.x = x
@@ -15,7 +17,7 @@ class Item(ComponentHost, HoldFlyLogicMixin):
         self.width = 1.0
         self.height = 1.0
         self.weight = weight
-        self.jump_z_vel = 0.0
+        self.vz = 0.0
         self.jump_z = 0.0  # 可選：讓 item 可以「拋起」
         self.color = (150, 150, 150)  # 預設灰色
         self.timer = 0

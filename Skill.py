@@ -61,7 +61,7 @@ class FlyAttackState(AttackState):
 
     def is_active(self):
         # ✅ 跳躍中則持續存在
-        return self.character.jump_z > 0 or self.character.jump_z_vel > 0
+        return self.character.jump_z > 0 or self.character.vz > 0
 
 
 class SwingAttackState(AttackState):
@@ -100,18 +100,36 @@ class ThrowAttackState(AttackState):
         if not self.thrown and self.frame_index >= self.data.trigger_frame:
             self.thrown = True
             if self.item:
+                # 1. 決定基礎投擲力 (根據面向)
+                facing_dir = 1 if self.character.facing == DirState.RIGHT else -1
+                base_power = self.character.throw_power  # 角色基礎投擲力
+
+                # 2. 決定狀態加成 (跑動中投擲更有力)
+                state_multiplier = 1.0
+                if self.character.state == MoveState.RUN:
+                    state_multiplier = 1.5  # 助跑加成 1.5 倍
+                elif self.character.state == MoveState.WALK:
+                    state_multiplier = 1.2
+                # 3. 慣性繼承：物體速度 = (投擲者當前速度 * 繼承比) + (投擲力 * 加成)
+                # 這樣一來，如果你在跳躍中投擲，vz 就會自動包含跳躍的向上動量
+                self.item.vel_x = (self.character.vel_x * 0.5) + (facing_dir * base_power * state_multiplier)
+                self.item.vz = (self.character.vz * 0.8) + 0.3  # 繼承垂直動量並稍微往上拋
+
+
                 offset = (self.character.width) + 0.3  # 原本是 ±1，改為角色寬 + 安全距離
                 if self.character.facing == DirState.LEFT:
                     offset = -offset
-                self.item.x = self.character.x + offset
+                # 🟢 修正 2：計算目標 X 並確保不超出地圖
+                target_x = self.character.x + offset
+                self.item.x = max(0, min(target_x, self.item.map_w - self.item.width))
                 self.item.y = self.character.y
                 self.item.z = self.character.z
                 self.item.jump_z = self.character.jump_z + self.character.height*0.8
-                self.item.jump_z_vel = 0.3
-                move_rate =  self.character.throw_power
-                if hasattr(self.item, 'speed'):
-                    move_rate = self.item.speed
-                self.item.vel_x = offset * move_rate # 水平飛行速度
+                #self.item.vz = 0.3
+                # move_rate =  self.character.throw_power
+                # if hasattr(self.item, 'speed'):
+                #     move_rate = self.item.speed
+                # self.item.vel_x = offset * move_rate # 水平飛行速度
                 self.item.flying = True  # ✅ 切換 item 的控制狀態
                 print(f'{self.item.name} 飛行!')
                 self.item.held_by = None   #無人持有
@@ -440,7 +458,7 @@ attack_data_dict = {
         effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN, AttackEffect.AFTER_IMAGE],
         knock_back_power=[1.0,1.5],
         damage=35,
-        physical_change={'jump_z_vel':GRAVITY*-2},
+        physical_change={'vz':GRAVITY*-2},
         effect_component_config={
             # 必須使用 Component 類別的字串名稱，以便動態載入
             "component_name": "AuraEffectComponent",
@@ -494,14 +512,13 @@ attack_data_dict = {
     ),
     AttackType.THROW_CRASH: AttackData(
         attack_type=AttackType.THROW,
-        duration=2,
+        duration=1,
         trigger_frame=1,
         recovery=0,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_power=[0.3,0.2],
         damage=lambda attacker: getattr(attacker, "throw_damage", 2),  # 如果無此屬性就預設 2
-        frame_map_ratio = [2]
+        frame_map_ratio = [1]
     ),
     AttackType.FIREBALL: AttackData(
         attack_type=AttackType.FIREBALL,

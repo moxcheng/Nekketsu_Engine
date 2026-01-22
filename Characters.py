@@ -3,7 +3,9 @@ from Config import *
 #from enum import Enum, auto
 from State_enum import *
 from Skill import *
-from Component import ComponentHost, HoldFlyLogicMixin, StandComponent
+#from Component import ComponentHost, HoldFlyLogicMixin, StandComponent
+from Component import StandComponent
+from Entity import Entity
 from CharactersConfig import *
 import random
 
@@ -126,22 +128,21 @@ def get_component_class(name):
         # ... 未來可擴充
     }
     return class_map.get(name)
-class CharacterBase(ComponentHost, HoldFlyLogicMixin):
-    #def __init__(self, x, y, map_info, z=0, popup=None):
-    def __init__(self, x, y, map_info, z=0):
-        super().__init__()
+class CharacterBase(Entity):
+    #Entity的初始化def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
+    def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 0.15):
+        super().__init__(x=max(0, min(x, map_info[1]-1)), y=max(0, min(y, map_info[2]-1)), map_info=map_info, width=width, height=height, weight=weight)
         self.unit_type = "character"
-        self.x = max(0, min(x, map_info[1]-1))
-        self.y = max(0, min(y, map_info[2]-1))
-        self.jump_z = 0
-        self.width = 1.5
-        self.height = 2.5
-
-        self.terrain = map_info[0]
-        self.map_w = map_info[1]
-        self.map_h = map_info[2]
-        self.z = self.get_tile_z(x, y)
-        self.vz = 0
+        # self.x = max(0, min(x, map_info[1]-1))
+        # self.y = max(0, min(y, map_info[2]-1))
+        # self.jump_z = 0
+        # self.width = width
+        # self.height = 2.5
+        # self.terrain = map_info[0]
+        # self.map_w = map_info[1]
+        # self.map_h = map_info[2]
+        # self.z = self.get_tile_z(x, y)
+        # self.vz = 0
 
         self.color = (0,0,0)
         # 受創系統
@@ -153,20 +154,20 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.max_hp=100
         self.health = self.max_hp
         self.health_visual = self.max_hp    #UI視覺使用
-        self.z = z  # 如有需要強制指定 z 值
+        #self.z = z  # 如有需要強制指定 z 值
         self.summon_sickness=0
         self.hit = False
         self.hit_timer = 0  #受創"持續時間"的timer
         self.on_hit_count = 0 #作為動畫切換用
-        self.jump_z_vel = 0
+        self.vz = 0
         self.rigid_timer = 0
         self.invincible_timer = 0   #無敵timer
         self.super_armor_timer = 0  #鋼鐵timer
         self.falling_timer = 0
         self.dead_timer = 0 #死亡消失時間
         #擊飛時變數
-        self.knockback_vel_x = 0
-        self.knockback_vel_z = 0
+        self.vel_x = 0
+        self.vz = 0
 
         
         self.state = MoveState.STAND
@@ -195,7 +196,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
-        self.throw_power = 0.6  #投擲基本力量
+        self.throw_power = 0.3  #投擲基本力量
         
 
         self.jump_key_block = False #避免長按連續跳躍
@@ -277,7 +278,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.state = MoveState.GUARD  # 確保 State_enum 有定義 GUARD
         # 3. 物理反饋：小退一步 (向後推)
         knock_dir = -1 if self.facing == DirState.RIGHT else 1
-        self.x = min(self.map_w-self.width/2, max(self.width/2, (self.x+knock_dir * 1.5))) # 直接位移或設定一個極短的 knockback_vel_x
+        self.x = min(self.map_w-self.width/2, max(self.width/2, (self.x+knock_dir * 1.5))) # 直接位移或設定一個極短的 vel_x
 
         # 4. 設定短硬直 (格擋硬直)
         # 這裡的硬直要比受傷短，讓玩家有機會快速反擊
@@ -317,16 +318,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.flying = False
         self.held_by = None
         self.attack_intent = None
-        self.knockback_vel_x = 0
-        self.knockback_vel_z = 0
+        self.vel_x = 0
+        self.vz = 0
         self.attack_intent = None
         self.hit = False
-    
-    # def update_anim(self):
-    #     self.anim_timer += 1
-    #     if self.anim_timer >= self.anim_speed:
-    #         self.anim_timer = 0
-    #         self.anim_frame += 1
+
     def generate_frame_index_from_ratio_map(self, frame_map_ratio, anim_map):
         # 2. 根據frame_map_ratio = [8,16,8]與 anim_map的"punch": [[4], [5], [6]] 生成對應frame index
         #   例如: 上述生成結果應該是[4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,4,4,4,4,4,4,4,4]
@@ -772,7 +768,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         return None
 
     def is_jump(self):
-        return self.jump_z > 0 or self.jump_z_vel != 0
+        return self.jump_z > 0 or self.vz != 0
 
     def set_rigid(self, duration):
         self.rigid_timer = max(self.rigid_timer, duration)
@@ -785,13 +781,11 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         return self.invincible_timer > 0
     def is_super_armor(self):
         return self.super_armor_timer > 0
-    # def is_knockbacking(self):
-    #     return abs(self.knockback_vel_x) > 0.0 or self.knockback_vel_z < 0.0
     # Characters.py
 
     def is_knockbacking(self):
         # 只要狀態是 KNOCKBACK，不論速度正負，都應該鎖定控制
-        return self.combat_state == CombatState.KNOCKBACK or abs(self.knockback_vel_x) > 0.1
+        return self.combat_state == CombatState.KNOCKBACK or abs(self.vel_x) > 0.1
 
     def is_falling(self):
         return self.falling_timer > 0
@@ -818,8 +812,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         #血越少越快醒
         self.combat_timer = knockout_time
         self.combat_timer_max = knockout_time
-        self.knockback_vel_x = 0.0
-        self.knockback_vel_z = 0.0
+        self.vel_x = 0.0
+        self.vz = 0.0
         self.hit_count = 0.0
         self.set_rigid(knockout_time)
         self.state = MoveState.STAND
@@ -836,8 +830,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.hit_count = 0.0
         self.rigid_timer = 0
         self.combat_timer = 0
-        self.knockback_vel_x = 0.0
-        #self.knockback_vel_z = 0.0
+        self.vel_x = 0.0
         self.is_mashing = False
         #清除快取意圖
         self.clean_input_buffer()
@@ -864,9 +857,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 # ✅ 已達地面，停止下落
         print(f'{self.name} 落地')
         self.jump_z = 0
-        self.jump_z_vel = 0
-        self.knockback_vel_z = 0
-        self.knockback_vel_x = 0
+        self.vz = 0
+        self.vz = 0
+        self.vel_x = 0
         self.z = below_z
         self.state = MoveState.STAND
         self.set_rigid(10)
@@ -885,7 +878,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             return False
         if abs(target_z - self.z) >= 2 and target_z < self.z:
             self.jump_z = 1.5*abs(target_z - self.z)
-            self.jump_z_vel = -0.1 #掉落時浮空用判定
+            self.vz = -0.1 #掉落時浮空用判定
             self.vel_xy = (dx * 0.3, dy * 0.3)
             self.falling_timer = abs(target_z - self.z)*15 #根據段差來設置掉落時間, 1z=15frame
             self.falling_y_offset = 0
@@ -898,52 +891,80 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         if self.scene:
             self.scene.say(self, txt)
 
-
-
+    # Characters.py -> update_physics_only 整合後
     def update_physics_only(self):
-        # --- 1. 處理垂直位移 (保持原樣) ---
-        if self.knockback_vel_z != 0:
-            self.jump_z += self.knockback_vel_z
-            self.knockback_vel_z -= GRAVITY
-            if self.jump_z <= 0:
-                self.jump_z = 0
-                self.knockback_vel_z = 0
+        # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
+        if self.vz != 0 or self.jump_z > 0:
+            self.jump_z += self.vz
+            self.vz -= GRAVITY  # 統一使用全域重力常數
 
-        if self.jump_z != 0 and not self.held_by:
-            self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= GRAVITY
             if self.jump_z <= 0:
                 self.jump_z = 0
-                self.jump_z_vel = 0
+                self.vz = 0
                 self.check_ground_contact()
 
-        # --- 2. 整合水平位移與邊界偵測 ---
-        # 只有在有水平速度且非霸體、非倒地（或是正在受身/擊飛狀態）時處理
-        if self.knockback_vel_x != 0 and self.super_armor_timer <= 0:
-            # 預測下一幀的位置
-            next_x = self.x + self.knockback_vel_x
+        # 2. 處理水平位移 (擊退、飛行、撞牆通用)
+        if self.vel_x != 0:
+            next_x = self.x + self.vel_x
 
-            # 進行邊界檢查 (包含地圖邊緣與牆壁)
             if self.check_wall_collision(next_x):
-                # 觸發撞牆反應
-                if self.combat_state == CombatState.KNOCKBACK:
-                    print(f"[PHYSICS] {self.name} 撞牆了！位置: {self.x:.2f}")
-                    self.knockback_vel_x = -self.knockback_vel_x * 0.2  # 反彈
-                    if self.jump_z <= 0.5:
-                        self.into_down_state()
-                    if self.scene:
-                        self.scene.trigger_shake(10, 5)
-                else:
-                    # 若不是受擊狀態只是普通位移撞牆，則速度歸零
-                    self.knockback_vel_x = 0
+                # 撞牆反彈：使用統一的 vel_x
+                self.vel_x = -self.vel_x * 0.3
+                self.vz = 0.15
+                if self.scene:
+                    self.scene.trigger_shake(10, 5)
             else:
-                # 沒撞牆，安全套用位移
                 self.x = next_x
 
-            # 速度衰減
-            self.knockback_vel_x *= 0.85
-            if abs(self.knockback_vel_x) < 0.05:
-                self.knockback_vel_x = 0
+            # 水平摩擦力衰減 (僅在非飛行狀態)
+            if not getattr(self, 'flying', False):
+                self.vel_x *= FRICTION_AIR
+                if abs(self.vel_x) < STOP_THRESHOLD:
+                    self.vel_x = 0
+    # def update_physics_only(self):
+    #     # --- 1. 處理垂直位移 (保持原樣) ---
+    #     if self.vz != 0:
+    #         self.jump_z += self.vz
+    #         self.vz -= GRAVITY
+    #         if self.jump_z <= 0:
+    #             self.jump_z = 0
+    #             self.vz = 0
+    #
+    #     if self.jump_z != 0 and not self.held_by:
+    #         self.jump_z += self.vz
+    #         self.vz -= GRAVITY
+    #         if self.jump_z <= 0:
+    #             self.jump_z = 0
+    #             self.vz = 0
+    #             self.check_ground_contact()
+    #
+    #     # --- 2. 整合水平位移與邊界偵測 ---
+    #     # 只有在有水平速度且非霸體、非倒地（或是正在受身/擊飛狀態）時處理
+    #     if self.vel_x != 0 and self.super_armor_timer <= 0:
+    #         # 預測下一幀的位置
+    #         next_x = self.x + self.vel_x
+    #
+    #         # 進行邊界檢查 (包含地圖邊緣與牆壁)
+    #         if self.check_wall_collision(next_x):
+    #             # 觸發撞牆反應
+    #             if self.combat_state == CombatState.KNOCKBACK:
+    #                 print(f"[PHYSICS] {self.name} 撞牆了！位置: {self.x:.2f}")
+    #                 self.vel_x = -self.vel_x * 0.2  # 反彈
+    #                 if self.jump_z <= 0.5:
+    #                     self.into_down_state()
+    #                 if self.scene:
+    #                     self.scene.trigger_shake(10, 5)
+    #             else:
+    #                 # 若不是受擊狀態只是普通位移撞牆，則速度歸零
+    #                 self.vel_x = 0
+    #         else:
+    #             # 沒撞牆，安全套用位移
+    #             self.x = next_x
+    #
+    #         # 速度衰減
+    #         self.vel_x *= 0.85
+    #         if abs(self.vel_x) < 0.05:
+    #             self.vel_x = 0
     def draw_combat_bar(self, win, px, py):
         if self.combat_state == CombatState.NORMAL:
             return
@@ -1008,8 +1029,8 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 return False
         if self.combat_state == CombatState.KNOCKBACK:
             # 使用較大的閾值判定結束，避免因微小速度導致動畫卡住
-            is_vertical_stopped = (self.jump_z <= 0.05 and self.knockback_vel_z <= 0.05)
-            is_horizontal_stopped = (abs(self.knockback_vel_x) < 0.05)
+            is_vertical_stopped = (self.jump_z <= 0.05 and self.vz <= 0.05)
+            is_horizontal_stopped = (abs(self.vel_x) < 0.05)
             if is_vertical_stopped and is_horizontal_stopped and self.super_armor_timer <= 0:
                 self.into_down_state()
 
@@ -1123,12 +1144,14 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #倒地狀態下不擊退
             #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
             self.combat_state = CombatState.KNOCKBACK
+            resistance = 1.0 + (getattr(self, 'weight', 0.15) * 5)
             #knock_back_power[0]水平 [1]垂直
             if attack_data.knock_back_power[0] != 0:
                 direction = self.get_knock_direction(attacker, attack_data)
-                self.knockback_vel_x = direction * attack_data.knock_back_power[0]
+                #self.vel_x = direction * attack_data.knock_back_power[0]
+                self.vel_x = (direction * attack_data.knock_back_power[0]) / resistance
             if attack_data.knock_back_power[1] != 0:
-                self.knockback_vel_z = attack_data.knock_back_power[1]
+                self.vz = attack_data.knock_back_power[1] / resistance
                 self.jump_z = max(0.2, attack_data.knock_back_power[1] * 0.05)
 
         if AttackEffect.SHORT_STUN in effects:
@@ -1140,13 +1163,13 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
     def take_damage(self, attacker, attack_data):
         #damage = getattr(attack_data, 'damage', 5)
-        damage = attack_data.get_damage(attacker)
-        print(f'{self.name}受到{attacker.name}的{attack_data.attack_type.name} {damage}點傷害')
+        if attacker:
+            damage = attack_data.get_damage(attacker)
+            print(f'{self.name}受到{attacker.name}的{attack_data.attack_type.name} {damage}點傷害')
+        else:
+            damage = attack_data.damage
         #根據敵我進行傷害加成
         self.health -= damage
-        # if self.health <= 0 and self.knockback_vel_z <= 0 and self.knockback_vel_x <= 0 and self.jump_z <= 0:
-        #     self.health = 0
-        #     self.into_dead_state()
         # 顯示傷害數字
         if self.scene:
             font_size = 24
@@ -1157,7 +1180,12 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
     def on_hit(self, attacker, attack_data):
         # 無敵檢查
-        st = f'{attacker.name} 的 {attack_data.attack_type.name} 命中 {self.name} '
+        if attacker:
+            attack_name = attacker.name
+        else:
+            attack_name = "環境物件"
+        st = f'{attack_name} 的 {attack_data.attack_type.name} 命中 {self.name} '
+
         if self.jump_z > 0:
             st = st + '(空中)'
         if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
@@ -1172,7 +1200,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         self.hit = True
         self.hit_timer = 20
 
-        if attacker.attack_state:
+        if attacker and attacker.attack_state:
             #attacker.attack_state.has_hit = True
             attacker.attack_state.has_hit.append(self)
 
@@ -1215,7 +1243,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.held_object = None
         #print(st)
         self.on_hit_count += 1
-        if attacker.get_hitbox():
+        if attacker and attacker.get_hitbox():
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
             self.scene.create_effect(hit_x, hit_y, hit_z,'hit')
 
@@ -1224,8 +1252,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
                 self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
                 # 選配：配合微小的震動效果更好
                 self.scene.trigger_shake(duration=attack_data.hit_stop_frames, intensity=3)
-                flip = True if attacker.x < self.x else False
-                print(f'{self.name} 發動 hitstop! attacker是{attacker.name}, flip={flip}')
+                flip = True if attacker and attacker.x < self.x else False
+                if attacker:
+                    print(f'{self.name} 發動 hitstop! attacker是{attacker.name}, flip={flip}')
                 hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip)
 
@@ -1254,10 +1283,10 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
         #死亡消失
         if self.health <= 0 and self.combat_state not in [CombatState.KNOCKBACK] and self.death_knockback == False:
             if self.facing == DirState.LEFT:
-                self.knockback_vel_x = 0.5
+                self.vel_x = 0.5
             else:
-                self.knockback_vel_x = -0.5
-            self.knockback_vel_z = 0.1
+                self.vel_x = -0.5
+            self.vz = 0.1
             self.jump_z = 0.3
             self.combat_state = CombatState.KNOCKBACK
             self.death_knockback = True
@@ -1291,20 +1320,6 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
     def update_common_interactable_unit(self, unit):
         return
-    # def update_on_flying(self):
-    #
-    #     if self.flying:
-    #         self.x += self.vel_x
-    #         self.jump_z += self.jump_z_vel
-    #         self.jump_z_vel -= self.weight  # 模擬重力
-    #         below_z = self.get_tile_z(int(self.x), int(self.y))
-    #         print(f'{self.name} 飛行中')
-    #         if below_z is not None and self.jump_z <= below_z:
-    #             self.jump_z = below_z
-    #             self.jump_z_vel = 0
-    #             self.flying = False  # ✅ 落地後關閉飛行
-    #             print(f'{self.name} 落地了')
-    #             #<--
         #還沒實作
     def update_common_opponent(self, opponent=None):
         #受創狀態判定
@@ -1470,7 +1485,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
 
                 if intent['horizontal'] == MoveState.RUN:
                     self.high_jump = True
-                self.jump_z_vel = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
+                self.vz = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
                 self.jump_z = 0.1
                 self.color = self.jump_color
                 self.jumpping_flag = True
@@ -1481,6 +1496,9 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             #掉落檢查
             if self.check_and_trigger_fall(dx, dy, move_rate):
                 return
+            # 🟢 修正 1：強制限制 new_y 範圍，避免索引越界
+            new_y = max(0, min(new_y, self.map_h - self.height * 0.1 - 0.1))
+            new_x = max(0, min(new_x, self.map_w - self.width))
 
             prev_x, prev_y = self.x, self.y
             foot_x = new_x + self.width / 2
@@ -1488,16 +1506,21 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             nx, ny = int(foot_x), int(foot_y)
             target_z = self.get_tile_z(nx, ny)
             # --- 防呆攔截點 ---
-            if target_z is None:
-                # 如果目標位置超出地圖，不更新座標 (或是執行擋牆邏輯)
-                moved = False
-            else:
+            if target_z is not None:
+                # 這裡也要確保 z 軸差距判定後才更新
                 if abs(target_z - self.z) <= 1 or (self.jump_z > 0 and self.z + self.jump_z >= target_z):
-                    self.x, self.y = new_x, new_y
-                    if self.jump_z > 0:
-                        self.z = target_z
-                    else:
-                        self.z = target_z
+                    self.x, self.y = new_x, new_y  # 現在 new_y 已經安全了
+                    self.z = target_z
+            # if target_z is None:
+            #     # 如果目標位置超出地圖，不更新座標 (或是執行擋牆邏輯)
+            #     moved = False
+            # else:
+            #     if abs(target_z - self.z) <= 1 or (self.jump_z > 0 and self.z + self.jump_z >= target_z):
+            #         self.x, self.y = new_x, new_y
+            #         if self.jump_z > 0:
+            #             self.z = target_z
+            #         else:
+            #             self.z = target_z
 
             moved = (self.x != prev_x or self.y != prev_y)
             if moved and not self.is_falling():
@@ -1744,7 +1767,7 @@ class CharacterBase(ComponentHost, HoldFlyLogicMixin):
             self.into_normal_state()
             self.invincible_timer = 20  # 給予短暫無敵
             # 額外的小位移彈開
-            self.knockback_vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
+            self.vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
             return True
         return False
 
@@ -2206,20 +2229,20 @@ class Player(CharacterBase):
             if self.step_pending[dir] < self.current_frame:
                 self.step_pending[dir] = -9999
         if self.is_falling():
-            self.jump_z += self.jump_z_vel
+            self.jump_z += self.vz
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
             self.check_ground_contact()
 
         if self.jump_z != 0:
-            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
-            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
-            self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= 0.05
+            self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
+            self.color = self.jump_color if self.vz > 0 else self.fall_color
+            self.jump_z += self.vz
+            self.vz -= 0.05
             if self.jump_z <= 0:
                 self.jump_z = 0
-                self.jump_z_vel = 0
+                self.vz = 0
                 self.color = self.default_color
                 self.jumpping_flag = False
                 self.high_jump = False
@@ -2428,19 +2451,19 @@ class Ally(CharacterBase):
     def handle_movement(self):
         # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
         if self.is_falling():
-            self.jump_z += self.jump_z_vel
+            self.jump_z += self.vz
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
             self.check_ground_contact()
         if self.jump_z != 0 and not self.held_by:
-            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
-            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
-            self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= 0.05
+            self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
+            self.color = self.jump_color if self.vz > 0 else self.fall_color
+            self.jump_z += self.vz
+            self.vz -= 0.05
             if self.jump_z <= 0:
                 self.jump_z = 0
-                self.jump_z_vel = 0
+                self.vz = 0
                 self.color = self.default_color
 
 class StandEntity(Ally):
@@ -2515,7 +2538,7 @@ class Enemy(CharacterBase):
         self.popup=config_dict.get("popup")
         if self.popup and "landing" in self.popup:
             self.jump_z = 20
-            self.jump_z_vel = -0.2
+            self.vz = -0.2
 
         # 4) 調整動畫貼圖大小
         #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface
@@ -2632,19 +2655,19 @@ class Enemy(CharacterBase):
     def handle_movement(self):
         # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
         if self.is_falling():
-            self.jump_z += self.jump_z_vel
+            self.jump_z += self.vz
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
             self.check_ground_contact()
         if self.jump_z != 0 and not self.held_by:
-            self.state = MoveState.JUMP if self.jump_z_vel > 0 else MoveState.FALL
-            self.color = self.jump_color if self.jump_z_vel > 0 else self.fall_color
-            self.jump_z += self.jump_z_vel
-            self.jump_z_vel -= 0.05
+            self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
+            self.color = self.jump_color if self.vz > 0 else self.fall_color
+            self.jump_z += self.vz
+            self.vz -= 0.05
             if self.jump_z <= 0:
                 self.jump_z = 0
-                self.jump_z_vel = 0
+                self.vz = 0
                 self.color = self.default_color
 
 class BigEnemy(Enemy):
