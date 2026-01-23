@@ -1,5 +1,5 @@
 from Component import ComponentHost,HoldFlyLogicMixin
-
+from Config import *
 class Entity(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
         super().__init__()
@@ -35,6 +35,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.current_frame = 0
         self.draw_alpha = 255
         self.cached_pivot = (0, 0)
+        self.z = self.get_tile_z(self.x, self.y)
 
     def get_tile_z(self, x, y):
         """通用高度獲取，增加邊界夾緊保護"""
@@ -50,3 +51,80 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
     def get_abs_z(self):
         """計算絕對高度，用於 PhysicsUtils"""
         return (self.z or 0) + self.jump_z
+
+    # Entity.py
+    def get_physics_box(self):
+        """物件的最基礎物理體積，用於受傷、互動、拼招"""
+        return {
+            'x1': self.x, 'x2': self.x + self.width,
+            'y1': self.y, 'y2': self.y + self.height,
+            'z_abs': self.get_abs_z(),
+            'z1': self.get_abs_z(),
+            'z2': self.get_abs_z() + self.height
+        }
+
+    def on_hit(self, attacker, attack_data):
+        """保險用空函式：物品被誤打到時不會報錯"""
+        pass
+
+    def get_hitbox(self):
+        return None  # 預設沒有攻擊判定
+
+    def update_physics_only(self):
+        # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
+        if self.vz != 0 or self.jump_z > 0:
+            self.jump_z += self.vz
+            self.vz -= GRAVITY  # 統一使用全域重力常數
+
+            if self.jump_z <= 0:
+                self.jump_z = 0
+                self.vz = 0
+                self.check_ground_contact()
+
+        # 2. 處理水平位移 (擊退、飛行、撞牆通用)
+        if self.vel_x != 0:
+            next_x = self.x + self.vel_x
+
+            if self.check_wall_collision(next_x):
+                # 撞牆反彈：使用統一的 vel_x
+                self.vel_x = -self.vel_x * 0.3
+                self.vz = 0.15
+                if self.scene:
+                    self.scene.trigger_shake(10, 5)
+            else:
+                self.x = next_x
+
+            # 水平摩擦力衰減 (僅在非飛行狀態)
+            if not getattr(self, 'flying', False):
+                self.vel_x *= FRICTION_AIR
+                if abs(self.vel_x) < STOP_THRESHOLD:
+                    self.vel_x = 0
+
+    def check_ground_contact(self):
+        """
+        Entity 層級的基礎落地：只處理物理，不處理狀態。
+        """
+        tx = int(self.x + self.width / 2)
+        ty = int(self.y + self.height * 0.1)
+        below_z = self.get_tile_z(tx, ty)
+
+        self.jump_z = 0
+        self.vz = 0
+        self.vel_x = 0
+        if below_z is not None:
+            self.z = below_z
+
+        # 🟢 呼叫一個 Hook 讓子類別擴充行為 (例如 Character 的硬直)
+        self.on_land_reaction()
+
+    def on_land_reaction(self):
+        """落地反應：Entity 預設不做事，Character 會在此處清除攻擊狀態與設硬直"""
+        pass
+
+    def set_rigid(self, duration):
+        """安全空函式：防止 SceneManager 呼叫 Item.set_rigid 時崩潰"""
+        pass
+
+    def on_be_hit(self, attacker):
+        """安全空函式：當 SceneManager 判定物品被打到時呼叫"""
+        pass

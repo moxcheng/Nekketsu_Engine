@@ -59,31 +59,35 @@ class Item(Entity):
     def is_pickable(self):
         return not self.held_by
     def update(self):
+        # if self.external_control:
+        #     self.update_by_external_control()
+        #     return
+        # self.hit_someone = self.update_hold_fly_position() #從HoldFlyLogicMixin而來
+        # self.z = self.get_tile_z(self.x, self.y)
         if self.external_control:
             self.update_by_external_control()
             return
-        self.hit_someone = self.update_hold_fly_position() #從HoldFlyLogicMixin而來
+
+        if self.held_by:
+            self.on_held_location()
+            return
+
+            # 🟢 修正：如果是飛行狀態，只執行 Z 軸變化 (on_fly_z)
+        if self.flying:
+            self.on_fly_z()
+
+            # 🟢 關鍵：一定要呼叫這個，才能讓 vel_x 正確轉換為位移
+        self.update_physics_only()
+
         self.z = self.get_tile_z(self.x, self.y)
-
-
-    # def get_interact_box(self):
-    #     return {
-    #         'x1': self.x,
-    #         'x2': self.x + self.width,
-    #         'y1': self.y,
-    #         'y2': self.y + self.height,
-    #         'z1': self.jump_z,
-    #         'z2': self.jump_z + self.height
-    #     }
 
     # 修改 Item 的 box 獲取方式
     def get_interact_box(self):
-        return {
-            'x1': self.x, 'x2': self.x + self.width,
-            'y1': self.y, 'y2': self.y + self.height,
-            'z1': self.z+self.jump_z, 'z2':self.z+self.jump_z+self.height,
-            'z_abs': self.z + self.jump_z  # 🟢 加入地面高度 z
-        }
+        return self.get_physics_box()
+    def get_hitbox(self):
+        return self.get_physics_box()
+    def get_hurtbox(self):
+        return self.get_physics_box()
 
     def get_swing_attack_data(self, attacker):
         return AttackData(

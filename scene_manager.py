@@ -1,6 +1,6 @@
 # scene_manager.py
 import pygame
-from Config import WIDTH, HEIGHT, TILE_SIZE,Z_DRAW_OFFSET
+from Config import *
 from State_enum import *
 import math
 
@@ -415,6 +415,10 @@ class SceneManager:
             print(f'scene updateall: hit_stop_timer {self.hit_stop_timer}')
             return enemy_remove_count# 關鍵：直接回傳，不執行下方的 units.update()
 
+        # 🟢 新增：全域碰撞攔截階段 (攔截 Clash 與傷害)
+        # 在單位 update 之前執行，確保公平性
+        self.update_collision_logic()
+
         self.script_runner.update()
         self.update_tokens()
         for unit in self.interactables:
@@ -630,6 +634,96 @@ class SceneManager:
                 nearby.append(unit)
         return nearby
 
+    # SceneManager.py
+    # scene_manager.py
+
+    def update_collision_logic(self):
+        from PhysicsUtils import is_box_overlap
+        all_units = self.get_all_units()
+        clashed_pairs = set()
+
+        # 1. 拼招判定 (Hitbox vs Hitbox)
+        for u1 in all_units:
+            # 🟢 修正點：只有在攻擊生效幀 (should_trigger_hit) 才算
+            if not (u1.attack_state and u1.attack_state.should_trigger_hit()):
+                continue
+
+            box1 = u1.get_hitbox()
+            for u2 in all_units:
+                # 排除：自己、同陣營、或對方也沒在生效幀
+                if u1 == u2 or u1.side == u2.side or (u1, u2) in clashed_pairs:
+                    continue
+                if not (u2.attack_state and u2.attack_state.should_trigger_hit()):
+                    continue
+
+                box2 = u2.get_hitbox()
+                if is_box_overlap(box1, box2):
+                    self.resolve_clash(u1, u2)
+                    clashed_pairs.add((u1, u2))
+                    clashed_pairs.add((u2, u1))
+
+        # 2. 傷害判定 (Hitbox vs Hurtbox)
+        for attacker in all_units:
+            # 🟢 修正點：如果是 character 但還在前搖，或者根本沒攻擊，直接跳過
+            can_hit = False
+            if getattr(attacker, 'unit_type', '') == 'character':
+                if attacker.attack_state and attacker.attack_state.should_trigger_hit():
+                    can_hit = True
+            elif getattr(attacker, 'unit_type', '') == 'item':
+                if attacker.flying:  # 物品飛起來就有傷害
+                    can_hit = True
+
+            if not can_hit: continue
+
+            atk_box = attacker.get_hitbox()
+            for victim in all_units:
+                # 🟢 修正點：加入 side 檢查解決 Friendly Fire
+                if attacker == victim or attacker.side == victim.side or (attacker, victim) in clashed_pairs:
+                    continue
+
+                if is_box_overlap(atk_box, victim.get_hurtbox()):
+                    if getattr(victim, 'unit_type', None) == 'character':
+                        # 確保不重複命中
+                        if hasattr(attacker, 'attack_state') and attacker.attack_state:
+                            if victim not in attacker.attack_state.has_hit:
+                                victim.on_hit(attacker, attacker.attack_state.data)
+                        elif hasattr(attacker, 'attacker_attack_data') and attacker.attacker_attack_data:
+                            # 處理 Fireball/Bullet
+                            victim.on_hit(attacker, attacker.attacker_attack_data)
+
+                    elif getattr(victim, 'unit_type', None) == 'item':
+                        if hasattr(victim, 'on_be_hit'):
+                            victim.on_be_hit(attacker)
+
+    def resolve_clash(self, u1, u2):
+        """
+            當兩個攻擊判定(Hitbox)互相接觸時觸發。
+            """
+        from PhysicsUtils import get_overlap_center
+        from Config import CLASH_HITSTOP_FRAMES, CLASH_REBOUND_FORCE
+
+        # 1. 視覺與體感回饋
+        # 觸發短暫的 Hit Stop (例如 2 幀) 增加碰撞的厚實感
+        self.trigger_hit_stop(CLASH_HITSTOP_FRAMES)
+
+        # 在兩個 Hitbox 重疊的中心點產生 'burst' (火花) 特效
+        cx, cy, cz = get_overlap_center(u1.get_hitbox(), u2.get_hitbox())
+        self.create_effect(cx, cy, cz, 'guard')
+
+        # 2. 物理反饋：根據相對位置推開雙方
+        # 誰在左邊就往左彈，誰在右邊就往右彈，這對 Item 或 Character 都通用
+        push_dir = 0.5 if u1.x > u2.x else -0.5
+
+        # 3. 施加震退力 (Rebound)
+        u1.vel_x = push_dir * CLASH_REBOUND_FORCE
+        u2.vel_x = -push_dir * CLASH_REBOUND_FORCE
+
+        # 4. 針對 Item 的特殊處理
+        for unit in [u1, u2]:
+            if getattr(unit, 'unit_type', None) == 'item':
+                unit.vz = 0.4  # 物品被打到時稍微向上彈起
+                if hasattr(unit, 'hitting'):
+                    unit.hitting = []  # 重置命中清單，讓它彈開後能再次產生判定
 
 
 class FloatingText:

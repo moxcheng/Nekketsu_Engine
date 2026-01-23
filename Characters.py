@@ -25,30 +25,7 @@ def suspend(info=''):
         # 避免 CPU 吃滿（加一點等待）
         pygame.time.delay(100)
 
-from PhysicsUtils import is_box_overlap
-
-def get_overlap_center(box1, box2):
-    """
-    計算兩個碰撞盒交疊區域的中心點 (x, y, z)。
-    若無交疊，則回傳各軸的中點平均值（或可視需求回傳 None）。
-    """
-    # 計算 X 軸交疊區間
-    overlap_x1 = max(box1['x1'], box2['x1'])
-    overlap_x2 = min(box1['x2'], box2['x2'])
-    center_x = (overlap_x1 + overlap_x2) / 2
-
-    # 計算 Y 軸交疊區間
-    overlap_y1 = max(box1['y1'], box2['y1'])
-    overlap_y2 = min(box1['y2'], box2['y2'])
-    center_y = (overlap_y1 + overlap_y2) / 2
-
-    # 計算 Z 軸交疊區間
-    overlap_z1 = max(box1['z1'], box2['z1'])
-    overlap_z2 = min(box1['z2'], box2['z2'])
-    center_z = (overlap_z1 + overlap_z2) / 2
-
-    return center_x, center_y, center_z
-
+from PhysicsUtils import is_box_overlap, get_overlap_center
 
 KEY_TO_ACTION = {
     pygame.K_z: "z_attack",
@@ -171,7 +148,7 @@ class CharacterBase(Entity):
 
         
         self.state = MoveState.STAND
-        self.last_intent = {'direction': None, 'horizontal': None}
+        #self.last_intent = {'direction': None, 'horizontal': None}
         self.last_intent = None
         self.current_frame = 0
         self.facing = DirState.RIGHT
@@ -491,7 +468,8 @@ class CharacterBase(Entity):
             elif anim_name in ['knockback']:
                 kb_frames = self.animator.anim_map.get('knockback')
                 near_ground_bound = 3.0
-                if self.jump_z >= near_ground_bound:
+                #if self.jump_z >= near_ground_bound:
+                if self.jump_z >= near_ground_bound or self.is_knockbacking():
                     # 使用frames[1]
                     frames = kb_frames[0]
                     rotation_frame_num = 4*len(frames)
@@ -866,6 +844,25 @@ class CharacterBase(Entity):
         self.color = self.default_color
         self.falling_timer = 0
         self.falling_y_offset = 0
+
+    def on_land_reaction(self):
+        """
+        角色專屬的落地反應。
+        因為 Entity.check_ground_contact 已經處理了物理，
+        這裡只處理『人物狀態變更』。
+        """
+        if self.attack_state:
+            self.attack_state = None
+
+        from State_enum import MoveState
+        self.state = MoveState.STAND
+        self.set_rigid(10)  # 物品呼叫這個不會崩潰，因為 Entity 裡有空實作
+
+        if hasattr(self, "default_color"):
+            self.color = self.default_color
+        self.falling_timer = 0
+        self.falling_y_offset = 0
+        print(f"[CHARACTER] {self.name} 落地並重置狀態")
     def check_and_trigger_fall(self, dx, dy, move_rate):
         new_x = self.x + dx * move_rate
         new_y = self.y + dy * move_rate
@@ -892,35 +889,35 @@ class CharacterBase(Entity):
             self.scene.say(self, txt)
 
     # Characters.py -> update_physics_only 整合後
-    def update_physics_only(self):
-        # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
-        if self.vz != 0 or self.jump_z > 0:
-            self.jump_z += self.vz
-            self.vz -= GRAVITY  # 統一使用全域重力常數
-
-            if self.jump_z <= 0:
-                self.jump_z = 0
-                self.vz = 0
-                self.check_ground_contact()
-
-        # 2. 處理水平位移 (擊退、飛行、撞牆通用)
-        if self.vel_x != 0:
-            next_x = self.x + self.vel_x
-
-            if self.check_wall_collision(next_x):
-                # 撞牆反彈：使用統一的 vel_x
-                self.vel_x = -self.vel_x * 0.3
-                self.vz = 0.15
-                if self.scene:
-                    self.scene.trigger_shake(10, 5)
-            else:
-                self.x = next_x
-
-            # 水平摩擦力衰減 (僅在非飛行狀態)
-            if not getattr(self, 'flying', False):
-                self.vel_x *= FRICTION_AIR
-                if abs(self.vel_x) < STOP_THRESHOLD:
-                    self.vel_x = 0
+    # def update_physics_only(self):
+    #     # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
+    #     if self.vz != 0 or self.jump_z > 0:
+    #         self.jump_z += self.vz
+    #         self.vz -= GRAVITY  # 統一使用全域重力常數
+    #
+    #         if self.jump_z <= 0:
+    #             self.jump_z = 0
+    #             self.vz = 0
+    #             self.check_ground_contact()
+    #
+    #     # 2. 處理水平位移 (擊退、飛行、撞牆通用)
+    #     if self.vel_x != 0:
+    #         next_x = self.x + self.vel_x
+    #
+    #         if self.check_wall_collision(next_x):
+    #             # 撞牆反彈：使用統一的 vel_x
+    #             self.vel_x = -self.vel_x * 0.3
+    #             self.vz = 0.15
+    #             if self.scene:
+    #                 self.scene.trigger_shake(10, 5)
+    #         else:
+    #             self.x = next_x
+    #
+    #         # 水平摩擦力衰減 (僅在非飛行狀態)
+    #         if not getattr(self, 'flying', False):
+    #             self.vel_x *= FRICTION_AIR
+    #             if abs(self.vel_x) < STOP_THRESHOLD:
+    #                 self.vel_x = 0
     # def update_physics_only(self):
     #     # --- 1. 處理垂直位移 (保持原樣) ---
     #     if self.vz != 0:
@@ -1321,45 +1318,80 @@ class CharacterBase(Entity):
     def update_common_interactable_unit(self, unit):
         return
         #還沒實作
+    # def update_common_opponent(self, opponent=None):
+    #     #受創狀態判定
+    #     self.update_combat_state()
+    #     self.update_hit_timer()
+    #
+    #     #123456
+    #     if self.attack_state:
+    #         #print(f'update_common_opponent: [({self.current_frame}){self.attack_state.timer}] self.attack_state={self.attack_state} ({self.x:.2f}, {self.y:.2f})')
+    #         # self.attack_state.update()
+    #         #attack_state的timer update只能進行一次! 必須在外面
+    #         if self.attack_state and not self.attack_state.is_active():
+    #             #suspend(f'{self.attack_state.data.attack_type.name}收招')
+    #             self.set_rigid(self.attack_state.data.recovery)
+    #             self.attack_state = None
+    #             self.state = MoveState.STAND
+    #             self.mode = MoveState.STAND
+    #
+    #     #命中計時器
+    #     if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
+    #         if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
+    #             if self not in opponent.attack_state.has_hit:
+    #                 # hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
+    #                 if self.held_by is None:
+    #                     #避免打到自己
+    #                     self.on_hit(opponent, opponent.attack_state.data)
+    #
+    #     # 若正在攻擊期間
+    #     #
+    #     if self.attack_state:
+    #         if self.is_jump():
+    #             # 空中攻擊時允許 X 軸移動與跳躍物理
+    #             dx = self.last_intent.get('dx')*0.1
+    #             new_x = self.x + dx
+    #             #限制邊界
+    #             self.x = max(0, min(new_x, self.map_w - self.width))
+    #         return False
+    #     else:
+    #         return True
+    # Characters.py
+
     def update_common_opponent(self, opponent=None):
-        #受創狀態判定
+        """
+        重構後的保險版本：
+        不再主動偵測 opponent 的 hitbox，
+        只負責處理『自身』的戰鬥狀態更新與收招邏輯。
+        """
+        # 1. 更新受創計時與 combat 狀態 (這必須保留，否則不會醒來)
         self.update_combat_state()
         self.update_hit_timer()
-        
-        #123456
+
+        # 2. 處理攻擊結束後的收招 (這必須保留，否則會卡在攻擊動作)
         if self.attack_state:
-            #print(f'update_common_opponent: [({self.current_frame}){self.attack_state.timer}] self.attack_state={self.attack_state} ({self.x:.2f}, {self.y:.2f})')
-            # self.attack_state.update()
-            #attack_state的timer update只能進行一次! 必須在外面
-            if self.attack_state and not self.attack_state.is_active():
-                #suspend(f'{self.attack_state.data.attack_type.name}收招')
+            if not self.attack_state.is_active():
+                # 攻擊結束，進入收招硬直
                 self.set_rigid(self.attack_state.data.recovery)
                 self.attack_state = None
                 self.state = MoveState.STAND
                 self.mode = MoveState.STAND
 
-        #命中計時器
-        if opponent and opponent.attack_state and opponent.attack_state.should_trigger_hit():
-            if is_box_overlap(opponent.get_hitbox(), self.get_hurtbox()):
-                if self not in opponent.attack_state.has_hit:
-                    # hit_x, hit_y, hit_z = get_overlap_center(opponent.get_hitbox(), self.get_hurtbox())
-                    if self.held_by is None:
-                        #避免打到自己
-                        self.on_hit(opponent, opponent.attack_state.data)
+        # ---------------------------------------------------------
+        # 🔴 原本這裡有一大段 is_box_overlap 的代碼，現在可以放心地註解掉或刪除
+        # 因為 SceneManager.resolve_all_collisions 已經幫我們做完了。
+        # ---------------------------------------------------------
 
-        # 若正在攻擊期間
-        #
+        # 3. 處理攻擊期間的特殊物理 (這必須保留，影響手感)
         if self.attack_state:
             if self.is_jump():
-                # 空中攻擊時允許 X 軸移動與跳躍物理
-                dx = self.last_intent.get('dx')*0.1
+                # 空中攻擊時允許微量 X 軸移動 (10% 慣性)
+                dx = self.last_intent.get('dx', 0) * 0.1
                 new_x = self.x + dx
-                #限制邊界
                 self.x = max(0, min(new_x, self.map_w - self.width))
-            return False
-        else:
-            return True
+            return False  # 告訴外部：我正在忙 (攻擊中)
 
+        return True  # 告訴外部：我可以自由行動
     def draw_hit_box(self, win, cam_x, cam_y, tile_offset_y, color, terrain_z_offset=0):
         #符合條件的才畫
         if self.attack_state and (self.attack_state.should_trigger_hit() or len(self.attack_state.has_hit) > 0):
@@ -1428,20 +1460,11 @@ class CharacterBase(Entity):
 
         return None
     def get_hurtbox(self):
-        return {'x1': self.x, 'x2':self.x+self.width, 'y1':self.y, 'y2':self.y+self.height, 'z1':self.z+self.jump_z,
-                'z2':self.z+self.jump_z+self.height, 'z_abs': self.z+self.jump_z}
+        return self.get_physics_box()
 
     def get_interact_box(self):
         #物件互動使用(非傷害)
-        return {
-            'x1': self.x - 0.5,
-            'x2': self.x + self.width - 0.5,
-            'y1': self.y,
-            'y2': self.y + self.height*0.5,
-            'z1': self.jump_z,
-            'z2': self.jump_z+self.height,
-            'z_abs': self.z+self.jump_z
-        }
+        return self.get_physics_box()
 
     def stop_print_info(self):
         st = f'{self.name} ({self.x}, {self.y}, {self.z}) JUMP {self.jump_z}\n'
@@ -1756,7 +1779,7 @@ class CharacterBase(Entity):
         can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL and not self.is_locked()
         # 狀態判斷 B: 受身系統 (在擊飛狀態快落地時按跳)
         is_tech_roll = (self.combat_state == CombatState.KNOCKBACK and
-                        self.jump_z < 0.8 and self.input_buffer == 'jump')
+                        self.jump_z > 1.0 and self.input_buffer == 'jump')
         if can_act:
             cmd = self.input_buffer
             self.clean_input_buffer()
@@ -1765,9 +1788,25 @@ class CharacterBase(Entity):
         elif is_tech_roll:
             print(f"✨ {self.name} 受身成功！")
             self.into_normal_state()
-            self.invincible_timer = 20  # 給予短暫無敵
-            # 額外的小位移彈開
-            self.vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
+            self.vz = 0.8  # 🚀 關鍵：給予向上的瞬時速度，造成「翻身跳」的效果
+            self.vel_x = -0.6 if self.facing == DirState.RIGHT else 0.6  # 稍微後跳拉開距離
+            self.invincible_timer = 20
+            # 1. 不要直接 into_normal_state，而是手動重置必要的受擊標記
+            # self.combat_state = CombatState.NORMAL
+            # self.hit = False
+            # self.hit_count = 0.0
+            # self.is_mashing = False
+            # self.clean_input_buffer()
+            #
+            # # 2. 恢復空中翻身的物理：給予向上的彈跳力
+            # self.vz = 0.8  # 給一個向上的初速，形成翻身跳的感覺
+            #
+            # # 3. 恢復水平位移：根據面向反向跳開
+            # direction = -1 if self.facing == DirState.RIGHT else 1
+            # self.vel_x = direction * 0.4
+            # self.invincible_timer = 20  # 給予短暫無敵
+            # # 額外的小位移彈開
+            # self.vel_x = -0.5 if self.facing == DirState.RIGHT else 0.5
             return True
         return False
 
@@ -1778,10 +1817,6 @@ class CharacterBase(Entity):
         dx = target.x - self.x
         dy = target.y - self.y
         return (dx ** 2 + dy ** 2) ** 0.5
-
-    # Characters.py -> ai_move_logic
-
-    # Characters.py -> ai_move_logic
 
     def ai_move_logic(self, target, intent, far_speed=0.5, near_speed=0.3):
         if self.attack_state or self.is_locked() or self.state == MoveState.ATTACK:
@@ -1814,7 +1849,7 @@ class CharacterBase(Entity):
         else:
             # 2. 沒 Token：執行繞背路徑邏輯
             # 判斷是否需要重新計算目標 (冷卻結束 或 距離玩家過遠)
-            need_recalc = (self.ai_recalc_timer <= 0) or (dist_to_player > 8.0)
+            need_recalc = (self.ai_recalc_timer <= 0) or (dist_to_player > 8.0) or self.last_intent is None
 
             if need_recalc:
                 # 計算新目標點：環繞半徑 4.0 ~ 6.0
@@ -1845,6 +1880,19 @@ class CharacterBase(Entity):
             norm_x = mv_dx / move_dist
             norm_y = mv_dy / move_dist
 
+            # 🟢 新增：前方地形檢查 (段差偵測)
+            check_x = self.x + norm_x * 0.5
+            check_y = self.y + norm_y * 0.5
+            front_z = self.get_tile_z(int(check_x), int(check_y))
+
+            if front_z is not None:
+                z_diff = front_z - self.z
+                # 如果前方太高，且目標確實在那邊，觸發跳躍意圖
+                if z_diff >= 1.0 and self.jump_z == 0:
+                    intent['jump'] = True
+                    # 給予額外的前衝力
+                    move_speed *= 1.5
+
             # 如果沒 Token，疊加一個垂直於目標的微小向量來實現「弧形移動」感
             if not has_token:
                 side_x, side_y = -norm_y, norm_x  # 取得法向量
@@ -1860,25 +1908,6 @@ class CharacterBase(Entity):
         else:
             intent['dx'], intent['dy'] = 0, 0
             intent['horizontal'] = MoveState.STAND
-
-    def ai_jump_logic(self, target, intent):
-        dx = target.x - self.x
-        dy = target.y - self.y
-        dz = abs((target.z) - (self.z))
-
-        tile_x = int(self.x + (0.4 if dx > 0 else -0.4))
-        tile_y = int(self.y + (0.4 if dy > 0 else -0.4))
-        next_tile_z = self.get_tile_z(tile_x, tile_y)
-
-        if self.jump_z == 0 and next_tile_z is not None:
-            dz_to_next_tile = next_tile_z - self.z
-            if dz >= 2 and dz_to_next_tile >= 2:
-                intent['jump'] = True
-                intent['dx'] = dx
-                intent['dy'] = dy
-                intent['direction'] = DirState.RIGHT if dx > 0 else DirState.LEFT
-                intent['horizontal'] = MoveState.STAND
-                print(f'{self.name} 試圖跳躍!')
 
     def ai_attack_logic(self, target, intent, act='support'):
         attack_chance = self.aggressiveness
@@ -1900,9 +1929,9 @@ class CharacterBase(Entity):
         else:
             if random.random() < attack_chance:
                 if hasattr(self, "scale"):
-                    attack_range = 2 * self.scale
+                    attack_range = 2.5 * self.scale
                 else:
-                    attack_range = 2
+                    attack_range = 2.5
                 if dist <= attack_range and dz < 1.0:
                     if self.attack_cooldown <= 0:
                         intent['action'] = self.combos[int(self.combo_count) % len(self.combos)]
@@ -2428,14 +2457,10 @@ class Ally(CharacterBase):
             return intent
 
         # 分開邏輯模組處理
-        #print(f'[{self.current_frame}]{self.name} pre=facing{self.facing}')
         self.ai_mental_logic(target)
         intent['direction'] = self.facing
-        #print(f'[{self.current_frame}]{self.name} mid=facing{self.facing}')
-        self.ai_jump_logic(target, intent)
         self.ai_attack_logic(target, intent, act='support')
         self.ai_move_logic(target, intent, far_speed = self.ai_move_speed, near_speed = self.ai_move_speed*0.6)
-        #print(f'[{self.current_frame}]{self.name} post=facing{self.facing}')
         return intent
 
     def attack(self, skill):
@@ -2635,7 +2660,6 @@ class Enemy(CharacterBase):
         # 分開邏輯模組處理
         self.ai_mental_logic(target)
         self.ai_mental_logic(target)
-        self.ai_jump_logic(target, intent)
         self.ai_attack_logic(target, intent, act='Enemy')
         self.ai_move_logic(target, intent, far_speed=self.ai_move_speed, near_speed=self.ai_move_speed*0.6)
 

@@ -55,3 +55,6 @@ WALL_IMPACT_DAMAGE_MULT = 15        # 撞牆傷害倍率
 FALL_DAMAGE_THRESHOLD = 0.3         # 墜地受傷的垂直速度門檻
 FALL_DAMAGE_MULT = 20               # 墜地傷害倍率
 
+# Config.py
+CLASH_REBOUND_FORCE = 0.25      # 拼招時的後退力道
+CLASH_HITSTOP_FRAMES = 2        # 拼招產生的極短時停
