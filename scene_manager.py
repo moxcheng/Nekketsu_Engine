@@ -87,6 +87,7 @@ class SceneManager:
         self.hitstop_effect_frames = self.load_effect_assets(path="..//Assets_Drive//hit_stop1.png", frame_w=128, frame_h=128)  # 預載特效圖
         self.brust_effect_frames = self.load_effect_assets(path="..//Assets_Drive//brust.png", frame_w=128,frame_h=128)  # 預載特效圖
         self.guard_effect_frames = self.load_effect_assets(path="..//Assets_Drive//guard_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
+        self.clash_effect_frames = self.load_effect_assets(path="..//Assets_Drive//clash_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
@@ -155,7 +156,9 @@ class SceneManager:
         elif type == 'brust':
             new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=2, alpha=200)
         elif type == 'guard':
-            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=180)
+            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=160)
+        elif type == 'clash':
+            new_effect = VisualEffect(x, y, z, self.clash_effect_frames, anim_speed=2, alpha=140)
         if new_effect:
             self.visual_effects.append(new_effect)
 
@@ -640,6 +643,8 @@ class SceneManager:
     def update_collision_logic(self):
         from PhysicsUtils import is_box_overlap
         all_units = self.get_all_units()
+        # 忽略單位: stand
+        all_units = [u for u in all_units if u.type != "stand"]
         clashed_pairs = set()
 
         # 1. 拼招判定 (Hitbox vs Hitbox)
@@ -654,6 +659,8 @@ class SceneManager:
                 if u1 == u2 or u1.side == u2.side or (u1, u2) in clashed_pairs:
                     continue
                 if not (u2.attack_state and u2.attack_state.should_trigger_hit()):
+                    continue
+                if u1.type == "stand" or u2.type == "stand":
                     continue
 
                 box2 = u2.get_hitbox()
@@ -706,9 +713,9 @@ class SceneManager:
         # 觸發短暫的 Hit Stop (例如 2 幀) 增加碰撞的厚實感
         self.trigger_hit_stop(CLASH_HITSTOP_FRAMES)
 
-        # 在兩個 Hitbox 重疊的中心點產生 'burst' (火花) 特效
+        # 在兩個 Hitbox 重疊的中心點產生 (火花) 特效
         cx, cy, cz = get_overlap_center(u1.get_hitbox(), u2.get_hitbox())
-        self.create_effect(cx, cy, cz, 'guard')
+        self.create_effect(cx, cy, cz, 'clash')
 
         # 2. 物理反饋：根據相對位置推開雙方
         # 誰在左邊就往左彈，誰在右邊就往右彈，這對 Item 或 Character 都通用

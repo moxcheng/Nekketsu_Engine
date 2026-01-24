@@ -417,6 +417,10 @@ class CharacterBase(Entity):
         #print(f'[{self.current_frame}] {st} anim_name {anim_name}')
         #common material anime
         #print(f'{self.name} anim_name {anim_name}')
+        anim_frames = self.animator.anim_map.get(anim_name)
+        if anim_frames is None:
+            print(f'[draw_anim]{self.name} has no {anim_name} frame, change to stand')
+            anim_name = 'stand'
         if anim_name in common_anim_material:
             if anim_name == 'burn':
                 # 👇 繪製燃燒效果（如果標記為 get_burning）
@@ -800,7 +804,16 @@ class CharacterBase(Entity):
         self.invincible_timer = 240
         self.dead_timer = 160
         self.hit_count=100
-        print(f'{self.name} 死亡')
+        # 🟢 核心修正：死亡是所有「飛行/持有」狀態的終點
+        self.flying = False
+        self.held_by = None
+        self.vz = 0
+        self.vel_x = 0
+        # 確保座標直接對齊地板，防止懸空死亡
+        tx, ty = int(self.x + self.width / 2), int(self.y + self.height * 0.1)
+        self.z = self.get_tile_z(tx, ty) or self.z
+        self.jump_z = 0
+        print(f'{self.name} 死亡並清除所有物理標記')
     def into_normal_state(self):
         self.combat_state = CombatState.NORMAL
         self.hit = False
@@ -1502,8 +1515,8 @@ class CharacterBase(Entity):
             #初始狀態: 站
             self.state = MoveState.STAND
             dx, dy = intent['dx'], intent['dy']
-            if intent['jump']:
-                print(f'jump param: jump_z {self.jump_z}, jumpping_flag {self.jumpping_flag}')
+            # if intent['jump']:
+            #     print(f'jump param: jump_z {self.jump_z}, jumpping_flag {self.jumpping_flag}')
             if intent['jump'] and self.jump_z == 0 and not self.jumpping_flag:
 
                 if intent['horizontal'] == MoveState.RUN:
@@ -1845,7 +1858,7 @@ class CharacterBase(Entity):
             #move_speed = far_speed * morale_factor
             move_speed = far_speed
 
-            if dist_to_player < self.width/2: move_speed = 0  # 抵達出招距離
+            if dist_to_player < (self.width+target.width)/2: move_speed = 0  # 抵達出招距離
         else:
             # 2. 沒 Token：執行繞背路徑邏輯
             # 判斷是否需要重新計算目標 (冷卻結束 或 距離玩家過遠)
@@ -2495,6 +2508,7 @@ class StandEntity(Ally):
     def __init__(self, owner, config_dict):
         super().__init__(owner.x, owner.y, owner.z, [owner.terrain, owner.map_w, owner.map_h], config_dict)
         self.owner = owner
+        self.type="stand"
         self.invincible_timer = 999999
         self.dummy = True  # 確保不執行 AI
         # 替身不參與受擊，判定由主人承擔

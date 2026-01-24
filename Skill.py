@@ -302,8 +302,8 @@ def kick_hitbox_func(x, y, facing, actor=None):
     #    舉例：讓 reach 跟寬度成比例
     reach = 0.9 + 0.6 * (w / 1.5)
     # 3. 垂直覆蓋範圍也用角色高度來估
-    y_top = y+h*0.4
-    y_bottom = y_top + h * 0.2
+    y_top = y+h*0.1
+    y_bottom = y_top + h * 0.7
 
     if facing == DirState.RIGHT:
         return {'x1': x + 0.2, 'x2': x + reach, 'y1': y_top , 'y2': y_bottom}

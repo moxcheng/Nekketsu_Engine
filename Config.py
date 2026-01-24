@@ -39,6 +39,7 @@ STOP_THRESHOLD = 0.05    # 速度低於此值則歸零
 # --- 2. 撞牆與反彈 ---
 WALL_BOUNCE_REBOUND = 0.3 # 撞牆後的反向速度係數
 WALL_BOUNCE_UP_VZ = 0.15   # 撞牆後的向上微彈力
+WALL_BOUNCE_MIN = 0.1   #反彈的最小值避免無限反彈
 
 # --- 3. 拋物線與重力 ---
 FLY_GRAVITY_MULT = 0.5   # 飛行物件受重力的加權係數
@@ -56,5 +57,5 @@ FALL_DAMAGE_THRESHOLD = 0.3         # 墜地受傷的垂直速度門檻
 FALL_DAMAGE_MULT = 20               # 墜地傷害倍率
 
 # Config.py
-CLASH_REBOUND_FORCE = 0.25      # 拼招時的後退力道
-CLASH_HITSTOP_FRAMES = 2        # 拼招產生的極短時停
+CLASH_REBOUND_FORCE = 0.05     # 拼招時的後退力道
+CLASH_HITSTOP_FRAMES = 0        # 拼招產生的極短時停

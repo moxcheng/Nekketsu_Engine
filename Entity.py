@@ -86,9 +86,16 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
             next_x = self.x + self.vel_x
 
             if self.check_wall_collision(next_x):
-                # 撞牆反彈：使用統一的 vel_x
+                # 🟢 修正 1：座標回退 (防止滲透牆壁)
+                # 讓 x 保持在原位，或者稍微往反方向移一點點，確保下一幀不會再卡住
+                # 🟢 修正 2：條件式向上彈起
+                # 只有當目前不在上升狀態時，才給予向上彈力，避免重複疊加 vz
+                if self.vz <= 0:
+                    self.vz = 0.15
+
+                # 🟢 修正 3：反彈力道衰減
                 self.vel_x = -self.vel_x * 0.3
-                self.vz = 0.15
+
                 if self.scene:
                     self.scene.trigger_shake(10, 5)
             else:
