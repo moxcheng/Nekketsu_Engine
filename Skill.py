@@ -13,6 +13,7 @@ class AttackState:
         #self.force_move_y = 0
         self.name = 'basic'
         self.is_fly_attack = False
+        self.has_clashed = False
 
     def update(self):
         #print('AttackState 的 update')

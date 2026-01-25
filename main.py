@@ -293,7 +293,8 @@ def scene_test(win, font):
             # ]
             # scene.script_runner.load(test_script)
             print('enter!!')
-            player.enable_super_move()
+            #player.enable_super_move()
+            scene.env_manager.set_dim(True)
 
         cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
         cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
@@ -585,7 +586,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
 
     #宣告場景
-    scene = SceneManager(MAP_HEIGHT, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"])
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=backgroung_path)
     scene.set_clear_font(clear_font)
     scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
     stage_cleared = False
@@ -668,7 +669,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             # --- 在這裡檢查 Enter ---
         if kb_keys[pygame.K_RETURN]:
             print('Enter is being held!')
-            player.enable_super_move()
+            #player.enable_super_move()
+            #scene.toggle_highlight_test(player)
+            stage_cleared=True
 
         player.handle_input(keys)
 
@@ -749,8 +752,10 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 result = 'CLEAR'
             else:
                 result = 'FAIL'
-            scene.trigger_clear(f"SCENE MATO {result}", 180)
-            scene.darken_enabled = True
+            scene.trigger_clear(f"SCENE MATO {result}", 360)
+            # scene.darken_enabled = True
+            #scene.trigger_scene_end()
+        print(f'main: scene end countdown={scene.scene_end_countdown}')
 
         if scene.scene_end_countdown == 0:
             print('scene end')
@@ -776,7 +781,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
         # --- 接下來進行繪圖 ---
         win.fill(WHITE)
-        draw_map(win, cam_x, cam_y, font, tile_offset_y)
+        #draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
 
         #pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點

@@ -33,6 +33,10 @@ KEY_TO_ACTION = {
     pygame.K_c: "c_attack"
 }
 
+import pygame
+from Config import WIDTH, HEIGHT
+
+
 def check_state(self):
     m_state, a_state = None, None
     if self.state:
@@ -473,7 +477,8 @@ class CharacterBase(Entity):
                 kb_frames = self.animator.anim_map.get('knockback')
                 near_ground_bound = 3.0
                 #if self.jump_z >= near_ground_bound:
-                if self.jump_z >= near_ground_bound or self.is_knockbacking():
+
+                if (self.jump_z >= near_ground_bound or self.is_knockbacking()) and self.health > 0:
                     # 使用frames[1]
                     frames = kb_frames[0]
                     rotation_frame_num = 4*len(frames)
@@ -486,7 +491,8 @@ class CharacterBase(Entity):
                     frames = kb_frames[1]
                     step = near_ground_bound/len(frames)
                     dist_from_start = near_ground_bound-self.jump_z
-                    choose_index = min(int(dist_from_start/step), len(frames)-1)
+                    choose_index = max(0, min(int(dist_from_start/step), len(frames)-1))
+                    #print(f'choose_index {choose_index}')
                     frame_index = frames[choose_index]
 
         # 若角色面向左側，進行左右翻轉
