@@ -366,11 +366,7 @@ class CharacterBase(Entity):
 
     def draw_anim(self, win, cam_x, cam_y, tile_offset_y):
 
-        # 更新動畫 frame（每隔 anim_speed frame 換一次圖）
-        self.anim_timer += 1
-        if self.anim_timer >= self.anim_speed:
-            self.anim_timer = 0
-            self.anim_frame += 1
+
 
         # 狀態轉換為動畫名
         # print(f'[draw_anim] {self.name} combat_state = {self.combat_state.name} move_state = {self.state.name}', end='\r')
@@ -446,7 +442,7 @@ class CharacterBase(Entity):
                 #只有一個stage但有多張圖的動畫, 根據某些條件來選擇
                 # walk, jump, on_hit
                 if anim_name in ['walk','run']:
-                    self.anim_walk_cnt += 1
+                    #self.anim_walk_cnt += 1
                     frame_period = 8 if anim_name == 'walk' else 4
                     walk_index = int(self.anim_walk_cnt / frame_period) % len(self.animator.anim_map.get('walk')[0])
                     frame_index = frames[walk_index]
@@ -581,6 +577,7 @@ class CharacterBase(Entity):
         draw_x = cx - frame_rect.width // 2
         draw_y = cy - frame_rect.height
 
+        #顫抖特效區
         if self.scene and self.scene.hit_stop_timer > 0:
             import random
             draw_x += random.randint(-2, 2)
@@ -592,6 +589,17 @@ class CharacterBase(Entity):
             import random
             draw_x += random.randint(-2, 2)
             draw_y += random.randint(-2, 2)
+
+        # --- 1. 時停壓迫感：根據累積動量產生震動 ---
+        if self.scene and self.scene.env_manager.freeze_timer > 0 and self not in self.scene.env_manager.highlight_units:
+            # 計算目前的動量總和
+            momentum = (abs(self.vel_x) + abs(self.vz)) * 0.6  # 係數可調
+            print(f'{self.name} momentum {momentum}')
+            intensity = int(min(6, momentum))  # 最大震動幅度限制在 12 像素
+            if intensity > 0:
+                import random
+                draw_x += random.randint(-intensity, intensity)
+                draw_y += random.randint(-intensity, intensity)
 
         self.update_afterimages()
         # 2. 繪製殘影
@@ -1163,12 +1171,30 @@ class CharacterBase(Entity):
             resistance = 1.0 + (getattr(self, 'weight', 0.15) * 5)
             #knock_back_power[0]水平 [1]垂直
             if attack_data.knock_back_power[0] != 0:
+                # direction = self.get_knock_direction(attacker, attack_data)
+                # self.vel_x += (direction * attack_data.knock_back_power[0]) / resistance
                 direction = self.get_knock_direction(attacker, attack_data)
-                #self.vel_x = direction * attack_data.knock_back_power[0]
-                self.vel_x = (direction * attack_data.knock_back_power[0]) / resistance
+                added_vx = (direction * attack_data.knock_back_power[0]) / resistance
+
+                # 🟢 邊際效用遞減：如果目前已經很快，新增的速度要打折
+                # 這裡使用簡單的比例：剩餘空間越多，加成越多
+                current_speed_ratio = abs(self.vel_x) / MAX_REASONABLE_VEL
+                scaling_factor = max(0.2, 1.0 - current_speed_ratio)  # 最少保留 20% 的衝擊力
+
+                self.vel_x += added_vx * scaling_factor
             if attack_data.knock_back_power[1] != 0:
-                self.vz = attack_data.knock_back_power[1] / resistance
-                self.jump_z = max(0.2, attack_data.knock_back_power[1] * 0.05)
+                # self.vz += attack_data.knock_back_power[1] / resistance
+                # self.jump_z = max(0.2, attack_data.knock_back_power[1] * 0.05)
+                added_vz = attack_data.knock_back_power[1] / resistance
+                # vz 同理，防止向上飛到看不見
+                current_vz_ratio = abs(self.vz) / MAX_REASONABLE_VEL
+                scaling_factor_z = max(0.2, 1.0 - current_vz_ratio)
+                self.vz += added_vz * scaling_factor_z
+                # 🔴 重要修正：不要 += jump_z
+                # jump_z 代表位置，累加會導致「瞬間傳送」
+                # 只要確保第一擊讓他在空中即可 (0.1~0.2)
+                if self.jump_z == 0:
+                    self.jump_z = 0.2
 
         if AttackEffect.SHORT_STUN in effects:
             self.set_rigid(ON_HIT_SHORT_STUN_TIME)
@@ -1330,6 +1356,13 @@ class CharacterBase(Entity):
         if (self.is_super_armor() or self.is_invincible()) and not self.get_component("status_aura"):
             from Component import StatusAuraComponent
             self.add_component("status_aura", StatusAuraComponent())
+        # 更新動畫 frame（每隔 anim_speed frame 換一次圖）
+        self.anim_timer += 1
+        if self.anim_timer >= self.anim_speed:
+            self.anim_timer = 0
+            self.anim_frame += 1
+        if self.state in [MoveState.WALK, MoveState.RUN]:
+            self.anim_walk_cnt += 1
 
 
 

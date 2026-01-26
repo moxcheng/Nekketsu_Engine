@@ -40,6 +40,11 @@ class EnvironmentManager:
         self.cutscene_timer = 0
         self.current_img_idx = 0
 
+        self.freeze_timer = 0
+
+    def set_freeze(self, duration):
+        """設定時停時間 (單位：frame)"""
+        self.freeze_timer = duration
     def update(self):
         # 處理變暗漸變
         if self.dim_alpha < self.target_dim_alpha:
@@ -67,6 +72,14 @@ class EnvironmentManager:
             # 切換下一張圖
             if self.cutscene_timer > 0 and progress == 0:
                 self.current_img_idx = (self.current_img_idx + 1) % len(self.cutscene_images)
+
+        if self.freeze_timer > 0:
+            self.freeze_timer -= 1
+            # 🟢 如果計時器剛好在此幀歸零，自動觸發「變亮」
+            if self.freeze_timer == 0:
+                self.set_dim(False)  # 讓 target_dim_alpha 變 0
+                self.highlight_units.clear()  # 清空高亮名單
+                print("⏰ 時停結束，自動恢復光明與流動")
 
     def set_dim(self, active, alpha=160):
         self.target_dim_alpha = alpha if active else 0
@@ -241,18 +254,22 @@ class SceneManager:
         #     self.env_manager.set_cutscene(loaded_imgs)
     def toggle_highlight_test(self, unit):
         """
-        測試用：切換變暗效果，並決定是否讓特定單位跳脫黑幕。
-        """
+            按下 Enter 鍵測試：背景變暗、主角高亮、且除了主角外全場靜止。
+            """
         if self.env_manager.dim_alpha == 0:
-            # 🟢 啟動變暗，並讓傳入的單位高亮
+            # 啟動視覺變暗
             self.env_manager.set_dim(True, alpha=180)
+            # 賦予高亮權限 (視覺跳出濾鏡 + 邏輯不被時停)
             self.env_manager.highlight_units.add(unit)
-            print(f"[TEST] {unit.name} 啟動高亮，環境變暗")
+            # 🟢 [新增] 啟動時停 (比如停 5 秒)
+            self.env_manager.set_freeze(600)
+            print(f"🔥 {unit.name} 展開了領域：【時之停頓】")
         else:
-            # 🔴 恢復正常
+            # 恢復正常
             self.env_manager.set_dim(False)
             self.env_manager.highlight_units.clear()
-            print("[TEST] 恢復環境亮度，清空高亮名單")
+            self.env_manager.set_freeze(0)
+            print("⏰ 時間恢復流動")
 
     def update_tokens(self):
         """每幀更新權杖狀態，處理過期回收"""
@@ -568,6 +585,10 @@ class SceneManager:
     def update_all(self):
         self.frame_count+=1
         enemy_remove_count = 0
+
+        # 1. 檢查時停狀態
+        is_time_frozen = self.env_manager.freeze_timer > 0
+
         # 如果處於 Hit Stop 期間，倒數計時並跳過邏輯更新
         if self.hit_stop_timer > 0:
             self.hit_stop_timer -= 1
@@ -582,7 +603,19 @@ class SceneManager:
             if not self.env_manager.cutscene_images:
                 self.env_manager.set_cutscene(self.end_cuts)
 
+        previous_freeze_timer=self.env_manager.freeze_timer
         self.env_manager.update()
+        is_just_thawed = (self.env_manager.freeze_timer == 0 and previous_freeze_timer > 0)
+
+        if is_just_thawed:
+            for unit in self.interactables:
+                # 如果動量極大，產生爆發視覺
+                if abs(unit.vel_x) + abs(unit.vz) > 1.5:
+                    # 產生一個巨大的環形衝擊波特效
+                    self.create_effect(unit.x, unit.y, unit.z, 'shockwave')
+                    self.trigger_shake(duration=20, intensity=10)  # 畫面劇烈震動
+
+
         # 🟢 新增：全域碰撞攔截階段 (攔截 Clash 與傷害)
         # 在單位 update 之前執行，確保公平性
         self.update_collision_logic()
@@ -590,6 +623,11 @@ class SceneManager:
         self.script_runner.update()
         self.update_tokens()
         for unit in self.interactables:
+            # 🟢 如果時間停止，且該單位不在高亮名單內，跳過其 update()
+            if is_time_frozen and unit not in self.env_manager.highlight_units:
+                # 非時停單位不能行動
+                continue
+
             #如果劇情模式開啟，且這個單位不在受控名單中 → 跳過更新
             if self.script_runner.active and self.lock_others_during_script:
                 if unit not in self.script_controlled_units:
@@ -606,6 +644,11 @@ class SceneManager:
                     if unit.unit_type == "character":
                         continue
             unit.update()
+            # 🟢 [Step 3 邏輯]：如果具備「兩動」標記
+            if getattr(unit, "double_speed", False):
+                # 在同一幀內更新第二次，達成 2 倍速位移與攻擊
+                unit.update()
+
         for text in self.floating_texts:
             text.update()
         self.floating_texts = [t for t in self.floating_texts if t.is_alive()]  # 自動清除結束的

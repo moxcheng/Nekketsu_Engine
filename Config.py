@@ -49,6 +49,7 @@ BOUNCE_THRESHOLD_VZ = 0.1 # 觸地時 vz 超過此值才觸發彈跳
 # --- 4. 動量與碰撞損耗 ---
 UNIT_IMPACT_MOMENTUM_LOSS_MAX = 0.8 # 撞擊人物時的最大動量損失
 UNIT_IMPACT_UP_VZ_FACTOR = 0.2      # 撞擊人物後的垂直彈起係數
+MAX_REASONABLE_VEL = 2.0 # 定義一個「軟上限（Soft Cap）」，超過這個值後加速效率大幅下降
 
 # --- 5. 環境傷害門檻 (擬真化建議值) ---
 WALL_IMPACT_DAMAGE_THRESHOLD = 0.2  # 撞牆受傷的速度門檻

@@ -107,6 +107,12 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
                 if abs(self.vel_x) < STOP_THRESHOLD:
                     self.vel_x = 0
 
+        if getattr(self, 'afterimage_enabled', False):
+            if abs(self.vel_x) > 1.0:  # 超過此速度就開啟殘影
+                self.afterimage_enabled = True
+            else:
+                self.afterimage_enabled = False
+
     def check_ground_contact(self):
         """
         Entity 層級的基礎落地：只處理物理，不處理狀態。
@@ -134,4 +140,6 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
 
     def on_be_hit(self, attacker):
         """安全空函式：當 SceneManager 判定物品被打到時呼叫"""
+        pass
+    def update_common_timer(self):
         pass

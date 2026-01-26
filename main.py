@@ -670,8 +670,8 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         if kb_keys[pygame.K_RETURN]:
             print('Enter is being held!')
             #player.enable_super_move()
-            #scene.toggle_highlight_test(player)
-            stage_cleared=True
+            scene.toggle_highlight_test(player)
+            #stage_cleared=True
 
         player.handle_input(keys)
 
@@ -755,7 +755,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             scene.trigger_clear(f"SCENE MATO {result}", 360)
             # scene.darken_enabled = True
             #scene.trigger_scene_end()
-        print(f'main: scene end countdown={scene.scene_end_countdown}')
+        #print(f'main: scene end countdown={scene.scene_end_countdown}')
 
         if scene.scene_end_countdown == 0:
             print('scene end')
