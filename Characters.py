@@ -242,6 +242,29 @@ class CharacterBase(Entity):
         self.breakthrough=False
         self.attacker_attack_data=None
 
+    def try_use_ability(self, ability_key):
+        from Skill import ABILITY_DATA
+        from Component import AbilityComponent, StandComponent
+
+        data = ABILITY_DATA.get(ability_key)
+        comp_key = f"ability_{ability_key}"
+
+        # 1. 檢查是否已經在該技能狀態中 (避免重複註冊)
+        if self.get_component(comp_key):
+            print(f"[LOG] {self.name}的{data.name} 正在冷卻或持續中，無法重複使用")
+            return False
+
+        # 2. 檢查 MP (從 Data 讀取)
+        if self.mp >= data.mp_cost:
+            self.mp -= data.mp_cost
+            if ability_key in ['stand'] and self.stand_config:
+                self.add_component(comp_key, StandComponent(self.stand_config, data.duration))
+            else:
+                self.add_component(comp_key, AbilityComponent(data))
+            return True
+
+        print(f"[LOG] {self.name}的 MP 不足，{data.name}啟動失敗")
+        return False
     def trigger_guard_success(self, attacker, attack_data):
         """
         熱血物語式格擋成功：將攻擊前搖轉化為防禦。
@@ -601,6 +624,8 @@ class CharacterBase(Entity):
                 draw_x += random.randint(-intensity, intensity)
                 draw_y += random.randint(-intensity, intensity)
 
+        # if self.name=='player':
+        #     print(f'{self.name}的afterimage_enabled={self.afterimage_enabled}')
         self.update_afterimages()
         # 2. 繪製殘影
         for img in self.afterimage_list:
@@ -910,10 +935,10 @@ class CharacterBase(Entity):
         return False
 
 
-    def say(self, txt):
+    def say(self, txt, duration=90):
         #def say(self, unit, text, duration=90, direction='up'):
         if self.scene:
-            self.scene.say(self, txt)
+            self.scene.say(self, txt, duration=duration)
 
     # Characters.py -> update_physics_only 整合後
     # def update_physics_only(self):
@@ -2055,9 +2080,9 @@ class Player(CharacterBase):
         # 避免重複掛載
         if self.stand_config is None:
             return
-        if self.get_component("stand_logic"):
+        if self.get_component("ability_stand"):
             return
-        self.add_component("stand_logic", StandComponent(self.stand_config, duration=900))
+        self.add_component("ability_stand", StandComponent(self.stand_config, duration=900))
         # 之後在 update_components() 就會自動執行 StandComponent.update
 
     def recently_stepped(self, direction, current_frame):
@@ -2566,7 +2591,7 @@ class StandEntity(Ally):
         # 使用特殊濾鏡（例如 BLEND_RGB_ADD）增強靈體感
         # 此處呼叫 simplified_draw 或直接在 draw 中設定 alpha
 
-        comp = self.owner.get_component("stand_logic")
+        comp = self.owner.get_component("ability_stand")
         alpha_remain = 255
         if comp and hasattr(comp, "duration"):
             # 取得螢幕位置

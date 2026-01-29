@@ -138,7 +138,6 @@ class Rock(Item):
         self.color = (80, 80, 220)
         self.fly_color = (40, 80, 220)
         self.breakthrough = False
-        self.hitting = []
         self.throw_damage = 7
         self.swing_damge = 6
 
@@ -169,8 +168,6 @@ class Fireball(Item):
         self.width = 1.0
         self.height = 1.0
         self.vz = 0
-        self.breakthrough = False
-        self.hitting = []
         self.throw_damage = 13
         self.swing_damge = 0
         self.raw_image = pygame.image.load("..\\Assets_Drive\\hadouken.png").convert_alpha()
@@ -228,7 +225,6 @@ class Bullet(Item):
         self.height = 1.0
         self.vz = 0
         self.breakthrough = False
-        self.hitting = []
         self.throw_damage = 5
         self.swing_damge = 0
         self.raw_image = pygame.image.load("..\\Assets_Drive\\bullet.png").convert_alpha()

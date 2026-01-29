@@ -93,7 +93,13 @@ class ComponentHost:
             self.external_control = None
 
     def add_component(self, name, component: Component):
-        """加入一個元件（用 name 做識別鍵）"""
+        # 檢查是否已存在同名組件，若存在則先執行其 cleanup 並移除
+        if name in self.components:
+            print(f"[DEBUG] 組件 {name} 已存在，進行替換前清理")
+            old_comp = self.components[name]
+            if hasattr(old_comp, "cleanup"):
+                old_comp.cleanup()
+
         self.components[name] = component
         component.on_attach(self)
     def get_component(self, name):
@@ -693,6 +699,7 @@ class StatusAuraComponent(Component):
 
 # Component.py
 
+#StandComponent: 子機類Component，可以跟owner溝通互動
 class StandComponent(Component):
     def __init__(self, stand_config, duration=900):
         super().__init__()
@@ -754,7 +761,7 @@ class StandComponent(Component):
         if self.stand and self.owner.scene:
             self.owner.scene.mark_for_removal(self.stand)  # 通知場景回收
         self.owner.stand = None  # 清除主人的 slave 指向
-        self.owner.remove_component("stand_logic")  # 移除此組件自身
+        self.owner.remove_component("ability_stand")  # 移除此組件自身
 
     def modify_attack_data(self, atk_data):
         """核心：當替身在場時，修改玩家的攻擊屬性"""
@@ -767,3 +774,37 @@ class StandComponent(Component):
         self.stand.set_attack_by_skill(atk_data)
 
         # 4. 指令推播：讓替身播放動作 (多對一映射)
+
+#AbilityComponent: 狀態類技能，可以與scene做環境互動
+class AbilityComponent(Component):
+    def __init__(self, ability_data):
+        super().__init__()
+        self.data = ability_data
+        self.duration = ability_data.duration
+
+        #給stand用的
+
+    def on_attach(self, owner):
+        super().on_attach(owner)
+        # 🟢 啟動瞬間：呼叫 on_trigger
+        if self.data.on_trigger:
+            self.data.on_trigger(self.owner, self.duration)
+
+    def update(self):
+        # 核心生命週期
+        self.duration -= 1
+
+        # 🟢 執行期間邏輯 (如替身跟隨、粒子生成)
+        if self.data.on_update:
+            self.data.on_update(self.owner)
+
+        # 🟢 結束與清理
+        if self.duration <= 0:
+            self.cleanup()
+
+    def cleanup(self):
+        """執行恢復邏輯並自我註銷"""
+        if self.data.on_expire:
+            self.data.on_expire(self.owner)
+        # 根據名稱移除，確保不會誤刪其他功能組件
+        self.owner.remove_component(f"ability_{self.data.name}")

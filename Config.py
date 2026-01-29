@@ -58,5 +58,5 @@ FALL_DAMAGE_THRESHOLD = 0.3         # 墜地受傷的垂直速度門檻
 FALL_DAMAGE_MULT = 20               # 墜地傷害倍率
 
 # Config.py
-CLASH_REBOUND_FORCE = 0.05     # 拼招時的後退力道
-CLASH_HITSTOP_FRAMES = 0        # 拼招產生的極短時停
+CLASH_REBOUND_FORCE = 0.19     # 拼招時的後退力道
+CLASH_HITSTOP_FRAMES = 1        # 拼招產生的極短時停

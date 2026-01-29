@@ -1,6 +1,66 @@
 from State_enum import *
 import math
 from Config import *
+
+#SystemAbility指在實作不依賴hitbox的buff類，有時效、需要與scene互動的技能，例如時停，加速
+class SystemAbilityData:
+    def __init__(self, name, mp_cost, duration, on_trigger=None, on_update=None, on_expire=None):
+        self.name = name
+        self.mp_cost = mp_cost
+        self.duration = duration
+        # 以下為函數指標指標
+        self.on_trigger = on_trigger
+        self.on_update = on_update
+        self.on_expire = on_expire
+
+# --- 時間暫停 (za warudo) ---
+def za_warudo_trigger(owner, duration):
+    owner.scene.toggle_highlight_test(owner, alpha=180)
+    if owner.stand:
+        owner.scene.toggle_highlight_test(owner.stand, alpha=180)
+    if owner.scene.env_manager.freeze_timer <= 0:
+        seconds = int(duration / 60)
+        owner.super_armor_timer = duration
+        owner.say(f'ZA WARUDO!{seconds}秒!')
+        owner.scene.env_manager.set_freeze(duration)
+        print(f"🔥 {owner.name} 【時之停頓】")
+
+def za_warudo_update(owner):
+    if owner.scene.env_manager.freeze_timer in [60, 120, 180]:
+        seconds = int(owner.scene.env_manager.freeze_timer / 60)
+        for unit in owner.scene.env_manager.highlight_units:
+            if unit.is_alive() and unit.name in ['player', 'enemy']:
+                unit.say(f"{seconds}..", duration=45)
+def za_warudo_expire(owner):
+    owner.say("然後時間開始流動")
+    owner.scene.env_manager.set_dim(False)
+    owner.scene.env_manager.highlight_units.clear()
+
+# --- 超加速 (Haste) ---
+def haste_trigger(owner, duration=900):
+    owner.scene.toggle_highlight_test(owner, alpha=100)
+    owner.double_speed = True
+    owner.afterimage_enabled = True
+    print(f'owner.afterimage_enabled={owner.afterimage_enabled}')
+    owner.say("超加速!!")
+
+def haste_expire(owner):
+    if getattr(owner, 'afterimage_enabled', False):
+        owner.afterimage_enabled = False
+    owner.double_speed = False
+    owner.scene.env_manager.highlight_units.clear()
+    owner.scene.env_manager.set_dim(False)
+
+
+# --- 數據庫實例 ---
+ABILITY_DATA = {
+    #狀態類:
+    "haste": SystemAbilityData("haste", 1, 600, on_trigger=haste_trigger, on_expire=haste_expire),
+    "timestop": SystemAbilityData("timestop", 1, 540, on_trigger=za_warudo_trigger, on_update=za_warudo_update, on_expire=za_warudo_expire),
+    #實體類:
+    "stand": SystemAbilityData("stand", 1, 900),
+}
+
 # === Attack State ===
 class AttackState:
     def __init__(self, character, attack_data):

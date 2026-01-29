@@ -16,6 +16,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         #加速度
         self.vel_x = 0.0  # 統一整合
         self.vz = 0.0  # 統一整合
+        self.hitting = []   #物品碰撞
 
         # 地圖資訊
         self.terrain = map_info[0]
@@ -107,11 +108,12 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
                 if abs(self.vel_x) < STOP_THRESHOLD:
                     self.vel_x = 0
 
-        if getattr(self, 'afterimage_enabled', False):
-            if abs(self.vel_x) > 1.0:  # 超過此速度就開啟殘影
-                self.afterimage_enabled = True
-            else:
-                self.afterimage_enabled = False
+        # if getattr(self, 'afterimage_enabled', False):
+        #     if abs(self.vel_x) > 1.0:  # 超過此速度就開啟殘影
+        #         self.afterimage_enabled = True
+        #     elif 0 < abs(self.vel_x) < 0.2:
+        #         self.afterimage_enabled = False
+        # 移除: 會妨礙haste的殘影運作
 
     def check_ground_contact(self):
         """

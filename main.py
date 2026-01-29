@@ -670,7 +670,19 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         if kb_keys[pygame.K_RETURN]:
             print('Enter is being held!')
             #player.enable_super_move()
-            scene.toggle_highlight_test(player)
+            # player.activate_stand()
+            # scene.toggle_highlight_test(player)
+            # scene.toggle_highlight_test(player.stand)
+            # scene.trigger_za_warudo(player, 540)
+            player.try_use_ability('stand')
+            #player.try_use_ability('timestop')
+            player.try_use_ability('haste')
+            from Skill import ABILITY_DATA
+            from Component import AbilityComponent
+            #player.add_component("ability_haste", AbilityComponent(ABILITY_DATA["haste"]))
+            #player.add_component("ability_stand", AbilityComponent(ABILITY_DATA["stand"]))
+            #player.try_use_ability('stand')
+
             #stage_cleared=True
 
         player.handle_input(keys)

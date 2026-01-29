@@ -76,7 +76,15 @@ class EnvironmentManager:
         if self.freeze_timer > 0:
             self.freeze_timer -= 1
             # 🟢 如果計時器剛好在此幀歸零，自動觸發「變亮」
+            if self.freeze_timer in [60, 120, 180]:
+                seconds = int(self.freeze_timer/60)
+                for unit in self.highlight_units:
+                    if unit.is_alive():
+                        unit.say(f"{seconds}..", duration=45)
             if self.freeze_timer == 0:
+                for unit in self.highlight_units:
+                    if unit.is_alive():
+                        unit.say("然後時間開始流動")
                 self.set_dim(False)  # 讓 target_dim_alpha 變 0
                 self.highlight_units.clear()  # 清空高亮名單
                 print("⏰ 時停結束，自動恢復光明與流動")
@@ -222,6 +230,7 @@ class SceneManager:
         self.brust_effect_frames = self.load_effect_assets(path="..//Assets_Drive//brust.png", frame_w=128,frame_h=128)  # 預載特效圖
         self.guard_effect_frames = self.load_effect_assets(path="..//Assets_Drive//guard_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
         self.clash_effect_frames = self.load_effect_assets(path="..//Assets_Drive//clash_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
+        self.shockwave_effect_frames = self.load_effect_assets(path="..//Assets_Drive//shockwave_effect1.png", frame_w=128,frame_h=128)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
@@ -234,42 +243,48 @@ class SceneManager:
         self.frame_count = 0
 
     def trigger_scene_end(self):
-        """
-                當通關條件達成時呼叫。
-                1. 讓背景全黑 (或很暗)
-                2. 啟動插畫淡入
-                """
         # 背景變暗 (alpha設高一點，營造終局感)
         self.env_manager.set_dim(True, alpha=220)
-        #
-        # # 傳入圖片清單並開始淡入
-        # if self.end_cuts:
-        #     # 如果傳入的是路徑，就在這裡載入 (依據你之前的直覺)
-        #     loaded_imgs = []
-        #     for path in end_cuts:
-        #         img = pygame.image.load(path).convert_alpha()
-        #         # 縮放到畫面大小
-        #         img = pygame.transform.scale(img, (WIDTH, HEIGHT))
-        #         loaded_imgs.append(img)
-        #     self.env_manager.set_cutscene(loaded_imgs)
-    def toggle_highlight_test(self, unit):
-        """
-            按下 Enter 鍵測試：背景變暗、主角高亮、且除了主角外全場靜止。
-            """
+    def toggle_highlight_test(self, unit, alpha=180):
         if self.env_manager.dim_alpha == 0:
             # 啟動視覺變暗
-            self.env_manager.set_dim(True, alpha=180)
+            self.env_manager.set_dim(True, alpha=alpha)
             # 賦予高亮權限 (視覺跳出濾鏡 + 邏輯不被時停)
             self.env_manager.highlight_units.add(unit)
             # 🟢 [新增] 啟動時停 (比如停 5 秒)
-            self.env_manager.set_freeze(600)
-            print(f"🔥 {unit.name} 展開了領域：【時之停頓】")
+            #self.env_manager.set_freeze(600)
+            #print(f"🔥 {unit.name} 展開了領域：【時之停頓】")
         else:
             # 恢復正常
             self.env_manager.set_dim(False)
             self.env_manager.highlight_units.clear()
-            self.env_manager.set_freeze(0)
-            print("⏰ 時間恢復流動")
+            #self.env_manager.set_freeze(0)
+            #print("⏰ 時間恢復流動")
+    # def trigger_za_warudo(self, unit, duration):
+    #     self.toggle_highlight_test(unit)
+    #     if self.env_manager.freeze_timer <= 0:
+    #         seconds = int(duration/60)
+    #         unit.super_armor_timer = duration
+    #         unit.say(f'ZA WARUDO!{seconds}秒!')
+    #         self.env_manager.set_freeze(duration)
+    #         print(f"🔥 {unit.name} 【時之停頓】")
+    #     else:
+    #         self.env_manager.set_freeze(0)
+    #         print("⏰ 時間恢復流動")
+    # def trigger_haste(self, unit, duration):
+    #     self.toggle_highlight_test(unit, duration=230)
+    #     if self.env_manager.freeze_timer <= 0:
+    #         seconds = int(duration/60)
+    #         unit.super_armor_timer = duration
+    #         unit.say(f'ZA WARUDO!{seconds}秒!')
+    #         self.env_manager.set_freeze(duration)
+    #         print(f"🔥 {unit.name} 【時之停頓】")
+    #     else:
+    #         self.env_manager.set_freeze(0)
+    #         print("⏰ 時間恢復流動")
+
+
+
 
     def update_tokens(self):
         """每幀更新權杖狀態，處理過期回收"""
@@ -328,9 +343,11 @@ class SceneManager:
         elif type == 'brust':
             new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=2, alpha=200)
         elif type == 'guard':
-            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=160)
+            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=160, flip=flip)
         elif type == 'clash':
             new_effect = VisualEffect(x, y, z, self.clash_effect_frames, anim_speed=2, alpha=140)
+        elif type == 'shockwave':
+            new_effect = VisualEffect(x, y, z, self.shockwave_effect_frames, anim_speed=16, alpha=200, flip=flip)
         if new_effect:
             self.visual_effects.append(new_effect)
 
@@ -610,9 +627,13 @@ class SceneManager:
         if is_just_thawed:
             for unit in self.interactables:
                 # 如果動量極大，產生爆發視覺
-                if abs(unit.vel_x) + abs(unit.vz) > 1.5:
+                if abs(unit.vel_x) + abs(unit.vz) > 1.2:
                     # 產生一個巨大的環形衝擊波特效
-                    self.create_effect(unit.x, unit.y, unit.z, 'shockwave')
+                    box = unit.get_hurtbox()
+                    cx = (box['x1'] + box['x2']) / 2
+                    cy = (box['y1'] + box['y2']) / 2
+                    cz = (box['z1'] + box['z2']) / 2
+                    self.create_effect(cx, cy, cz, 'shockwave', flip=unit.vel_x<0)
                     self.trigger_shake(duration=20, intensity=10)  # 畫面劇烈震動
 
 
