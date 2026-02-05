@@ -15,7 +15,10 @@ class SystemAbilityData:
 
 # --- 時間暫停 (za warudo) ---
 def za_warudo_trigger(owner, duration):
+    from PhysicsUtils import get_overlap_center
     owner.scene.toggle_highlight_test(owner, alpha=180)
+    cx, cy, cz = get_overlap_center(owner.get_hurtbox(), owner.get_hurtbox())
+    owner.scene.create_effect(cx, cy, cz, "ring", max_radius=10, width=4)
     if owner.stand:
         owner.scene.toggle_highlight_test(owner.stand, alpha=180)
     if owner.scene.env_manager.freeze_timer <= 0:
@@ -91,6 +94,25 @@ class AttackState:
             new_x = self.character.x + dir_vec * self.data.force_move
             # 限制在 [0, MAP_WIDTH - 角色寬度] 之間
             self.character.x = max(0, min(new_x, self.character.map_w - self.character.width))
+        # 2. 🟢 核心重構：處理「情境式/對齊類」傷害
+        if self.data.attack_type in CONTEXTUAL_ATTACK:
+            # 從 owner (發動者) 身上抓取我們在 resolve_attack_table 時存好的目標
+            target = getattr(self.character, 'interact_target', None)
+            if target and target.is_alive():
+                # 檢查當前幀是否在 AttackData 定義的觸發清單中
+                if self.frame_index in self.data.contextual_trigger_frames:
+                    # 直接執行命中邏輯，跳過 Hitbox 掃描
+                    target.on_hit(self.character, self.data)
+
+                    # 產生物理回饋與特效
+                    if self.character.scene:
+                        # 在目標位置產生打擊火花
+                        self.character.scene.create_effect(target.x, target.y, target.z, 'hit')
+                        # 每次踩踏都來一點小震動增加打擊感
+                        self.character.scene.trigger_shake(duration=5, intensity=3)
+            if self.frame_index == self.timer -1:
+                #結束時清空站存目標
+                self.character.interact_target = None
 
     def is_active(self):
         return self.timer > 0
@@ -201,33 +223,34 @@ class ThrowAttackState(AttackState):
 
 # === Attack Data Definition ===
 class AttackData:
-    def __init__(self, attack_type, duration, trigger_frame, hitbox_func, recovery=5, condition_func=None,
-                 force_move=0, effects=None,knock_back_power=[0.0, 0.0], damage=10,
-                 frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None,
-                 dialogue=None, frame_map_ratio=[1], hit_stop_frames=0, scene_effect = None):
-
+    # def __init__(self, attack_type, duration, trigger_frame=[0], hitbox_func=None, recovery=5, condition_func=None,
+    #              force_move=0, effects=None,knock_back_power=[0.0, 0.0], damage=10,
+    #              frame_map = None, cancel_table=None, physical_change=None, effect_component_config: dict = None,
+    #              dialogue=None, frame_map_ratio=[1], hit_stop_frames=0, scene_effect = None):
+    def __init__(self,attack_type,duration,**kwargs):
         self.attack_type = attack_type
         self.duration = duration
-        self.trigger_frame = trigger_frame
-        self.recovery = recovery
-        self.hitbox_func = hitbox_func
-        self.condition_func = condition_func or (lambda actor: True)
-        self.force_move = force_move    #角色自己的位移
-        self.effects = effects or []    #被擊中的效果
-        self.knock_back_power = knock_back_power  #擊飛多遠多高
-        self.damage = damage
-        self.frame_map = frame_map or [0] * duration  # 預設全部使用第一張動畫
+        self.trigger_frame = kwargs.get('trigger_frame', [0])
+        self.recovery = kwargs.get('recovery', 5)
+        self.hitbox_func = kwargs.get('hitbox_func', None)
+        self.condition_func = kwargs.get('condition_func', (lambda actor: True))
+        self.force_move = kwargs.get('force_move', 0)    #角色自己的位移
+        self.effects = kwargs.get('effects', [])    #被擊中的效果
+        self.knock_back_power = kwargs.get('knock_back_power', [0.0,0.0])  #擊飛多遠多高
+        self.damage = kwargs.get('damage', 1)
+        self.frame_map = kwargs.get('frame_map', [0]*duration)  # 預設全部使用第一張動畫
         #if sum(frame_map_ratio) != self.duration:
         # sun = sum(frame_map_ratio)
         # print(f'frame_map_ratio={frame_map_ratio} sum={sun}, duration={self.duration}')
-        assert sum(frame_map_ratio) == self.duration, "frame_map 長度({})需與 duration{} 相符".format(sum(frame_map_ratio), duration)
-        self.cancel_table = cancel_table or {}
-        self.physical_change = physical_change or {}
-        self.effect_component_config = effect_component_config or {}
-        self.dialogue = dialogue
-        self.frame_map_ratio=frame_map_ratio
-        self.hit_stop_frames = hit_stop_frames  # 凍結幀數 (通常 3~8 幀就很強烈)
+        self.cancel_table = kwargs.get('cancel_table', {})
+        self.physical_change = kwargs.get('physical_change', {})
+        self.effect_component_config = kwargs.get('effect_component_config', {})
+        self.dialogue = kwargs.get('dialogue',None)
+        self.frame_map_ratio=kwargs.get('frame_map_ratio', [1])
+        #assert sum(frame_map_ratio) == self.duration, "frame_map 長度({})需與 duration{} 相符".format(sum(frame_map_ratio), duration)
+        self.hit_stop_frames = kwargs.get('hit_stop_frames', 0)  # 凍結幀數 (通常 3~8 幀就很強烈)
         self.damage_multiplier = 1.0
+        self.contextual_trigger_frames = kwargs.get('contextual_trigger_frames', [1])
 
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
@@ -236,6 +259,8 @@ class AttackData:
         return self.condition_func(actor)
 
     def get_hitbox(self, x, y, facing, actor=None):
+        if self.hitbox_func is None:
+            return None
         try:
             return self.hitbox_func(x, y, facing, actor)
         except TypeError:
@@ -387,6 +412,7 @@ SWING_ATTACKS = [AttackType.SWING]
 THROW_ATTACKS = [AttackType.THROW]
 #FIREBALL_ATTACKS = [AttackType.FIREBALL]
 FLYING_OBJECT_ATTACKS = [AttackType.FIREBALL, AttackType.BULLET]
+CONTEXTUAL_ATTACK =[AttackType.DOWN_STOMP]
 attack_data_dict = {
     AttackType.SLASH: AttackData(
         attack_type=AttackType.SLASH,
@@ -640,5 +666,16 @@ attack_data_dict = {
             },
         },
         hit_stop_frames=5
+    ),
+    AttackType.DOWN_STOMP: AttackData(
+        attack_type=AttackType.DOWN_STOMP,
+        effects=[],
+        duration = 30,
+        trigger_frame = 0,
+        contextual_trigger_frames=[5,15,25],
+        recovery=1,
+        hitbox_func=None,
+        damage=4,
+        frame_map_ratio=[6,6,6,6,6]
     )
 }

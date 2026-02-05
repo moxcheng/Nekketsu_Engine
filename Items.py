@@ -59,11 +59,6 @@ class Item(Entity):
     def is_pickable(self):
         return not self.held_by
     def update(self):
-        # if self.external_control:
-        #     self.update_by_external_control()
-        #     return
-        # self.hit_someone = self.update_hold_fly_position() #從HoldFlyLogicMixin而來
-        # self.z = self.get_tile_z(self.x, self.y)
         if self.external_control:
             self.update_by_external_control()
             return

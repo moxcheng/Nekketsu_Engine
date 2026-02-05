@@ -10,6 +10,9 @@ def is_box_overlap(box1, box2, z_threshold=1.5):
     統一的 AABB 碰撞檢測。
     傳入的 box 應包含 'x1', 'x2', 'y1', 'y2', 'z_abs' (絕對高度)。
     """
+    if box1 is None or box2 is None:
+        #提供給CONTEXTUAL SKILL使用
+        return False
     # X 軸重疊
     x_overlap = box1['x1'] <= box2['x2'] and box1['x2'] >= box2['x1']
     # Y 軸重疊

@@ -32,7 +32,7 @@ STAND_KONOMI_CONFIG={
 
 PLAYER_KONOMI_CONFIG={
     "name": "player",
-    "image_path": "..//Assets_Drive//konomi_test_45frame.png",
+    "image_path": "..//Assets_Drive//konomi_test_48frame.png",
     "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
     "stand_config": STAND_KONOMI_CONFIG,
     "super_move_staging": {
@@ -55,7 +55,7 @@ PLAYER_KONOMI_CONFIG={
         "frame_width": 128,
         "frame_height": 128,
         "anim_map": {
-            "stand": [[0]],
+            "stand": [[45,46,47,46]],
             "walk": [[1, 2, 3, 4]],
             "run": [[1, 2, 3, 4]],
             "jump": [[5, 6]],  # 須修正與Z軸的關係
@@ -83,12 +83,14 @@ PLAYER_KONOMI_CONFIG={
             "ranbu": [[9, 10, 11, 12, 14, 13, 18, 11, 23, 26, 24, 40, 39, 41], [5, 23]],
             "swing": [[9], [11]],
             "throw": [[27], [42,43]],
-            "guard":[[41]]
+            "guard":[[41]],
+            "down_attack":[[39,46,39,45]],
+            "hold_item":[[27]]
         }
     },
     "popup":["landing"],
     "stand":None,
-    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL},
+    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':AttackType.DOWN_STOMP},
                              'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'run':AttackType.PUSH},
                              'c_attack':{'default': AttackType.SLASH, 'run': AttackType.PUSH},
                              'swing_item':{'default': AttackType.SWING},

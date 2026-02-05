@@ -11,12 +11,12 @@ class Component:
     def update(self):
         """每 frame 執行的邏輯"""
         pass
-    def override_attack_intent(self, intent: str) -> str | None:
-        """
-        給元件機會改寫目前的攻擊意圖。
-        回傳新意圖字串（例如 'pickup_item'），或 None 表示不修改。
-        """
-        return None
+    # def override_attack_intent(self, intent: str) -> str | None:
+    #     """
+    #     給元件機會改寫目前的攻擊意圖。
+    #     回傳新意圖字串（例如 'pickup_item'），或 None 表示不修改。
+    #     """
+    #     return None
 
     def is_within_range(self, box1, box2, max_dist=0.5):
         # 可加入中心點距離的計算
@@ -111,23 +111,20 @@ class ComponentHost:
         components_to_update = list(self.components.values())
         for component in components_to_update:
             component.update()
-    def override_attack_intent(self, intent: str) -> str:
-        """讓所有元件有機會改寫攻擊意圖"""
-        for component in self.components.values():
-            #print(f'ComponentHost 的 override_attack_intent')
-            new_intent = component.override_attack_intent(intent)
-            if new_intent:
-                return new_intent
-        return intent
+    # def override_attack_intent(self, intent: str) -> str:
+    #     """讓所有元件有機會改寫攻擊意圖"""
+    #     for component in self.components.values():
+    #         #print(f'ComponentHost 的 override_attack_intent')
+    #         new_intent = component.override_attack_intent(intent)
+    #         if new_intent:
+    #             return new_intent
+    #     return intent
     def on_picked_up(self, holder):
         print(f'{self.name} 呼叫 on_pick_up, holder={holder.name}')
         self.held_by = holder
         self.x = holder.x
         self.y = holder.y
         self.jump_z = holder.jump_z
-    # def on_thrown(self):
-    #     print('aaaaaaaaaaaaaaaaaaaaaaaaaa')
-    #     self.held_by = None
 
     def get_swing_attack_data(self, attacker):
         # fallback 預設：回傳 None，讓開發者知道需要自行實作
@@ -154,26 +151,20 @@ class HoldableComponent(Component):
         self.target_item = None  # 暫存接觸中的 item
         self.held_object = None
 
-    def override_attack_intent(self, intent: str):
-        # attack_intent = z/x/c_attack, 對應到招式表
-        obj_name = ''
-        if self.held_object:
-            obj_name = self.held_object.name
-        #print(f'HoldableComponent 的 override_attack_intent====={intent}====({obj_name})')
-        # 取得持有者當前的輸入狀態
-        # 假設 Player.input_intent 會把按鍵狀態存入最後的意圖中，或者直接讀取 owner 的 last_intent
-
-        (u,d,l,r) = self.owner.last_intent.get('dirs', False)
-
-        if self.held_object:
-            print(f'手上持有{self.held_object.name}')
-            if intent == "z_attack":
-                return "swing_item"
-            elif intent == "x_attack":
-                return "throw_item"
-        elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and d:
-            return "pickup_item"
-        return intent
+    # def override_attack_intent(self, intent: str):
+    #     # attack_intent = z/x/c_attack, 對應到招式表
+    #     (u,d,l,r) = self.owner.last_intent.get('dirs', False)
+    #     if self.held_object:
+    #         print(f'手上持有{self.held_object.name}')
+    #         if intent == "z_attack":
+    #             return "swing_item"
+    #         elif intent == "x_attack":
+    #             return "throw_item"
+    #     elif intent == "z_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and d:
+    #         return "pickup_item"
+    #     elif intent == "x_attack" and self.find_nearby_item() and self.owner.jump_z == 0 and d:
+    #         return "down_attack"
+    #     return intent
 
 
     def update(self):
@@ -216,32 +207,30 @@ class HoldableComponent(Component):
                 min_dist = u_dist
         return tar_item
     
-    def find_nearby_item(self) -> bool:
+    def find_nearby_item(self) -> (bool, list):
         """
         檢查 owner 是否接觸到可撿物件。
         搜尋 owner.scene_items 中具有 get_interact_box 的物件，
         且若該物件具有 is_pickable() 方法，也需為 True。
         成功時設定 self.target_item。
         """
-
-
-
-        def print_unit_list(unit_list):
-            return
+        # def print_unit_list(unit_list):
+        #     return
         
         unit = self.owner
         result = False
+        nearby_units = []
         if not hasattr(unit, "scene_items"):
             print("[DEBUG] owner 未設定 scene_items，無法尋找可撿物品")
-            return False
+            return False, nearby_units
         my_box = unit.get_interact_box()
         if not my_box:
             print("[DEBUG] 無法取得自身的 interact_box")
-            return False
+            return False, nearby_units
         available_units =unit.scene.get_all_units()
         unit_names = [u.name for u in available_units]
         #print(f'')
-        nearby_units = []
+
         for item in available_units:
             if item is self.owner:
                 continue  # ✅ 跳過自己（避免自己撿自己）
@@ -272,7 +261,7 @@ class HoldableComponent(Component):
         # 若無任何可撿物件，清空 target
         if result == False:
             self.target_item = None
-        return result
+        return result, nearby_units
 
     def is_overlap(self, box1, box2) -> bool:
         """簡單 AABB 判斷"""
@@ -374,11 +363,6 @@ class HoldFlyLogicMixin:
                         if wall_damage > 0:
                             wall_atk = AttackData(AttackType.THROW_CRASH, 1, 0, None, damage=wall_damage)
                             self.on_hit(None, wall_atk)  # 傳 None 表示環境傷害
-
-
-                # self.vel_x = -self.vel_x * WALL_BOUNCE_REBOUND
-                # self.vz = WALL_BOUNCE_REBOUND
-                # 🟢 修正點 3: 反彈後的狀態處理
                 self.vel_x = -self.vel_x * WALL_BOUNCE_REBOUND
                 # 只有當反彈力道還夠時，才給予垂直彈跳 vz
                 if abs(self.vel_x) > STOP_THRESHOLD:

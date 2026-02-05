@@ -43,6 +43,7 @@ class AttackType(Enum):
     SPECIAL_KICK=auto()
     SPECIAL_PUNCH=auto()
     PUSH=auto()
+    DOWN_STOMP=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地

@@ -165,6 +165,61 @@ class VisualEffect:
         rect = frame.get_rect(center=(px, py))
         win.blit(frame, rect)
 
+
+class RingExpandingEffect:
+    def __init__(self, x, y, z, color=(255, 255, 255), max_radius=3.0, speed=0.15, width=2):
+        self.x = x
+        self.y = y
+        self.z = z
+        self.color = color
+        self.radius = 0.2  # 起始半徑 (單位：Tile)
+        self.max_radius = max_radius  # 最終擴張半徑
+        self.speed = speed  # 擴張速度
+        self.width = width  # 圓環線條寬度
+        self.alpha = 255  # 起始透明度
+        self.alive = True
+
+    def update(self):
+        # 1. 半徑增加
+        self.radius += self.speed
+
+        # 2. 透明度隨半徑擴張而衰減 (Linear Fade Out)
+        # 當達到 max_radius 時透明度剛好變為 0
+        ratio = self.radius / self.max_radius
+        self.alpha = max(0, int(255 * (1 - ratio)))
+
+        # 3. 結束判定
+        if self.radius >= self.max_radius or self.alpha <= 0:
+            self.alive = False
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y, map_h):
+        if not self.alive:
+            return
+
+        # 轉換 2.5D 座標到螢幕像素
+        px = int(self.x * TILE_SIZE) - cam_x
+        terrain_z_offset = self.z * Z_DRAW_OFFSET
+        py = int((map_h - self.y) * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
+
+        # 建立暫時的 Surface 以支援透明度繪製
+        pixel_radius = int(self.radius * TILE_SIZE)
+        # Surface 大小必須能容納完整的圓
+        surf_size = (pixel_radius + self.width) * 2
+        temp_surf = pygame.Surface((surf_size, surf_size), pygame.SRCALPHA)
+
+        # 在 temp_surf 中央畫圓
+        draw_color = (*self.color, self.alpha)
+        pygame.draw.circle(
+            temp_surf,
+            draw_color,
+            (surf_size // 2, surf_size // 2),
+            pixel_radius,
+            self.width
+        )
+
+        # 居中貼回主畫面
+        rect = temp_surf.get_rect(center=(px, py))
+        win.blit(temp_surf, rect)
 class SceneManager:
     def __init__(self, map_h, map_w, terrain, end_cuts=None, bg_path = None):
         self.interactables = []
@@ -296,7 +351,7 @@ class SceneManager:
             if not unit.is_alive() or self.token_holders[unit] <= 0:
                 expired_units.append(unit)
         for unit in expired_units:
-            print(f"[TOKEN] 回收 {unit.name} 的權杖 (超時或死亡)")
+            #print(f"[TOKEN] 回收 {unit.name} 的權杖 (超時或死亡)")
             del self.token_holders[unit]
         # --- 新增：強制作戰機制 ---
         # 如果目前沒有人領取權杖，但場上還有敵人
@@ -311,7 +366,7 @@ class SceneManager:
                 import random
                 lucky_guy = random.choice(alive_enemies)
                 self.request_token(lucky_guy)
-                print(f"[TOKEN] 強制指派進攻權給: {lucky_guy.name}")
+                #print(f"[TOKEN] 強制指派進攻權給: {lucky_guy.name}")
                 #lucky_guy.say("我...我上就是了啊啊啊!")
 
     def request_token(self, unit):
@@ -321,7 +376,7 @@ class SceneManager:
 
         if len(self.token_holders) < self.attack_tokens:
             self.token_holders[unit] = 300  # 給予 180 幀 (約 3 秒) 的進攻窗口
-            print(f"[TOKEN] 發放權杖給 {unit.name}")
+            #print(f"[TOKEN] 發放權杖給 {unit.name}")
             return True
         return False
 
@@ -333,21 +388,53 @@ class SceneManager:
     def trigger_hit_stop(self, frames):
         """觸發時間凍結"""
         self.hit_stop_timer = max(self.hit_stop_timer, frames)
-    def create_effect(self, x, y, z, type='hit', flip=False):
-        # 這裡的 z 通常是碰撞盒交疊的中心 z
+
+    def create_effect(self, x, y, z, type='hit', **kwargs):
+        """
+        通用特效工廠。
+        支援透過 kwargs 覆蓋預設值：anim_speed, alpha, flip, color, max_radius, speed 等。
+        """
         new_effect = None
-        if type =='hit':
-            new_effect = VisualEffect(x, y, z, self.hit_effect_frames, anim_speed=2, alpha=255)
+
+        # 1. 向量繪製類
+        if type == 'ring':
+            new_effect = RingExpandingEffect(
+                x, y, z,
+                color=kwargs.get('color', (255, 255, 255)),
+                max_radius=kwargs.get('max_radius', 3.0),
+                speed=kwargs.get('speed', 0.15),
+                width=kwargs.get('width', 2)
+            )
+
+        # 2. 像素動畫類 (VisualEffect)
+        elif type == 'hit':
+            new_effect = VisualEffect(x, y, z, self.hit_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 2),
+                                      alpha=kwargs.get('alpha', 255))
         elif type == 'hitstop':
-            new_effect = VisualEffect(x, y, z, self.hitstop_effect_frames, anim_speed=2, alpha=200, flip=flip)
+            new_effect = VisualEffect(x, y, z, self.hitstop_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 2),
+                                      alpha=kwargs.get('alpha', 200),
+                                      flip=kwargs.get('flip', False))
         elif type == 'brust':
-            new_effect = VisualEffect(x, y, z, self.brust_effect_frames, anim_speed=2, alpha=200)
+            new_effect = VisualEffect(x, y, z, self.brust_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 2),
+                                      alpha=kwargs.get('alpha', 200))
         elif type == 'guard':
-            new_effect = VisualEffect(x, y, z, self.guard_effect_frames, anim_speed=2, alpha=160, flip=flip)
+            new_effect = VisualEffect(x, y, z, self.guard_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 2),
+                                      alpha=kwargs.get('alpha', 160),
+                                      flip=kwargs.get('flip', False))
         elif type == 'clash':
-            new_effect = VisualEffect(x, y, z, self.clash_effect_frames, anim_speed=2, alpha=140)
+            new_effect = VisualEffect(x, y, z, self.clash_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 2),
+                                      alpha=kwargs.get('alpha', 140))
         elif type == 'shockwave':
-            new_effect = VisualEffect(x, y, z, self.shockwave_effect_frames, anim_speed=16, alpha=200, flip=flip)
+            new_effect = VisualEffect(x, y, z, self.shockwave_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 16),
+                                      alpha=kwargs.get('alpha', 200),
+                                      flip=kwargs.get('flip', False))
+
         if new_effect:
             self.visual_effects.append(new_effect)
 
@@ -938,6 +1025,7 @@ class SceneManager:
 
     def update_collision_logic(self):
         from PhysicsUtils import is_box_overlap
+        from Skill import CONTEXTUAL_ATTACK
         all_units = self.get_all_units()
         # 忽略單位: stand
         all_units = [u for u in all_units if u.type != "stand"]
@@ -949,6 +1037,9 @@ class SceneManager:
             if not (u1.attack_state and u1.attack_state.should_trigger_hit()):
                 continue
             if u1.attack_state.has_clashed:  # 🟢 限制一招一次
+                continue
+            if u1.attack_state.data.attack_type in CONTEXTUAL_ATTACK:
+                #跳過CONTEXTUAL_ATTACK
                 continue
 
             box1 = u1.get_hitbox()
@@ -987,6 +1078,7 @@ class SceneManager:
             if not can_hit: continue
 
             atk_box = attacker.get_hitbox()
+            if atk_box is None: continue
             for victim in all_units:
                 # 🟢 修正點：加入 side 檢查解決 Friendly Fire
                 if attacker == victim or attacker.side == victim.side or (attacker, victim) in clashed_pairs:
