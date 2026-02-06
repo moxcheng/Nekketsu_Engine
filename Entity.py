@@ -37,6 +37,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.draw_alpha = 255
         self.cached_pivot = (0, 0)
         self.z = self.get_tile_z(self.x, self.y)
+        self.hitting_cache = []
 
     def get_tile_z(self, x, y):
         """通用高度獲取，增加邊界夾緊保護"""
@@ -71,49 +72,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
     def get_hitbox(self):
         return None  # 預設沒有攻擊判定
 
-    def update_physics_only(self):
-        # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
-        if self.vz != 0 or self.jump_z > 0:
-            self.jump_z += self.vz
-            self.vz -= GRAVITY  # 統一使用全域重力常數
 
-            if self.jump_z <= 0:
-                self.jump_z = 0
-                self.vz = 0
-                self.check_ground_contact()
-
-        # 2. 處理水平位移 (擊退、飛行、撞牆通用)
-        if self.vel_x != 0:
-            next_x = self.x + self.vel_x
-
-            if self.check_wall_collision(next_x):
-                # 🟢 修正 1：座標回退 (防止滲透牆壁)
-                # 讓 x 保持在原位，或者稍微往反方向移一點點，確保下一幀不會再卡住
-                # 🟢 修正 2：條件式向上彈起
-                # 只有當目前不在上升狀態時，才給予向上彈力，避免重複疊加 vz
-                if self.vz <= 0:
-                    self.vz = 0.15
-
-                # 🟢 修正 3：反彈力道衰減
-                self.vel_x = -self.vel_x * 0.3
-
-                if self.scene:
-                    self.scene.trigger_shake(10, 5)
-            else:
-                self.x = next_x
-
-            # 水平摩擦力衰減 (僅在非飛行狀態)
-            if not getattr(self, 'flying', False):
-                self.vel_x *= FRICTION_AIR
-                if abs(self.vel_x) < STOP_THRESHOLD:
-                    self.vel_x = 0
-
-        # if getattr(self, 'afterimage_enabled', False):
-        #     if abs(self.vel_x) > 1.0:  # 超過此速度就開啟殘影
-        #         self.afterimage_enabled = True
-        #     elif 0 < abs(self.vel_x) < 0.2:
-        #         self.afterimage_enabled = False
-        # 移除: 會妨礙haste的殘影運作
 
     def check_ground_contact(self):
         """
@@ -143,5 +102,5 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
     def on_be_hit(self, attacker):
         """安全空函式：當 SceneManager 判定物品被打到時呼叫"""
         pass
-    def update_common_timer(self):
+    def update(self):
         pass

@@ -286,6 +286,7 @@ class SceneManager:
         self.guard_effect_frames = self.load_effect_assets(path="..//Assets_Drive//guard_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
         self.clash_effect_frames = self.load_effect_assets(path="..//Assets_Drive//clash_effect.png", frame_w=96,frame_h=96)  # 預載特效圖
         self.shockwave_effect_frames = self.load_effect_assets(path="..//Assets_Drive//shockwave_effect1.png", frame_w=128,frame_h=128)  # 預載特效圖
+        self.grounding_impact_effect_frames = self.load_effect_assets(path="..//Assets_Drive//grounding_impact_effect.png",frame_w=128, frame_h=128)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
@@ -296,6 +297,95 @@ class SceneManager:
         self.attack_tokens = 3  # 同時最多敵人可以進攻
         self.token_holders = {}  # 紀錄目前持有權杖的單位
         self.frame_count = 0
+
+    # scene_manager.py
+
+    def can_unit_move_physics(self, unit, is_time_frozen):
+        # 🟢 新增：替身不參與世界物理步進，因為其座標由 Component 強制同步
+        if getattr(unit, "type", "") == "stand":
+            return False
+        # 1. 時間停止判定：非高亮單位不可移動
+        if is_time_frozen and unit not in self.env_manager.highlight_units:
+            return False
+
+        # 2. 劇情鎖定：非受控單位不可移動
+        if self.script_runner.active and self.lock_others_during_script:
+            if unit not in self.script_controlled_units:
+                return False
+
+        # 3. 招式/大招鎖定 (SceneState 判定)
+        if self.state == SceneState.SUPER_MOVE and getattr(unit, "unit_type", "") == "character":
+            # 大招期間，場上所有角色被物理凍結（發動者除外，通常發動者會被加入 highlight_units）
+            if unit != self.super_move_caster:
+                return False
+
+        # 4. 特定陣營鎖定
+        if self.state == SceneState.NPC_BLOCK and "player" not in unit.name:
+            return False
+        if self.state == SceneState.PLAYER_BLOCK and "player" in unit.name:
+            return False
+
+        return True
+    def resolve_world_physics(self):
+        from PhysicsUtils import update_passive_physics
+
+        is_time_frozen = self.env_manager.freeze_timer > 0
+        for unit in self.interactables:
+            # 🟢 被持有的物件不參與世界物理，因為其座標由 Entity.update 內的 on_held_location 強制控制
+            if unit.held_by:
+                continue
+
+            if not self.can_unit_move_physics(unit, is_time_frozen):
+                continue
+            # 只處理被動受力的物件
+            if unit.vel_x != 0 or unit.vz != 0 or unit.jump_z > 0:
+                # 1. 執行物理步進
+
+                phys_events = update_passive_physics(unit)
+                if unit.type not in ['item']:
+                    print(f'{unit.name}({unit.type}) [{unit.current_frame}] Movestate={unit.state} vel_x={unit.vel_x}, vz={unit.vz} jz={unit.jump_z} phys_events={phys_events}')
+
+                # 2. 仲裁物理事件 (這解決寫在 Mixin 裡的混亂)
+                for event_type, value in phys_events:
+                    if event_type == "LANDING":
+                        # 1. 取得單位的控制狀態
+                        # 判斷是否為主動動作：跳躍中、下落中、或是特定技能中
+                        is_active_behavior = False
+                        nonactive_behavior = True
+                        if hasattr(unit, 'state'):
+                            nonactive_behavior = unit.combat_state in [CombatState.KNOCKBACK, CombatState.DOWN]
+
+                        # 2. 定義動態閾值 (白話：主動跳下很耐摔，被動摔落很痛)
+                        # 主動時：除非高到離譜（例如 vz < -2.5），否則不判定為摔傷
+                        # 被動時：維持你原本觀察到的敏感度 (例如 vz < -0.3)
+                        damage_threshold = -1.0 if nonactive_behavior else -2.5
+                        # 🟢 在此處實作你想要的「負 vz 強制倒地」
+                        if value < damage_threshold and unit.unit_type == 'character':
+                            unit.into_down_state()
+                            self.trigger_shake(duration=15, intensity=8)
+                            self.create_effect(unit.x+unit.width/2, unit.y+unit.height/4, unit.z, 'grounding_impact')
+                        else:
+                            unit.check_ground_contact()  # 執行一般落地邏輯
+
+                    elif event_type == "WALL_HIT":
+                        if abs(value) > 0.2:
+                            self.trigger_shake(10, 5)
+                            # 如果是角色，可以扣一點點撞牆血量 (Data-Driven)
+                            if unit.unit_type == 'character':
+                                unit.health -= int(abs(value) * 10)
+
+
+                    elif event_type == "STOPPED":
+                        # 🟢 修正：不分類型，只要物理停止就清除飛行標記
+                        unit.flying = False
+                        # 2. 🟢 重置命中快取：確保下次被丟出去時能重新撞擊敵人
+                        if hasattr(unit, 'hitting_cache'):
+                            unit.hitting_cache = []
+
+                        # 3. 角色類型額外處理
+                        if unit.unit_type == 'character':
+                            if unit.combat_state == CombatState.KNOCKBACK:
+                                unit.into_down_state()
 
     def trigger_scene_end(self):
         # 背景變暗 (alpha設高一點，營造終局感)
@@ -434,6 +524,10 @@ class SceneManager:
                                       anim_speed=kwargs.get('anim_speed', 16),
                                       alpha=kwargs.get('alpha', 200),
                                       flip=kwargs.get('flip', False))
+        elif type == 'grounding_impact':
+            new_effect = VisualEffect(x, y, z, self.grounding_impact_effect_frames,
+                                      anim_speed=kwargs.get('anim_speed', 6),
+                                      alpha=kwargs.get('alpha', 160))
 
         if new_effect:
             self.visual_effects.append(new_effect)
@@ -725,8 +819,11 @@ class SceneManager:
 
 
         # 🟢 新增：全域碰撞攔截階段 (攔截 Clash 與傷害)
+        #被動物理更新
+        self.resolve_world_physics()
         # 在單位 update 之前執行，確保公平性
         self.update_collision_logic()
+
 
         self.script_runner.update()
         self.update_tokens()
@@ -756,6 +853,8 @@ class SceneManager:
             if getattr(unit, "double_speed", False):
                 # 在同一幀內更新第二次，達成 2 倍速位移與攻擊
                 unit.update()
+
+
 
         for text in self.floating_texts:
             text.update()
@@ -1023,6 +1122,115 @@ class SceneManager:
     # SceneManager.py
     # scene_manager.py
 
+    # def update_collision_logic(self):
+    #     from PhysicsUtils import is_box_overlap
+    #     from Skill import CONTEXTUAL_ATTACK
+    #     all_units = self.get_all_units()
+    #     # 忽略單位: stand
+    #     all_units = [u for u in all_units if u.type != "stand"]
+    #     clashed_pairs = set()
+    #
+    #     # 1. 拼招判定 (Hitbox vs Hitbox)
+    #     for u1 in all_units:
+    #         # 🟢 修正點：只有在攻擊生效幀 (should_trigger_hit) 才算
+    #         if not (u1.attack_state and u1.attack_state.should_trigger_hit()):
+    #             continue
+    #         if u1.attack_state.has_clashed:  # 🟢 限制一招一次
+    #             continue
+    #         if u1.attack_state.data.attack_type in CONTEXTUAL_ATTACK:
+    #             #跳過CONTEXTUAL_ATTACK
+    #             continue
+    #
+    #         box1 = u1.get_hitbox()
+    #         for u2 in all_units:
+    #             # 排除：自己、同陣營、或對方也沒在生效幀
+    #             if u1 == u2 or u1.side == u2.side or (u1, u2) in clashed_pairs:
+    #                 continue
+    #             if not (u2.attack_state and u2.attack_state.should_trigger_hit()):
+    #                 continue
+    #             if u1.type == "stand" or u2.type == "stand":
+    #                 continue
+    #             if u2.attack_state.has_clashed:  # 🟢 限制一招一次
+    #                 continue
+    #
+    #             box2 = u2.get_hitbox()
+    #             if is_box_overlap(box1, box2):
+    #                 self.resolve_clash(u1, u2)
+    #                 # 🟢 標記雙方此招已失效，不再觸發拼招
+    #                 u1.attack_state.has_clashed = True
+    #                 u2.attack_state.has_clashed = True
+    #
+    #                 clashed_pairs.add((u1, u2))
+    #                 clashed_pairs.add((u2, u1))
+    #
+    #     # 2. 傷害判定 (Hitbox vs Hurtbox)
+    #     for attacker in all_units:
+    #         # 🟢 修正點：如果是 character 但還在前搖，或者根本沒攻擊，直接跳過
+    #         can_hit = False
+    #         if getattr(attacker, 'unit_type', '') == 'character':
+    #             if attacker.attack_state and attacker.attack_state.should_trigger_hit():
+    #                 can_hit = True
+    #         elif getattr(attacker, 'unit_type', '') == 'item':
+    #             if attacker.flying:  # 物品飛起來就有傷害
+    #                 can_hit = True
+    #
+    #         if not can_hit: continue
+    #
+    #         atk_box = attacker.get_hitbox()
+    #         if atk_box is None: continue
+    #         for victim in all_units:
+    #             # 🟢 修正點：加入 side 檢查解決 Friendly Fire
+    #             if attacker == victim or attacker.side == victim.side or (attacker, victim) in clashed_pairs:
+    #                 continue
+    #
+    #             if is_box_overlap(atk_box, victim.get_hurtbox()):
+    #                 if getattr(victim, 'unit_type', None) == 'character':
+    #                     # 確保不重複命中
+    #                     if hasattr(attacker, 'attack_state') and attacker.attack_state:
+    #                         if victim not in attacker.attack_state.has_hit:
+    #                             victim.on_hit(attacker, attacker.attack_state.data)
+    #                     elif hasattr(attacker, 'attacker_attack_data') and attacker.attacker_attack_data:
+    #                         # 處理 Fireball/Bullet
+    #                         victim.on_hit(attacker, attacker.attacker_attack_data)
+    #
+    #                 elif getattr(victim, 'unit_type', None) == 'item':
+    #                     if hasattr(victim, 'on_be_hit'):
+    #                         victim.on_be_hit(attacker)
+    def resolve_projectile_impact(self, attacker, victim):
+        """處理兩個實體間的高速物理碰撞 (保齡球效應)"""
+        from Skill import attack_data_dict, AttackType
+
+        # 防止同一飛行過程重複撞擊同一人
+        if not hasattr(attacker, 'hitting_cache'):
+            attacker.hitting_cache = []
+        if victim in attacker.hitting_cache:
+            return
+        attacker.hitting_cache.append(victim)
+
+        # 1. 取得攻擊數據（優先使用飛行物自帶的備份，否則用預設撞擊數據）
+        atk_data = getattr(attacker, 'attacker_attack_data', None) or attack_data_dict.get(AttackType.THROW_CRASH)
+
+        # 2. 物理反饋：計算動量損耗 (根據重量比)
+        v_weight = getattr(victim, 'weight', 0.15)
+        a_weight = getattr(attacker, 'weight', 0.15)
+        momentum_loss = min(0.6, v_weight / (a_weight + 0.05) * 0.4)
+
+        impact_vel = attacker.vel_x
+        attacker.vel_x *= (1.0 - momentum_loss)
+        attacker.vz = abs(impact_vel) * 0.5  # 撞擊後微幅彈起
+
+        # 3. 對受害者套用傷害與位移
+        # 來源標記為投擲者，若無則標記為飛行物自己
+        victim.on_hit(getattr(attacker, 'thrown_by', attacker), atk_data)
+
+        # 4. 飛行者（若為角色）本身受到的反作用力傷害
+        if attacker.unit_type == 'character':
+            crash_damage = int(abs(impact_vel) * 15)
+            attacker.on_hit(victim, attack_data_dict[AttackType.THROW_CRASH])
+
+        # 5. 若速度歸零則停止飛行
+        if abs(attacker.vel_x) < 0.1:
+            attacker.flying = False
     def update_collision_logic(self):
         from PhysicsUtils import is_box_overlap
         from Skill import CONTEXTUAL_ATTACK
@@ -1039,7 +1247,7 @@ class SceneManager:
             if u1.attack_state.has_clashed:  # 🟢 限制一招一次
                 continue
             if u1.attack_state.data.attack_type in CONTEXTUAL_ATTACK:
-                #跳過CONTEXTUAL_ATTACK
+                # 跳過 CONTEXTUAL_ATTACK
                 continue
 
             box1 = u1.get_hitbox()
@@ -1066,38 +1274,75 @@ class SceneManager:
 
         # 2. 傷害判定 (Hitbox vs Hurtbox)
         for attacker in all_units:
-            # 🟢 修正點：如果是 character 但還在前搖，或者根本沒攻擊，直接跳過
+
+            if attacker.flying:
+                # Log 1: 確認飛行物狀態
+                print(f"[DEBUG BOILING] {attacker.name} is flying! vel_x: {attacker.vel_x:.2f}, type: {attacker.unit_type}")
+
+
+            # 🟢 判定該單位是否具有威脅性（攻擊中或是飛行中）
             can_hit = False
             if getattr(attacker, 'unit_type', '') == 'character':
-                if attacker.attack_state and attacker.attack_state.should_trigger_hit():
+                # 角色：在攻擊生效幀，或是被丟出去飛行中
+                if (attacker.attack_state and attacker.attack_state.should_trigger_hit()) or attacker.flying:
                     can_hit = True
             elif getattr(attacker, 'unit_type', '') == 'item':
-                if attacker.flying:  # 物品飛起來就有傷害
+                # 物品：飛起來就有傷害
+                if attacker.flying:
                     can_hit = True
+            if attacker.flying:
+                print(f"[DEBUG BOILING] {attacker.name} can_hit = {can_hit}")
 
-            if not can_hit: continue
+            if not can_hit:
+                continue
 
-            atk_box = attacker.get_hitbox()
-            if atk_box is None: continue
+            # 🟢 核心修正：如果沒有 attack_state 卻在 flying (保齡球效應)，使用 Hurtbox 代替 Hitbox
+            atk_box = attacker.get_hitbox() if (
+                        attacker.attack_state and attacker.attack_state.should_trigger_hit()) else attacker.get_hurtbox()
+
+            if atk_box is None:
+                print(f"[DEBUG BOILING] {attacker.name} can_hit but atk_box is None!")
+                continue
+
             for victim in all_units:
-                # 🟢 修正點：加入 side 檢查解決 Friendly Fire
-                if attacker == victim or attacker.side == victim.side or (attacker, victim) in clashed_pairs:
+                # --- 關鍵修正：重新定義碰撞合法性 ---
+
+                # 基本排除：不能撞自己，以及跳過已拼招的組合
+                if attacker == victim or (attacker, victim) in clashed_pairs:
                     continue
 
+                # 陣營排除邏輯判定：
+                is_friendly = (attacker.side == victim.side)
+
+                # 🟢 修正點：如果是飛行物，且目標不是當初的投擲者，則無視陣營(Friendly Fire 開啟)
+                # 這樣敵人被丟出去就能撞到敵人，但不會撞到剛丟出他的玩家
+                if attacker.flying:
+                    # 取得投擲者引用 (可能在 Entity 或被投擲時設定)
+                    thrower = getattr(attacker, 'thrown_by', None)
+                    if victim == thrower:
+                        continue  # 飛出去的東西不會立刻撞到主人
+                else:
+                    # 一般技能：維持原本的友軍保護
+                    if is_friendly:
+                        continue
+
                 if is_box_overlap(atk_box, victim.get_hurtbox()):
+                    print(f"[DEBUG BOILING] HIT DETECTED! {attacker.name} -> {victim.name}")
+                    # A. 處理受擊對象是角色 (Character)
                     if getattr(victim, 'unit_type', None) == 'character':
-                        # 確保不重複命中
-                        if hasattr(attacker, 'attack_state') and attacker.attack_state:
+                        # 1. 如果是正常的招式攻擊 (有 attack_state)
+                        if attacker.attack_state and attacker.attack_state.should_trigger_hit():
                             if victim not in attacker.attack_state.has_hit:
                                 victim.on_hit(attacker, attacker.attack_state.data)
-                        elif hasattr(attacker, 'attacker_attack_data') and attacker.attacker_attack_data:
-                            # 處理 Fireball/Bullet
-                            victim.on_hit(attacker, attacker.attacker_attack_data)
 
+                        # 2. 如果是飛行物體 (保齡球效應：Item 或正在飛的角色)
+                        elif attacker.flying:
+                            self.resolve_projectile_impact(attacker, victim)
+
+                    # B. 處理受擊對象是物品 (Item)
                     elif getattr(victim, 'unit_type', None) == 'item':
                         if hasattr(victim, 'on_be_hit'):
                             victim.on_be_hit(attacker)
-
     def resolve_clash(self, u1, u2):
         """
             當兩個攻擊判定(Hitbox)互相接觸時觸發。

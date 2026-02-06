@@ -68,11 +68,11 @@ class Item(Entity):
             return
 
             # 🟢 修正：如果是飛行狀態，只執行 Z 軸變化 (on_fly_z)
-        if self.flying:
-            self.on_fly_z()
+        # if self.flying:
+        #     self.on_fly_z()
 
             # 🟢 關鍵：一定要呼叫這個，才能讓 vel_x 正確轉換為位移
-        self.update_physics_only()
+        #self.update_physics_only()
 
         self.z = self.get_tile_z(self.x, self.y)
 

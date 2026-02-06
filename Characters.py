@@ -177,7 +177,7 @@ class CharacterBase(Entity):
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
-        self.throw_power = 0.3  #投擲基本力量
+        self.throw_power = 1.0  #投擲基本力量
         
 
         self.jump_key_block = False #避免長按連續跳躍
@@ -641,7 +641,7 @@ class CharacterBase(Entity):
         if self.scene and self.scene.env_manager.freeze_timer > 0 and self not in self.scene.env_manager.highlight_units:
             # 計算目前的動量總和
             momentum = (abs(self.vel_x) + abs(self.vz)) * 0.6  # 係數可調
-            print(f'{self.name} momentum {momentum}')
+            #print(f'{self.name} momentum {momentum}')
             intensity = int(min(6, momentum))  # 最大震動幅度限制在 12 像素
             if intensity > 0:
                 import random
@@ -1390,7 +1390,7 @@ class CharacterBase(Entity):
                 hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
 
-    def update_common_timer(self):
+    def update(self):
         self.current_frame += 1
         if self.rigid_timer > 0:
             if self.health < self.max_hp/4:
@@ -1453,6 +1453,15 @@ class CharacterBase(Entity):
             self.anim_frame += 1
         if self.state in [MoveState.WALK, MoveState.RUN]:
             self.anim_walk_cnt += 1
+
+        # 🟢 新增：如果被玩家抓起來（例如作為投擲道具）
+        if self.held_by:
+            self.on_held_location()  # 執行座標同步
+            return  # 被抓取時，跳過 AI 與自主移動邏輯
+        # 🟢 重要：如果已經落地且速度歸零，但 flying 還是 True，強行修正
+        if self.jump_z <= 0 and abs(self.vel_x) < 0.05 and self.flying:
+            self.flying = False
+
 
 
 
@@ -2434,8 +2443,8 @@ class Player(CharacterBase):
             self.jump_z += self.vz
             self.vz -= 0.05
             if self.jump_z <= 0:
-                self.jump_z = 0
-                self.vz = 0
+                # self.jump_z = 0
+                # self.vz = 0
                 self.color = self.default_color
                 self.jumpping_flag = False
                 self.high_jump = False
@@ -2455,7 +2464,7 @@ class Player(CharacterBase):
             if self.input_buffer_timer == 0:
                 self.input_buffer = None
         # 2. 原有的狀態更新 (update_combat_state, etc.)
-        self.update_common_timer()
+        super().update()
         if self.health_visual > self.health:
             self.health_visual -= 0.5
         if self.external_control:
@@ -2470,8 +2479,8 @@ class Player(CharacterBase):
             self.has_stand = True
             self.super_armor_timer = 1
             #持續霸體
-        if self.held_by:
-            self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+        # if self.held_by:
+        #     self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
         #處理失控的飛行狀態
         if self.combat_state == CombatState.DEAD:
             print(f'{self.name} 死亡! 遊戲結束')
@@ -2485,7 +2494,7 @@ class Player(CharacterBase):
             self.update_common_opponent(enemy)
         for unit in neturals:
             self.update_common_interactable_unit(unit)
-        self.update_physics_only()
+        #self.update_physics_only()
         self.handle_movement()
         self.update_burning_flag()
 
@@ -2566,7 +2575,7 @@ class Ally(CharacterBase):
 
     # ally的update
     def update(self):
-        self.update_common_timer()
+        super().update()
         if self.external_control:
             self.update_by_external_control()
             return
@@ -2576,7 +2585,7 @@ class Ally(CharacterBase):
         # 關閉AI
         # return
 
-        self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+        #self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
 
         if self.combat_state == CombatState.DEAD:
             return
@@ -2600,7 +2609,7 @@ class Ally(CharacterBase):
         if enemy_target:
             intent = self.decide_intent(enemy_target)
             self.handle_input(intent)
-        self.update_physics_only()
+        #self.update_physics_only()
         self.handle_movement()
         self.update_burning_flag()
 
@@ -2651,8 +2660,8 @@ class Ally(CharacterBase):
             self.jump_z += self.vz
             self.vz -= 0.05
             if self.jump_z <= 0:
-                self.jump_z = 0
-                self.vz = 0
+                # self.jump_z = 0
+                # self.vz = 0
                 self.color = self.default_color
 
 class StandEntity(Ally):
@@ -2751,7 +2760,7 @@ class Enemy(CharacterBase):
     #enemy的update
     def update(self):
 
-        self.update_common_timer()
+        super().update()
         if self.external_control:
             self.update_by_external_control()
             return
@@ -2764,7 +2773,7 @@ class Enemy(CharacterBase):
         # if self.health < 50:
         #     self.has_stand = True
         
-        self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
+        #self.update_hold_fly_position()  # 從HoldFlyLogicMixin而來
 
         if self.combat_state == CombatState.DEAD:
             return
@@ -2801,7 +2810,7 @@ class Enemy(CharacterBase):
 
         if self.current_frame >= self.summon_sickness and intent:
             self.handle_input(intent)
-        self.update_physics_only()
+        #self.update_physics_only()
         self.handle_movement()
         self.update_burning_flag()
 
@@ -2855,8 +2864,8 @@ class Enemy(CharacterBase):
             self.jump_z += self.vz
             self.vz -= 0.05
             if self.jump_z <= 0:
-                self.jump_z = 0
-                self.vz = 0
+                # self.jump_z = 0
+                # self.vz = 0
                 self.color = self.default_color
 
 class BigEnemy(Enemy):

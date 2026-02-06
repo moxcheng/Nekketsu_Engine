@@ -32,25 +32,8 @@ STAND_KONOMI_CONFIG={
 
 PLAYER_KONOMI_CONFIG={
     "name": "player",
-    "image_path": "..//Assets_Drive//konomi_test_48frame.png",
-    "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
+    "image_path": "..//Assets_Drive//konomi_test_50frame.png",
     "stand_config": STAND_KONOMI_CONFIG,
-    "super_move_staging": {
-        "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
-                                "..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
-                                "..\\Assets_Drive\\madou\\pre_pose5.png", "..\\Assets_Drive\\madou\\pre_pose6.png",
-                                "..\\Assets_Drive\\madou\\pre_pose7.png", "..\\Assets_Drive\\madou\\pre_pose8.png",
-                                "..\\Assets_Drive\\madou\\pre_pose9.png", "..\\Assets_Drive\\madou\\pre_pose10.png"],
-        "portraits": [
-            {"path": "..\\Assets_Drive\\madou\\tachie_00.png", "start": 0.7, "end": 0.525, "dir": "L2R",
-             "Offset_y": -50},
-            {"path": "..\\Assets_Drive\\madou\\tachie_01.png", "start": 0.525, "end": 0.4, "dir": "R2L",
-             "Offset_y": -15},
-            {"path": "..\\Assets_Drive\\madou\\tachie_02.png", "start": 0.4, "end": 0.3, "dir": "L2R", "Offset_y": 15},
-            {"path": "..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir": "R2L", "Offset_y": 0}],
-        "effect": "..\\Assets_Drive\\madou\\tachie_5.png",
-        "portraits_begin": 0.7,
-        "timer": 500},
     "animator_config":{
         "frame_width": 128,
         "frame_height": 128,
@@ -84,13 +67,13 @@ PLAYER_KONOMI_CONFIG={
             "swing": [[9], [11]],
             "throw": [[27], [42,43]],
             "guard":[[41]],
-            "down_attack":[[39,46,39,45]],
+            "down_attack":[[13,48,49,48,49,48]],
             "hold_item":[[27]]
         }
     },
     "popup":["landing"],
     "stand":None,
-    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':AttackType.DOWN_STOMP},
+    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':"pickup_item"},
                              'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'run':AttackType.PUSH},
                              'c_attack':{'default': AttackType.SLASH, 'run': AttackType.PUSH},
                              'swing_item':{'default': AttackType.SWING},
