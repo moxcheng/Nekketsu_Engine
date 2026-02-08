@@ -348,6 +348,9 @@ class SceneManager:
                 # 2. 仲裁物理事件 (這解決寫在 Mixin 裡的混亂)
                 for event_type, value in phys_events:
                     if event_type == "LANDING":
+                        # 取得該單位的時停狀態
+                        unit_frozen = is_time_frozen and unit not in self.env_manager.highlight_units
+
                         # 1. 取得單位的控制狀態
                         # 判斷是否為主動動作：跳躍中、下落中、或是特定技能中
                         is_active_behavior = False
@@ -361,9 +364,12 @@ class SceneManager:
                         damage_threshold = -1.0 if nonactive_behavior else -2.5
                         # 🟢 在此處實作你想要的「負 vz 強制倒地」
                         if value < damage_threshold and unit.unit_type == 'character':
-                            unit.into_down_state()
-                            self.trigger_shake(duration=15, intensity=8)
-                            self.create_effect(unit.x+unit.width/2, unit.y+unit.height/4, unit.z, 'grounding_impact')
+                            if unit_frozen:
+                                unit.pending_down = True
+                            else:
+                                unit.into_down_state()
+                                self.trigger_shake(duration=15, intensity=8)
+                                self.create_effect(unit.x+unit.width/2, unit.y+unit.height/4, unit.z, 'grounding_impact')
                         else:
                             unit.check_ground_contact()  # 執行一般落地邏輯
 
@@ -807,6 +813,18 @@ class SceneManager:
 
         if is_just_thawed:
             for unit in self.interactables:
+                # 🟢 時間開始流動的瞬間，檢查是否有被「掛起」的狀態變更
+                if hasattr(unit, 'pending_combat_state') and unit.pending_combat_state is not None:
+                    # 根據掛起的狀態決定呼叫哪個 function
+                    func_map = {CombatState.DOWN: unit.into_down_state,
+                                CombatState.DEAD: unit.into_dead_state,
+                                CombatState.KNOCKBACK: unit.into_knockback_state,
+                                CombatState.WEAK: unit.into_weak_state,
+                                CombatState.NORMAL: unit.into_normal_state}
+                    func_map[unit.pending_combat_state]()
+
+                    # 清除緩衝區
+                    unit.pending_combat_state = None
                 # 如果動量極大，產生爆發視覺
                 if abs(unit.vel_x) + abs(unit.vz) > 1.2:
                     # 產生一個巨大的環形衝擊波特效
@@ -1274,12 +1292,6 @@ class SceneManager:
 
         # 2. 傷害判定 (Hitbox vs Hurtbox)
         for attacker in all_units:
-
-            if attacker.flying:
-                # Log 1: 確認飛行物狀態
-                print(f"[DEBUG BOILING] {attacker.name} is flying! vel_x: {attacker.vel_x:.2f}, type: {attacker.unit_type}")
-
-
             # 🟢 判定該單位是否具有威脅性（攻擊中或是飛行中）
             can_hit = False
             if getattr(attacker, 'unit_type', '') == 'character':
@@ -1290,8 +1302,6 @@ class SceneManager:
                 # 物品：飛起來就有傷害
                 if attacker.flying:
                     can_hit = True
-            if attacker.flying:
-                print(f"[DEBUG BOILING] {attacker.name} can_hit = {can_hit}")
 
             if not can_hit:
                 continue
@@ -1301,7 +1311,6 @@ class SceneManager:
                         attacker.attack_state and attacker.attack_state.should_trigger_hit()) else attacker.get_hurtbox()
 
             if atk_box is None:
-                print(f"[DEBUG BOILING] {attacker.name} can_hit but atk_box is None!")
                 continue
 
             for victim in all_units:
@@ -1327,7 +1336,6 @@ class SceneManager:
                         continue
 
                 if is_box_overlap(atk_box, victim.get_hurtbox()):
-                    print(f"[DEBUG BOILING] HIT DETECTED! {attacker.name} -> {victim.name}")
                     # A. 處理受擊對象是角色 (Character)
                     if getattr(victim, 'unit_type', None) == 'character':
                         # 1. 如果是正常的招式攻擊 (有 attack_state)

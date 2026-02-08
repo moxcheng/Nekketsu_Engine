@@ -4,24 +4,27 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
     def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
         super().__init__()
         # 空間座標
-        self.x = x
-        self.y = y
-        self.z = 0.0
-        self.jump_z = 0.0
-
+        # 地圖資訊
+        self.terrain = map_info[0]
+        self.map_w = map_info[1]
+        self.map_h = map_info[2]
         # 物理屬性
         self.width = width
         self.height = height
         self.weight = weight
+
+        self.x = max(width/2, min(x, self.map_w-width/2))
+        self.y = max(height/2, min(y, self.map_h-height/2))
+        self.z = 0.0
+        self.jump_z = 0.0
+
+
         #加速度
         self.vel_x = 0.0  # 統一整合
         self.vz = 0.0  # 統一整合
         self.hitting = []   #物品碰撞
 
-        # 地圖資訊
-        self.terrain = map_info[0]
-        self.map_w = map_info[1]
-        self.map_h = map_info[2]
+
 
         # 邏輯狀態
         self.unit_type = None  # 由子類別設定 'character' 或 'item'

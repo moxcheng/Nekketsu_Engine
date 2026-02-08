@@ -114,16 +114,6 @@ class CharacterBase(Entity):
     def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 0.15):
         super().__init__(x=max(0, min(x, map_info[1]-1)), y=max(0, min(y, map_info[2]-1)), map_info=map_info, width=width, height=height, weight=weight)
         self.unit_type = "character"
-        # self.x = max(0, min(x, map_info[1]-1))
-        # self.y = max(0, min(y, map_info[2]-1))
-        # self.jump_z = 0
-        # self.width = width
-        # self.height = 2.5
-        # self.terrain = map_info[0]
-        # self.map_w = map_info[1]
-        # self.map_h = map_info[2]
-        # self.z = self.get_tile_z(x, y)
-        # self.vz = 0
 
         self.color = (0,0,0)
         # 受創系統
@@ -400,7 +390,8 @@ class CharacterBase(Entity):
     def draw_anim(self, win, cam_x, cam_y, tile_offset_y):
 
 
-
+        if self.health <= 0:
+            print(f'===========\n{self.name}的HP小於0，繪製動畫')
         # 狀態轉換為動畫名
         # print(f'[draw_anim] {self.name} combat_state = {self.combat_state.name} move_state = {self.state.name}', end='\r')
         combat_state_anim_map = {
@@ -418,8 +409,8 @@ class CharacterBase(Entity):
         anim_name = 'stand'
         if self.get_burning:
             anim_name = "burn"
-        elif self.is_knockbacking():
-            anim_name = "knockback"
+        # elif self.is_knockbacking():
+        #     anim_name = "knockback"
         elif self.combat_state in combat_state_anim_map:     #判斷戰鬥狀態動畫
             anim_name = combat_state_anim_map[self.combat_state]
         elif self.state == MoveState.GUARD:
@@ -454,6 +445,8 @@ class CharacterBase(Entity):
         if anim_name == 'stand' and self.is_holding():
             anim_name = 'hold_item'
 
+        if self.health <= 0:
+            print(f'anim_name = {anim_name}\n==============')
         
         anim_frames = self.animator.anim_map.get(anim_name)
         if anim_frames is None:
@@ -886,50 +879,74 @@ class CharacterBase(Entity):
         #檢查自身條件是否能繼續持有
         return self.combat_state == CombatState.DOWN
 
+    def apply_combat_state_impact(self, state):
+        # 🟢 漂亮攔截：時停中且我被凍結，先存入緩衝區，不改變動畫格
+        if self.scene and self.scene.env_manager.freeze_timer > 0:
+            if self not in self.scene.env_manager.highlight_units:
+                self.pending_combat_state = state
+                return
+        self._exec_state_change(state)
+
+    def _exec_state_change(self, state):
+        if state == CombatState.KNOCKBACK:
+            self.combat_state = CombatState.KNOCKBACK
+        elif state == CombatState.WEAK:
+            self.combat_state = CombatState.WEAK
+            self.combat_timer = 90
+            self.combat_timer_max = 90
+            self.set_rigid(90)
+        elif state == CombatState.DOWN:
+            self.combat_state = CombatState.DOWN
+            self.invincible_timer = 40
+            knockout_time = 120 + int(100 * (1 - self.health / self.max_hp))
+            # 血越少越快醒
+            self.combat_timer = knockout_time
+            self.combat_timer_max = knockout_time
+            self.vel_x = 0.0
+            self.vz = 0.0
+            self.hit_count = 0.0
+            self.set_rigid(knockout_time)
+            self.state = MoveState.STAND
+        elif state == CombatState.DEAD:
+            self.combat_state = CombatState.DEAD
+            self.invincible_timer = 240
+            self.dead_timer = 160
+            self.hit_count = 100
+            # 🟢 核心修正：死亡是所有「飛行/持有」狀態的終點
+            self.flying = False
+            self.held_by = None
+            self.vz = 0
+            self.vel_x = 0
+            # 確保座標直接對齊地板，防止懸空死亡
+            tx, ty = int(self.x + self.width / 2), int(self.y + self.height * 0.1)
+            self.z = self.get_tile_z(tx, ty) or self.z
+            self.jump_z = 0
+        elif state == CombatState.NORMAL:
+            self.combat_state = CombatState.NORMAL
+            self.hit = False
+            self.hit_timer = 0
+            self.hit_count = 0.0
+            self.rigid_timer = 0
+            self.combat_timer = 0
+            self.vel_x = 0.0
+            self.is_mashing = False
+            # 清除快取意圖
+            self.clean_input_buffer()
+            print(f'{self.name} 回到正常')
+
+    def into_knockback_state(self, vel_x=0.0, vz = 0.0):
+        self.vel_x += vel_x
+        self.vz += vz
+        self.apply_combat_state_impact(CombatState.KNOCKBACK)
     def into_weak_state(self):
-        self.combat_state = CombatState.WEAK
-        self.combat_timer = 90
-        self.combat_timer_max = 90
-        self.set_rigid(90)
+        self.apply_combat_state_impact(CombatState.WEAK)
     def into_down_state(self):
-        self.combat_state = CombatState.DOWN
-        self.invincible_timer = 40
-        knockout_time = 120+int(100*(1-self.health/self.max_hp))
-        #血越少越快醒
-        self.combat_timer = knockout_time
-        self.combat_timer_max = knockout_time
-        self.vel_x = 0.0
-        self.vz = 0.0
-        self.hit_count = 0.0
-        self.set_rigid(knockout_time)
-        self.state = MoveState.STAND
+        self.apply_combat_state_impact(CombatState.DOWN)
     def into_dead_state(self):
-        self.combat_state = CombatState.DEAD
-        self.invincible_timer = 240
-        self.dead_timer = 160
-        self.hit_count=100
-        # 🟢 核心修正：死亡是所有「飛行/持有」狀態的終點
-        self.flying = False
-        self.held_by = None
-        self.vz = 0
-        self.vel_x = 0
-        # 確保座標直接對齊地板，防止懸空死亡
-        tx, ty = int(self.x + self.width / 2), int(self.y + self.height * 0.1)
-        self.z = self.get_tile_z(tx, ty) or self.z
-        self.jump_z = 0
-        print(f'{self.name} 死亡並清除所有物理標記')
+        self.apply_combat_state_impact(CombatState.DEAD)
     def into_normal_state(self):
-        self.combat_state = CombatState.NORMAL
-        self.hit = False
-        self.hit_timer = 0
-        self.hit_count = 0.0
-        self.rigid_timer = 0
-        self.combat_timer = 0
-        self.vel_x = 0.0
-        self.is_mashing = False
-        #清除快取意圖
-        self.clean_input_buffer()
-        print(f'{self.name} 回到正常')
+        self.apply_combat_state_impact(CombatState.NORMAL)
+
     def clean_input_buffer(self):
         self.input_buffer = None
         self.input_buffer_timer = 0
@@ -1257,7 +1274,8 @@ class CharacterBase(Entity):
         if attack_data.knock_back_power[0] > 0 or attack_data.knock_back_power[1] > 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
             #倒地狀態下不擊退
             #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
-            self.combat_state = CombatState.KNOCKBACK
+            #self.combat_state = CombatState.KNOCKBACK
+            self.into_knockback_state()
             resistance = 1.0 + (getattr(self, 'weight', 0.15) * 5)
             #knock_back_power[0]水平 [1]垂直
             if attack_data.knock_back_power[0] != 0:
@@ -1414,18 +1432,29 @@ class CharacterBase(Entity):
         # 每禎遞減攻擊計時器
         #死亡消失
         if self.health <= 0 and self.combat_state not in [CombatState.KNOCKBACK] and self.death_knockback == False:
+
             if self.facing == DirState.LEFT:
-                self.vel_x = 0.5
+                vel_x = 0.5
             else:
-                self.vel_x = -0.5
-            self.vz = 0.1
+                vel_x = -0.5
+            vz = 0.1
             self.jump_z = 0.3
-            self.combat_state = CombatState.KNOCKBACK
+            #self.combat_state = CombatState.KNOCKBACK
+            self.into_knockback_state(vel_x, vz)
             self.death_knockback = True
 
-        if self.health <= 0 and self.combat_state not in [CombatState.DEAD]:
+        # if self.health <= 0 and self.combat_state not in [CombatState.DEAD]:
+        #     if not self.is_knockbacking() and self.jump_z <= 0:
+        #         self.into_dead_state()
+        if self.health <= 0:
             if not self.is_knockbacking() and self.jump_z <= 0:
-                self.into_dead_state()
+                if self.combat_state != CombatState.DEAD and self.scene.env_manager.freeze_timer <= 0:
+                    #時停中也不改變狀態
+                    self.into_dead_state()
+            else:
+                # 如果還在飛，強制維持 KNOCKBACK 狀態以播放旋轉動畫
+                #self.combat_state = CombatState.KNOCKBACK
+                self.into_knockback_state()
 
         if self.combat_state == CombatState.DEAD:
             self.dead_timer -=1
