@@ -8,7 +8,7 @@ from Skill import *
 
 class Item(Entity):
     #Entity def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
-    def __init__(self, name, x, y, map_info, weight=0.1):
+    def __init__(self, name, x, y, map_info, weight=0.3):
         super().__init__(x, y, map_info, weight=weight)
         self.unit_type = 'item'
         self.name = name
@@ -126,7 +126,7 @@ class Item(Entity):
 
 class Rock(Item):
     def __init__(self, x, y, map_info):
-        super().__init__(name="小石頭", x=x, y=y, map_info=map_info, weight=0.03)
+        super().__init__(name="小石頭", x=x, y=y, map_info=map_info, weight=0.3)
         self.width = 1.0
         self.height = 1.0
         self.vz = 0
@@ -211,7 +211,7 @@ class Fireball(Item):
 
 class Bullet(Item):
     def __init__(self, x, y, map_info, owner=None):
-        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.01)
+        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.1)
         self.owner = owner
         self.facing = owner.facing
         self.speed = 0.5  # 自訂速度

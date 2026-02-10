@@ -342,8 +342,8 @@ class SceneManager:
                 # 1. 執行物理步進
 
                 phys_events = update_passive_physics(unit)
-                if unit.type not in ['item']:
-                    print(f'{unit.name}({unit.type}) [{unit.current_frame}] Movestate={unit.state} vel_x={unit.vel_x}, vz={unit.vz} jz={unit.jump_z} phys_events={phys_events}')
+                # if unit.type not in ['item']:
+                #     print(f'{unit.name}({unit.type}) [{unit.current_frame}] Movestate={unit.state} vel_x={unit.vel_x}, vz={unit.vz} jz={unit.jump_z} phys_events={phys_events}')
 
                 # 2. 仲裁物理事件 (這解決寫在 Mixin 裡的混亂)
                 for event_type, value in phys_events:
@@ -361,7 +361,8 @@ class SceneManager:
                         # 2. 定義動態閾值 (白話：主動跳下很耐摔，被動摔落很痛)
                         # 主動時：除非高到離譜（例如 vz < -2.5），否則不判定為摔傷
                         # 被動時：維持你原本觀察到的敏感度 (例如 vz < -0.3)
-                        damage_threshold = -1.0 if nonactive_behavior else -2.5
+                        damage_threshold = -2.5 if nonactive_behavior else -4
+                        print(f'{unit.name} jump value: {value}')
                         # 🟢 在此處實作你想要的「負 vz 強制倒地」
                         if value < damage_threshold and unit.unit_type == 'character':
                             if unit_frozen:

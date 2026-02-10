@@ -45,7 +45,15 @@ def update_passive_physics(unit):
     if unit.vz != 0 or unit.jump_z > 0:
         old_vz = unit.vz
         unit.jump_z += unit.vz
-        unit.vz -= GRAVITY * (1.0 + getattr(unit, 'weight', 0.1))
+        current_gravity = GRAVITY
+
+        # if -0.1 < unit.vz < 0.1:
+        #     current_gravity = GRAVITY * 0.5
+        #print(f'[{unit.current_frame}] vz={unit.vz}, gravity={current_gravity}, jump_z={unit.jump_z}')
+
+        unit.vz -= current_gravity
+
+
 
         # 🟢 關鍵修正：只要低於地表，立即強制歸零並回報
         if unit.jump_z <= 0:

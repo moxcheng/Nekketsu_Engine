@@ -252,6 +252,32 @@ class AttackData:
         self.damage_multiplier = 1.0
         self.contextual_trigger_frames = kwargs.get('contextual_trigger_frames', [1])
 
+        # 🟢 新增動能傳導參數
+        # 如果沒給，我們就從 damage 與 knock_back 反推一個預設值，實現平滑過渡
+        # 🟢 安全獲取 power：
+        # 如果 kwargs 沒給 power，則嘗試從 damage 推導
+        # 🟢 新系統：能量傳導參數
+        # 如果 kwargs 沒給，則進入「相容模式」自動生成
+        if 'power' in kwargs:
+            self.power = kwargs['power']
+            self.absorption = kwargs.get('absorption', 0.5)
+            self.impact_angle = kwargs.get('impact_angle', 0)
+        else:
+            # 自動反推：Power 應該大於 Damage，剩餘的轉為動能
+            # 假設預設吸收率 0.5，則 Power = Damage * 2
+            if callable(self.damage):
+                self.power = lambda actor: self.damage(actor) * 2.0
+            else:
+                self.power = self.damage * 2.0
+
+            self.absorption = 0.5  # 預設一半轉傷
+
+            # 根據舊有的 knock_back_power [vx, vz] 計算角度
+            import math
+            vx, vz = self.knock_back_power
+            # 使用 atan2 反推角度 (度數)
+            self.impact_angle = math.degrees(math.atan2(vz, abs(vx))) if (vx != 0 or vz != 0) else 0
+
     def get_sprite_index(self, frame_index):
         return self.frame_map[frame_index]
 
@@ -425,7 +451,8 @@ attack_data_dict = {
         knock_back_power=[1.0,3.0],
         damage = 20,
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
-        frame_map_ratio = [15,10,35] #必須與duration等長
+        frame_map_ratio = [15,10,35], #必須與duration等長
+power=100, absorption=0.1, angle=80
     ),
     AttackType.PUSH: AttackData(
         attack_type=AttackType.PUSH,
@@ -438,7 +465,8 @@ attack_data_dict = {
         knock_back_power=[1.5, 2.0],
         damage=20,
         # frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
-        frame_map_ratio=[15, 10, 35]  # 必須與duration等長
+        frame_map_ratio=[15, 10, 35],  # 必須與duration等長
+        power=100, absorption=0.9, angle=0
     ),
     AttackType.PUNCH: AttackData(
         attack_type=AttackType.PUNCH,
@@ -451,7 +479,7 @@ attack_data_dict = {
         damage = 5,
         frame_map = [0]*8 + [2]*16 + [1]*8,   #必須與duration等長
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8},
-        frame_map_ratio = [8,16,8]
+        frame_map_ratio = [8,16,8],
     ),
     AttackType.SPECIAL_PUNCH: AttackData(
         attack_type=AttackType.SPECIAL_PUNCH,
@@ -506,7 +534,7 @@ attack_data_dict = {
         damage = 7,
         frame_map = [1]*12 + [0]*24,
         cancel_table = {AttackType.SLASH: 24, AttackType.KICK: 18},
-        frame_map_ratio = [12,24]
+        frame_map_ratio = [12,24],
     ),
     AttackType.SPECIAL_KICK: AttackData(
         attack_type=AttackType.SPECIAL_KICK,
@@ -525,7 +553,7 @@ attack_data_dict = {
     AttackType.FLY_KICK: AttackData(
         attack_type=AttackType.FLY_KICK,
         duration=999,# ✅ 實際上會被 is_active() 覆蓋
-        trigger_frame=8,
+        trigger_frame=2,
         recovery=15,
         hitbox_func=kick_hitbox_func,
         condition_func=lambda actor: actor.jump_z > 0,

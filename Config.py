@@ -3,7 +3,7 @@
 WIDTH, HEIGHT = 800, 600
 TILE_SIZE = 40
 FPS = 60
-GRAVITY = 0.05
+GRAVITY = 0.023
 
 WHITE = (255, 255, 255)
 RED = (255, 100, 100)
@@ -32,7 +32,7 @@ ON_GUARD_MAX_WINDOW = 10    #可以觸發guard的最大時間
 # === 物理系統全局參數 ===
 
 # --- 1. 水平位移與摩擦 ---
-FRICTION_AIR = 0.85       # 非飛行狀態下的水平速度衰減
+FRICTION_AIR = 0.95       # 非飛行狀態下的水平速度衰減
 FRICTION_GROUND = 0.6    # 落地彈跳時的水平摩擦力
 STOP_THRESHOLD = 0.05    # 速度低於此值則歸零
 

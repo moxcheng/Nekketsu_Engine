@@ -111,7 +111,7 @@ def get_component_class(name):
     return class_map.get(name)
 class CharacterBase(Entity):
     #Entity的初始化def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
-    def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 0.15):
+    def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 1.0):
         super().__init__(x=max(0, min(x, map_info[1]-1)), y=max(0, min(y, map_info[2]-1)), map_info=map_info, width=width, height=height, weight=weight)
         self.unit_type = "character"
 
@@ -390,8 +390,8 @@ class CharacterBase(Entity):
     def draw_anim(self, win, cam_x, cam_y, tile_offset_y):
 
 
-        if self.health <= 0:
-            print(f'===========\n{self.name}的HP小於0，繪製動畫')
+        # if self.health <= 0:
+        #     print(f'===========\n{self.name}的HP小於0，繪製動畫')
         # 狀態轉換為動畫名
         # print(f'[draw_anim] {self.name} combat_state = {self.combat_state.name} move_state = {self.state.name}', end='\r')
         combat_state_anim_map = {
@@ -445,9 +445,6 @@ class CharacterBase(Entity):
         if anim_name == 'stand' and self.is_holding():
             anim_name = 'hold_item'
 
-        if self.health <= 0:
-            print(f'anim_name = {anim_name}\n==============')
-        
         anim_frames = self.animator.anim_map.get(anim_name)
         if anim_frames is None:
             #print(f'[draw_anim]{self.name} has no {anim_name} frame, change to stand')
@@ -587,22 +584,25 @@ class CharacterBase(Entity):
         # 1. 檢測自己是否正在被「揮舞」
         swing_offset_x,swing_offset_y = 0,0
         if self.held_by:
-            swing_offset_y =  -self.held_by.height*TILE_SIZE*0.8
+            #swing_offset_y =  -self.held_by.height*TILE_SIZE*0.8
+            swing_offset_y = -self.held_by.height * 0.8
         if self.held_by and self.held_by.attack_state and self.held_by.attack_state.name == 'swing':
             #is_being_swung = True
             print(f'{self.name} 被揮舞!')
             dir = 1
             if self.held_by.facing == DirState.LEFT:
                 dir = -1
-            swing_offset_x = dir*int(self.held_by.width * TILE_SIZE * 0.6)
-            swing_offset_y += self.held_by.height*TILE_SIZE*0.4
+            # swing_offset_x = dir*int(self.held_by.width * TILE_SIZE * 0.6)
+            # swing_offset_y += self.held_by.height*TILE_SIZE*0.4
+            swing_offset_x = dir * int(self.held_by.width * 0.6)
+            swing_offset_y += self.held_by.height*0.4
 #--------
 
 
         if DEBUG:
             self.draw_debug_info(win, px, py)
             # DEBUG: 角色腳下的圓形定位點（用於碰撞、踩地感）
-        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * 5) - cam_y + tile_offset_y
+        base_cy = int((self.map_h - (self.y + self.height * 0.1)) * TILE_SIZE - self.jump_z * TILE_SIZE) - cam_y + tile_offset_y
         cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         # cache住繪圖位置
@@ -734,9 +734,9 @@ class CharacterBase(Entity):
         # === 顯示 hurtbox ===
         hurtbox = self.get_hurtbox()
         hx1 = int(hurtbox['x1'] * TILE_SIZE) - cam_x
-        hy1 = int((self.map_h - hurtbox['y2']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        hy1 = int((self.map_h - hurtbox['y2']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
         hx2 = int(hurtbox['x2'] * TILE_SIZE) - cam_x
-        hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
 
         pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)
 
@@ -1022,80 +1022,7 @@ class CharacterBase(Entity):
         if self.scene:
             self.scene.say(self, txt, duration=duration)
 
-    # Characters.py -> update_physics_only 整合後
-    # def update_physics_only(self):
-    #     # 1. 處理垂直位移 (跳躍、擊飛、投擲通用)
-    #     if self.vz != 0 or self.jump_z > 0:
-    #         self.jump_z += self.vz
-    #         self.vz -= GRAVITY  # 統一使用全域重力常數
-    #
-    #         if self.jump_z <= 0:
-    #             self.jump_z = 0
-    #             self.vz = 0
-    #             self.check_ground_contact()
-    #
-    #     # 2. 處理水平位移 (擊退、飛行、撞牆通用)
-    #     if self.vel_x != 0:
-    #         next_x = self.x + self.vel_x
-    #
-    #         if self.check_wall_collision(next_x):
-    #             # 撞牆反彈：使用統一的 vel_x
-    #             self.vel_x = -self.vel_x * 0.3
-    #             self.vz = 0.15
-    #             if self.scene:
-    #                 self.scene.trigger_shake(10, 5)
-    #         else:
-    #             self.x = next_x
-    #
-    #         # 水平摩擦力衰減 (僅在非飛行狀態)
-    #         if not getattr(self, 'flying', False):
-    #             self.vel_x *= FRICTION_AIR
-    #             if abs(self.vel_x) < STOP_THRESHOLD:
-    #                 self.vel_x = 0
-    # def update_physics_only(self):
-    #     # --- 1. 處理垂直位移 (保持原樣) ---
-    #     if self.vz != 0:
-    #         self.jump_z += self.vz
-    #         self.vz -= GRAVITY
-    #         if self.jump_z <= 0:
-    #             self.jump_z = 0
-    #             self.vz = 0
-    #
-    #     if self.jump_z != 0 and not self.held_by:
-    #         self.jump_z += self.vz
-    #         self.vz -= GRAVITY
-    #         if self.jump_z <= 0:
-    #             self.jump_z = 0
-    #             self.vz = 0
-    #             self.check_ground_contact()
-    #
-    #     # --- 2. 整合水平位移與邊界偵測 ---
-    #     # 只有在有水平速度且非霸體、非倒地（或是正在受身/擊飛狀態）時處理
-    #     if self.vel_x != 0 and self.super_armor_timer <= 0:
-    #         # 預測下一幀的位置
-    #         next_x = self.x + self.vel_x
-    #
-    #         # 進行邊界檢查 (包含地圖邊緣與牆壁)
-    #         if self.check_wall_collision(next_x):
-    #             # 觸發撞牆反應
-    #             if self.combat_state == CombatState.KNOCKBACK:
-    #                 print(f"[PHYSICS] {self.name} 撞牆了！位置: {self.x:.2f}")
-    #                 self.vel_x = -self.vel_x * 0.2  # 反彈
-    #                 if self.jump_z <= 0.5:
-    #                     self.into_down_state()
-    #                 if self.scene:
-    #                     self.scene.trigger_shake(10, 5)
-    #             else:
-    #                 # 若不是受擊狀態只是普通位移撞牆，則速度歸零
-    #                 self.vel_x = 0
-    #         else:
-    #             # 沒撞牆，安全套用位移
-    #             self.x = next_x
-    #
-    #         # 速度衰減
-    #         self.vel_x *= 0.85
-    #         if abs(self.vel_x) < 0.05:
-    #             self.vel_x = 0
+
     def draw_combat_bar(self, win, px, py):
         if self.combat_state == CombatState.NORMAL:
             return
@@ -1311,13 +1238,15 @@ class CharacterBase(Entity):
             #print(f'{self.name} burning!!!!  burning!!!! burning!!!')
             self.get_burning = True
 
-    def take_damage(self, attacker, attack_data):
+    def take_damage(self, attacker, attack_data, manual_damage=None):
         #damage = getattr(attack_data, 'damage', 5)
         if attacker:
             damage = attack_data.get_damage(attacker)
             print(f'{self.name}受到{attacker.name}的{attack_data.attack_type.name} {damage}點傷害')
         else:
             damage = attack_data.damage
+        # 優先使用動能計算出的傷害
+        damage = manual_damage if manual_damage is not None else attack_data.get_damage(attacker)
         #根據敵我進行傷害加成
         self.health -= damage
         # 顯示傷害數字
@@ -1328,7 +1257,7 @@ class CharacterBase(Entity):
             self.scene.add_floating_text(self.x + self.width / 2, self.y + self.height, f"-{damage}", self.map_h, color=(255, 0, 0), font_size=font_size)
         return f'{self.name} 受到 {damage}, 剩餘HP: {self.health}', damage
 
-    def on_hit(self, attacker, attack_data):
+    def _on_hit(self, attacker, attack_data):
         # 無敵檢查
         if attacker:
             attack_name = attacker.name
@@ -1368,13 +1297,45 @@ class CharacterBase(Entity):
                     return
 
         damage_st, damage = self.take_damage(attacker, attack_data)
-        st = st + f' {damage_st}'
+        #士氣系統調整
         morale_decay = (damage/self.max_hp)
         if self.personality == 'brave':
             morale_decay /= 2
         elif self.personality == 'coward':
             morale_decay *= 1.3
         self.morale -= morale_decay
+
+        # --- 舊系統計算 (維持現狀) ---
+        old_damage = attack_data.damage
+        old_vx, old_vz = attack_data.knock_back_power
+        # --- 🟢 新動能傳導系統計算 (影子計算) ---
+        # 這是修正 TypeError 的核心：判斷是否為公式
+        if callable(attack_data.power):
+            raw_power = attack_data.power(attacker)
+        else:
+            raw_power = attack_data.power
+        # 1. 能量拆分
+        kinetic_damage = raw_power * attack_data.absorption
+        residual_energy = raw_power * (1 - attack_data.absorption)
+        # 2. 考慮質量的物理阻力 (假設 self.weight 在 Entity 定義)
+        # 阻力公式可依手感調整：a = F/m
+        resistance = 1.0 + (self.weight * 5.0)
+        impulse = residual_energy / resistance
+        # 3. 角度分解 (將角度轉為弧度)
+        import math
+        rad = math.radians(attack_data.impact_angle)
+        # 這裡的 direction 是根據攻擊者位置判斷 (1 或 -1)
+        dir_x = 1 if (attacker and attacker.x < self.x) else -1
+        new_vx = impulse * math.cos(rad) * dir_x
+        new_vz = impulse * math.sin(rad)
+        # 4. Debug 觀察 (清醒腦袋的關鍵：比對數據)
+        if True:
+            print(f"--- Kinetic Check: {attack_data.attack_type.name} ---")
+            print(f"Dmg:{old_damage}->{int(kinetic_damage)}(Pow{raw_power}), V:[{old_vx}, {old_vz}]->[{new_vx:.2f}, {new_vz:.2f}]")
+
+        # --- 暫時執行舊系統，確保遊戲不崩潰 ---
+        # self.take_damage(attacker, attack_data)
+        # self.into_knockback_state(old_vx, old_vz)
 
         # CombatState 處理
         if self.combat_state != CombatState.DEAD:
@@ -1408,6 +1369,70 @@ class CharacterBase(Entity):
                 hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
 
+    def on_hit(self, *args):
+        #return self.on_hit_by_power(*args)
+        return self._on_hit(*args)
+    def on_hit_by_power(self, attacker, attack_data):
+        # --- 1. 基礎防護檢查 ---
+        if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
+            return
+        if self.super_armor_timer > 0:
+            pass  # 鋼體僅不跳動畫，傷害照吃
+
+        self.hit = True
+        self.hit_timer = 20
+        if attacker and attacker.attack_state:
+            attacker.attack_state.has_hit.append(self)
+
+        # --- 2. 🟢 動能傳導核心結算 ---
+        # 取得 Power (支援 callable 公式)
+        if callable(attack_data.power):
+            raw_power = attack_data.power(attacker)
+        else:
+            raw_power = attack_data.power
+
+        # A. 傷害結算 (做功 x 吸收率)
+        final_damage = int(raw_power * attack_data.absorption)
+        _, damage = self.take_damage(attacker, attack_data, manual_damage=final_damage)
+
+        # B. 位移結算 (殘餘能量 / 體重)
+        residual_energy = raw_power * (1 - attack_data.absorption)
+        # 🟢 修正 1：引入一個「動量轉換率」常數 (例如 0.2 ~ 0.3)
+        # 這樣 100 Power 的招式才不會產生 100 速度
+        KINETIC_CONVERSION_RATE = 0.01
+
+        # 🟢 修正 2：加強重量的影響力 (平方或加乘)
+        resistance = max(0.2, self.weight)
+        impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
+
+        # C. 角度分解
+        import math
+        rad = math.radians(attack_data.impact_angle)
+        dir_x = self.get_knock_direction(attacker, attack_data)
+
+        new_vx = impulse * math.cos(rad) * dir_x
+        new_vz = impulse * math.sin(rad)
+
+        print(f'{attack_data.attack_type}: {attack_data.damage}->{final_damage} impulse{impulse} ({new_vx},{new_vz})')
+
+        # --- 3. 狀態套用與物理緩衝 ---
+        if self.combat_state != CombatState.DEAD:
+            self.resolve_combat_state_on_hit(attack_data)
+            # 這裡套用重構後的狀態鎖
+            self.into_knockback_state(new_vx, new_vz)
+
+        # --- 4. 清理與特效 ---
+        if self.attack_state:
+            self.attack_state = None
+            self.state = MoveState.STAND
+        self.on_hit_count += 1
+
+        # 產生打擊火花與 HitStop
+        if attacker and attacker.get_hitbox():
+            hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+            self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
+            if attack_data.hit_stop_frames > 0:
+                self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
     def update(self):
         self.current_frame += 1
         if self.rigid_timer > 0:
@@ -1579,7 +1604,7 @@ class CharacterBase(Entity):
             if not hitbox:
                 return
             hx = int(hitbox['x1'] * TILE_SIZE) - cam_x
-            hy = int((self.map_h - hitbox['y2']) * TILE_SIZE - self.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+            hy = int((self.map_h - hitbox['y2']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
             hw = int((hitbox['x2'] - hitbox['x1']) * TILE_SIZE)
             hh = int((hitbox['y2'] - hitbox['y1']) * TILE_SIZE)
             pygame.draw.rect(win, color, (hx, hy, hw, hh), 2)
@@ -1635,7 +1660,14 @@ class CharacterBase(Entity):
             xy_hitbox['z2'] = self.z+self.jump_z+self.height
             xy_hitbox['z_abs'] = self.z+self.jump_z
             if self.attack_state.is_fly_attack:
-                xy_hitbox['z1'] = self.z
+                # 取得當前絕對高度
+                abs_z = self.get_abs_z()
+                # 讓判定範圍從腳底下方 1.0 單位到頭頂
+                # 這樣只有當你跳得夠低、或是敵人在你下方合理距離時才會中
+                xy_hitbox['z1'] = abs_z - 1.0
+                xy_hitbox['z2'] = abs_z + self.height
+                xy_hitbox['z_abs'] = abs_z  # 物理引擎改回讀取目前的實際高度
+                print(f'{self.name}: xy_hitbox_z=[{abs_z-1.0}, {abs_z+self.height}], z_abs={abs_z}')
             return xy_hitbox
             #return self.attack_state.get_hitbox(self.x+self.width/2, self.y, self.facing)
 
@@ -1689,9 +1721,9 @@ class CharacterBase(Entity):
 
                 if intent['horizontal'] == MoveState.RUN:
                     self.high_jump = True
-                self.vz = 1.8 if intent['horizontal'] == MoveState.RUN else 1.4
-                self.jump_z = 0.1
-                self.color = self.jump_color
+                # 🟢 修正：跳躍力從 1.4/1.8 提升至 8.0/10.0 左右
+                self.vz = 0.4 if intent['horizontal'] == MoveState.RUN else 0.3
+                self.jump_z = 0.2  # 起跳高度也稍微拉高一點，避免瞬間 LANDING
                 self.jumpping_flag = True
 
             move_rate = 0.4 if intent['horizontal'] == MoveState.RUN else 0.2
@@ -1990,7 +2022,7 @@ class CharacterBase(Entity):
         #     return True
 
         # 狀態判斷 A: 正常行動 (招式結束或 IDLE)
-        print(f'try_consume_buffer={self.input_buffer}')
+        #print(f'try_consume_buffer={self.input_buffer}')
         can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL and not self.is_locked()
         # 狀態判斷 B: 受身系統 (在擊飛狀態快落地時按跳)
         is_tech_roll = (self.combat_state == CombatState.KNOCKBACK and
@@ -2460,7 +2492,7 @@ class Player(CharacterBase):
             if self.step_pending[dir] < self.current_frame:
                 self.step_pending[dir] = -9999
         if self.is_falling():
-            self.jump_z += self.vz
+            #self.jump_z += self.vz
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
@@ -2469,11 +2501,9 @@ class Player(CharacterBase):
         if self.jump_z != 0:
             self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
             self.color = self.jump_color if self.vz > 0 else self.fall_color
-            self.jump_z += self.vz
-            self.vz -= 0.05
             if self.jump_z <= 0:
-                # self.jump_z = 0
-                # self.vz = 0
+                self.jump_z = 0
+                self.vz = 0
                 self.color = self.default_color
                 self.jumpping_flag = False
                 self.high_jump = False
@@ -2678,7 +2708,7 @@ class Ally(CharacterBase):
     def handle_movement(self):
         # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
         if self.is_falling():
-            self.jump_z += self.vz
+            #self.jump_z += self.vz
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
@@ -2686,11 +2716,9 @@ class Ally(CharacterBase):
         if self.jump_z != 0 and not self.held_by:
             self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
             self.color = self.jump_color if self.vz > 0 else self.fall_color
-            self.jump_z += self.vz
-            self.vz -= 0.05
             if self.jump_z <= 0:
-                # self.jump_z = 0
-                # self.vz = 0
+                self.jump_z = 0
+                self.vz = 0
                 self.color = self.default_color
 
 class StandEntity(Ally):
@@ -2882,7 +2910,8 @@ class Enemy(CharacterBase):
     def handle_movement(self):
         # 實作完整的移動邏輯（左右移動、跑步、跳躍、判斷地板等）
         if self.is_falling():
-            self.jump_z += self.vz
+            #self.jump_z += self.vz
+
             self.x += self.vel_xy[0] * 0.2
             self.y += self.vel_xy[1] * 0.2
             self.color = self.fall_color
@@ -2890,11 +2919,9 @@ class Enemy(CharacterBase):
         if self.jump_z != 0 and not self.held_by:
             self.state = MoveState.JUMP if self.vz > 0 else MoveState.FALL
             self.color = self.jump_color if self.vz > 0 else self.fall_color
-            self.jump_z += self.vz
-            self.vz -= 0.05
             if self.jump_z <= 0:
-                # self.jump_z = 0
-                # self.vz = 0
+                self.jump_z = 0
+                self.vz = 0
                 self.color = self.default_color
 
 class BigEnemy(Enemy):

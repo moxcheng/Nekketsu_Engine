@@ -127,7 +127,7 @@ class ComponentHost:
         # cx: 腳底中心 X
         cx = int((owner.x + owner.width / 2) * TILE_SIZE) - cam_x
         # cy: 腳底中心 Y (不扣除 owner.height)
-        cy = int((owner.map_h - owner.y) * TILE_SIZE - owner.jump_z * 5 - terrain_z_offset) - cam_y + tile_offset_y
+        cy = int((owner.map_h - owner.y) * TILE_SIZE - owner.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
         return cx, cy
 
 class HoldableComponent(Component):
