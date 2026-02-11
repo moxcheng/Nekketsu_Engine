@@ -57,7 +57,8 @@ def update_passive_physics(unit):
 
         # 🟢 關鍵修正：只要低於地表，立即強制歸零並回報
         if unit.jump_z <= 0:
-            events.append(("LANDING", old_vz))
+            impact_energy = (unit.z + abs(old_vz) * 2) * getattr(unit, 'weight', 1.0) * 10.0
+            events.append(("LANDING", impact_energy))
             unit.jump_z = 0  # 強制對齊地表
             unit.vz = 0  # 徹底切斷垂直動量
 

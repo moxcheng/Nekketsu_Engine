@@ -54,7 +54,7 @@ MAX_REASONABLE_VEL = 2.0 # 定義一個「軟上限（Soft Cap）」，超過這
 # --- 5. 環境傷害門檻 (擬真化建議值) ---
 WALL_IMPACT_DAMAGE_THRESHOLD = 0.2  # 撞牆受傷的速度門檻
 WALL_IMPACT_DAMAGE_MULT = 15        # 撞牆傷害倍率
-FALL_DAMAGE_THRESHOLD = 0.3         # 墜地受傷的垂直速度門檻
+FALL_DAMAGE_THRESHOLD = 0.15        # 墜地受傷的垂直速度門檻
 FALL_DAMAGE_MULT = 20               # 墜地傷害倍率
 
 # Config.py

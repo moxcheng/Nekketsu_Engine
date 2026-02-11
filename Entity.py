@@ -94,7 +94,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         # 🟢 呼叫一個 Hook 讓子類別擴充行為 (例如 Character 的硬直)
         self.on_land_reaction()
 
-    def on_land_reaction(self):
+    def on_land_reaction(self, impact_energy=0, is_passive=False):
         """落地反應：Entity 預設不做事，Character 會在此處清除攻擊狀態與設硬直"""
         pass
 

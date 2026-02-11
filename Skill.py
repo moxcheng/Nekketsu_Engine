@@ -196,7 +196,7 @@ class ThrowAttackState(AttackState):
                 # 3. 慣性繼承：物體速度 = (投擲者當前速度 * 繼承比) + (投擲力 * 加成)
                 # 這樣一來，如果你在跳躍中投擲，vz 就會自動包含跳躍的向上動量
                 self.item.vel_x = (self.character.vel_x * 0.5) + (facing_dir * base_power * state_multiplier)
-                self.item.vz = (self.character.vz * 0.8) + 0.3  # 繼承垂直動量並稍微往上拋
+                self.item.vz = (self.character.vz * 0.5) + 0.1  # 繼承垂直動量並稍微往上拋
 
 
                 offset = (self.character.width) + 0.3  # 原本是 ±1，改為角色寬 + 安全距離
@@ -448,11 +448,11 @@ attack_data_dict = {
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_power=[1.0,3.0],
+        knock_back_power=[0.5,2.0],
         damage = 20,
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio = [15,10,35], #必須與duration等長
-power=100, absorption=0.1, angle=80
+power=50, absorption=0.1, angle=80
     ),
     AttackType.PUSH: AttackData(
         attack_type=AttackType.PUSH,
@@ -462,11 +462,11 @@ power=100, absorption=0.1, angle=80
         hitbox_func=front_hitbox_func2,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
-        knock_back_power=[1.5, 2.0],
+        knock_back_power=[2.0, 0.5],
         damage=20,
         # frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio=[15, 10, 35],  # 必須與duration等長
-        power=100, absorption=0.9, angle=0
+        power=40, absorption=0.9, angle=0
     ),
     AttackType.PUNCH: AttackData(
         attack_type=AttackType.PUNCH,
@@ -492,7 +492,7 @@ power=100, absorption=0.1, angle=80
         damage=8,
         frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
         frame_map_ratio=[8, 16, 8],
-        knock_back_power=[0.5,1.0],
+        knock_back_power=[1.0,0.1],
         hit_stop_frames=5
     ),
     AttackType.MAHAHPUNCH: AttackData(
@@ -503,7 +503,7 @@ power=100, absorption=0.1, angle=80
         hitbox_func = punch_hitbox_func,
         condition_func=lambda actor: True,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
-        knock_back_power=[1.0,0.5],
+        knock_back_power=[1.5,0.0],
         damage = 7,
         frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
         effect_component_config={
@@ -547,7 +547,7 @@ power=100, absorption=0.1, angle=80
         damage=8,
         frame_map=[1] * 12 + [0] * 24,
         frame_map_ratio=[12, 24],
-        knock_back_power=[1.0,0.2],
+        knock_back_power=[1.0,0.1],
         hit_stop_frames=5
     ),
     AttackType.FLY_KICK: AttackData(
@@ -558,7 +558,7 @@ power=100, absorption=0.1, angle=80
         hitbox_func=kick_hitbox_func,
         condition_func=lambda actor: actor.jump_z > 0,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_power=[0.5,0.2],
+        knock_back_power=[0.2,-1.0],
         damage=12,
         frame_map_ratio = [999],
         hit_stop_frames=5
@@ -571,7 +571,7 @@ power=100, absorption=0.1, angle=80
         hitbox_func=down_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.BURN, AttackEffect.AFTER_IMAGE],
-        knock_back_power=[1.0,1.5],
+        knock_back_power=[0.5,-1.5],
         damage=35,
         physical_change={'vz':GRAVITY*-2},
         effect_component_config={
@@ -598,7 +598,7 @@ power=100, absorption=0.1, angle=80
         condition_func=lambda actor: True,
         force_move=0.3,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_power=[0.5,0.2],
+        knock_back_power=[0.7,0.05],
         damage = 5,
         frame_map_ratio = [10,20]
     ),

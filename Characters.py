@@ -162,12 +162,12 @@ class CharacterBase(Entity):
 
         self.scene = None
 
-        self.weight = 0.15 # 作為投擲用物件
+        self.weight = weight # 作為投擲用物件
         self.flying = False
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
-        self.throw_power = 1.0  #投擲基本力量
+        self.throw_power = 0.5  #投擲基本力量
         
 
         self.jump_key_block = False #避免長按連續跳躍
@@ -588,14 +588,15 @@ class CharacterBase(Entity):
             swing_offset_y = -self.held_by.height * 0.8
         if self.held_by and self.held_by.attack_state and self.held_by.attack_state.name == 'swing':
             #is_being_swung = True
-            print(f'{self.name} 被揮舞!')
+
             dir = 1
             if self.held_by.facing == DirState.LEFT:
                 dir = -1
             # swing_offset_x = dir*int(self.held_by.width * TILE_SIZE * 0.6)
             # swing_offset_y += self.held_by.height*TILE_SIZE*0.4
-            swing_offset_x = dir * int(self.held_by.width * 0.6)
-            swing_offset_y += self.held_by.height*0.4
+            swing_offset_x = dir * self.held_by.height * 0.6*TILE_SIZE
+            swing_offset_y += self.held_by.width*0.4*TILE_SIZE
+            print(f'{self.name} 被揮舞 {swing_offset_x}, {swing_offset_y}!')
 #--------
 
 
@@ -668,6 +669,8 @@ class CharacterBase(Entity):
                 dead_frame.set_alpha(128)  # 半透明
                 win.blit(dead_frame, (draw_x, draw_y))
         else:
+            if swing_offset_x != 0.0 or swing_offset_y != 0.0:
+                print(f"draw_offset swing={swing_offset_x},{swing_offset_y}")
             win.blit(frame, (draw_x+swing_offset_x, draw_y+swing_offset_y))
 
         self.current_anim_frame = frame
@@ -979,12 +982,36 @@ class CharacterBase(Entity):
         self.falling_timer = 0
         self.falling_y_offset = 0
 
-    def on_land_reaction(self):
+    def on_land_reaction(self, impact_energy=0, is_passive=False):
         """
         角色專屬的落地反應。
         因為 Entity.check_ground_contact 已經處理了物理，
         這裡只處理『人物狀態變更』。
         """
+        # 🟢 修正後的門檻邏輯
+        # 主動跳躍：門檻極高 (例如 150)，除非從懸崖跳下否則不扣血
+        # 被動摔落：門檻低 (例如 30)，體現重摔感
+        current_threshold = 35 if is_passive else 150
+        print(f'{self.name} on_land_reaction: TH {current_threshold}, energy {impact_energy}, passive {is_passive}')
+
+        # 建立一個虛擬的落地傷害 AttackData
+        if is_passive:
+            from Skill import AttackData, AttackType
+            fall_atk = AttackData(
+                attack_type=AttackType.FALL_DAMAGE,
+                duration=1,
+                power=impact_energy,
+                absorption=1.0,  # 落地傷害由身體全額吸收，不產生位移
+                impact_angle=0
+            )
+            # 讓自己受到落地傷害，attacker 為 None 表示環境傷害
+            self.on_hit(None, fall_atk)
+            if impact_energy > current_threshold:  # 使用 Config 中的門檻
+                if self.scene:
+                    self.scene.trigger_shake(duration=15, intensity=5)
+                    # 根據能量決定是否產生落地煙塵特效
+                    self.scene.create_effect(self.x+self.width/2, self.y, self.z, 'grounding_impact')
+
         if self.attack_state:
             self.attack_state = None
 
@@ -1158,7 +1185,7 @@ class CharacterBase(Entity):
 
         # fallback
         return -1
-    
+
     def resolve_combat_state_on_hit(self, attack_data):
         #處理虛弱狀態
         effects = attack_data.effects
@@ -1198,29 +1225,26 @@ class CharacterBase(Entity):
             self.into_weak_state()
 
         #擊退處理
-        if attack_data.knock_back_power[0] > 0 or attack_data.knock_back_power[1] > 0 and not (self.combat_state != CombatState.DOWN and self.health > 0):
+        #physics_scale = 0.2
+        min_knockback_threshold = (getattr(self, 'weight', 1.0))*0.4
+        power_x, power_z = attack_data.knock_back_power
+        # power_x*= physics_scale
+        # power_z*= physics_scale
+        #print(f'{self.name} 受到 {attack_data.attack_type}攻擊! min_kb={min_knockback_threshold}, power = ({power_x:.3f}, {power_z:.3f}) {(self.combat_state != CombatState.DOWN and self.health > 0)}')
+        #if (power_x > min_knockback_threshold or abs(power_z) > min_knockback_threshold) and not (self.combat_state != CombatState.DOWN and self.health > 0):
+        if (power_x > min_knockback_threshold or abs(power_z) > min_knockback_threshold) and not (self.combat_state == CombatState.DOWN and self.health > 0):
             #倒地狀態下不擊退
-            #if self.combat_state != CombatState.DOWN or (self.combat_state == CombatState.DOWN and self.health <= 0):
-            #self.combat_state = CombatState.KNOCKBACK
             self.into_knockback_state()
             resistance = 1.0 + (getattr(self, 'weight', 0.15) * 5)
             #knock_back_power[0]水平 [1]垂直
-            if attack_data.knock_back_power[0] != 0:
-                # direction = self.get_knock_direction(attacker, attack_data)
-                # self.vel_x += (direction * attack_data.knock_back_power[0]) / resistance
+            if power_x > 0:
                 direction = self.get_knock_direction(attacker, attack_data)
-                added_vx = (direction * attack_data.knock_back_power[0]) / resistance
-
-                # 🟢 邊際效用遞減：如果目前已經很快，新增的速度要打折
-                # 這裡使用簡單的比例：剩餘空間越多，加成越多
+                added_vx = (direction * power_x) / resistance
                 current_speed_ratio = abs(self.vel_x) / MAX_REASONABLE_VEL
                 scaling_factor = max(0.2, 1.0 - current_speed_ratio)  # 最少保留 20% 的衝擊力
-
                 self.vel_x += added_vx * scaling_factor
-            if attack_data.knock_back_power[1] != 0:
-                # self.vz += attack_data.knock_back_power[1] / resistance
-                # self.jump_z = max(0.2, attack_data.knock_back_power[1] * 0.05)
-                added_vz = attack_data.knock_back_power[1] / resistance
+            if power_z > 0:
+                added_vz = power_z / resistance
                 # vz 同理，防止向上飛到看不見
                 current_vz_ratio = abs(self.vz) / MAX_REASONABLE_VEL
                 scaling_factor_z = max(0.2, 1.0 - current_vz_ratio)
@@ -1230,6 +1254,8 @@ class CharacterBase(Entity):
                 # 只要確保第一擊讓他在空中即可 (0.1~0.2)
                 if self.jump_z == 0:
                     self.jump_z = 0.2
+            else:
+                self.vz += power_z/resistance
 
         if AttackEffect.SHORT_STUN in effects:
             self.set_rigid(ON_HIT_SHORT_STUN_TIME)
@@ -1370,21 +1396,48 @@ class CharacterBase(Entity):
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
 
     def on_hit(self, *args):
-        #return self.on_hit_by_power(*args)
-        return self._on_hit(*args)
+        return self.on_hit_by_power(*args)
+        #return self._on_hit(*args)
+
     def on_hit_by_power(self, attacker, attack_data):
-        # --- 1. 基礎防護檢查 ---
+        # --- 1. 基礎防護檢查 (無敵與鋼體) ---
+        if attacker:
+            attack_name = attacker.name
+        else:
+            attack_name = "環境物件"
+
+        # 無敵檢查
         if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
             return
-        if self.super_armor_timer > 0:
-            pass  # 鋼體僅不跳動畫，傷害照吃
 
+        # 鋼體日誌 (鋼體不跳過傷害，但通常會配合減少受擊硬直，這裡先保留邏輯)
+        if self.super_armor_timer > 0:
+            print(f"[{self.name}] 鋼體作用中，無視受擊硬直")
+
+        # --- 2. 🟢 格擋系統 (Guard) 整合 ---
+        # 判斷條件：有攻擊狀態、非無敵/鋼體、且面向與攻擊者相反
+        can_guard = (self.attack_state and not self.is_invincible()
+                     and self.super_armor_timer <= 0 and attacker
+                     and self.facing != attacker.facing)
+
+        if can_guard:
+            # 前搖狀態中 (frame_index 較小) 才能觸發格擋
+            if not self.attack_state.should_trigger_hit() and self.attack_state.frame_index < ON_GUARD_MAX_WINDOW:
+                basic_guard_rate = 1.0 if self.name == 'player' else getattr(self, 'morale', 0.5)
+                bonus_rate = 0.2 if getattr(self, 'personality', '') == 'cautious' else 0.0
+
+                if random.random() < (basic_guard_rate + bonus_rate):
+                    self.trigger_guard_success(attacker, attack_data)
+                    print(f'{self.name} 成功招架了來自 {attack_name} 的攻擊')
+                    return  # 🔴 格擋成功，直接攔截，不計算後續傷害與動能
+
+        # --- 3. 命中基本狀態設定 ---
         self.hit = True
         self.hit_timer = 20
         if attacker and attacker.attack_state:
             attacker.attack_state.has_hit.append(self)
 
-        # --- 2. 🟢 動能傳導核心結算 ---
+        # --- 4. 🟢 動能傳導核心結算 ---
         # 取得 Power (支援 callable 公式)
         if callable(attack_data.power):
             raw_power = attack_data.power(attacker)
@@ -1395,44 +1448,137 @@ class CharacterBase(Entity):
         final_damage = int(raw_power * attack_data.absorption)
         _, damage = self.take_damage(attacker, attack_data, manual_damage=final_damage)
 
-        # B. 位移結算 (殘餘能量 / 體重)
+        # B. 士氣系統調整 (根據傷害比例扣除)
+        morale_decay = (damage / max(1, self.max_hp))
+        pers = getattr(self, 'personality', 'normal')
+        if pers == 'brave':
+            morale_decay /= 2
+        elif pers == 'coward':
+            morale_decay *= 1.3
+        if hasattr(self, 'morale'):
+            self.morale -= morale_decay
+
+        # C. 位移結算 (殘餘能量 / 阻力)
         residual_energy = raw_power * (1 - attack_data.absorption)
-        # 🟢 修正 1：引入一個「動量轉換率」常數 (例如 0.2 ~ 0.3)
-        # 這樣 100 Power 的招式才不會產生 100 速度
-        KINETIC_CONVERSION_RATE = 0.01
 
-        # 🟢 修正 2：加強重量的影響力 (平方或加乘)
-        resistance = max(0.2, self.weight)
-        impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
+        # 🟢 修正：引入「啟動門檻」與「動量轉換率」
+        # 只有當殘餘能量超過 (重量 * 係數) 時才產生擊飛，解決低重力下的飄移問題
+        KB_THRESHOLD = self.weight * 5.0
+        KINETIC_CONVERSION_RATE = 0.1  # 100 Power 產生 10 單位速度
 
-        # C. 角度分解
-        import math
-        rad = math.radians(attack_data.impact_angle)
-        dir_x = self.get_knock_direction(attacker, attack_data)
+        new_vx, new_vz = 0, 0
 
-        new_vx = impulse * math.cos(rad) * dir_x
-        new_vz = impulse * math.sin(rad)
+        if residual_energy > KB_THRESHOLD:
+            resistance = max(0.2, self.weight)
+            impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
 
-        print(f'{attack_data.attack_type}: {attack_data.damage}->{final_damage} impulse{impulse} ({new_vx},{new_vz})')
+            # 角度分解
+            import math
+            rad = math.radians(attack_data.impact_angle)
+            dir_x = self.get_knock_direction(attacker, attack_data)
 
-        # --- 3. 狀態套用與物理緩衝 ---
+            new_vx = impulse * math.cos(rad) * dir_x
+            new_vz = impulse * math.sin(rad)
+
+            print(
+                f'{attack_data.attack_type}: Pwr:{raw_power} -> Dmg:{final_damage} Imp:{impulse:.2f} V:({new_vx:.2f},{new_vz:.2f})')
+
+        # --- 5. 狀態套用與物理緩衝 ---
         if self.combat_state != CombatState.DEAD:
             self.resolve_combat_state_on_hit(attack_data)
-            # 這裡套用重構後的狀態鎖
-            self.into_knockback_state(new_vx, new_vz)
+            # 如果有動量產出，套用效果 (例如擊飛動畫)
+            self.apply_attack_effects(attacker, attack_data)
+            # 注意：此處應確保 apply_attack_effects 會處理 new_vx/new_vz 或呼叫 into_knockback
 
-        # --- 4. 清理與特效 ---
+        # --- 6. 清理與持物掉落 ---
         if self.attack_state:
-            self.attack_state = None
-            self.state = MoveState.STAND
+            # 鋼體不中斷攻擊狀態
+            if self.super_armor_timer <= 0:
+                self.attack_state = None
+                self.state = MoveState.STAND
+
+        # 處理持有物掉落
+        if hasattr(self, "held_object") and self.held_object:
+            self.held_object.held_by = None
+            self.held_object = None
+
         self.on_hit_count += 1
 
-        # 產生打擊火花與 HitStop
+        # --- 7. 特效與 HitStop ---
         if attacker and attacker.get_hitbox():
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
             self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
+
             if attack_data.hit_stop_frames > 0:
                 self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
+                self.scene.trigger_shake(duration=attack_data.hit_stop_frames, intensity=3)
+
+                # 視覺化 Hitstop
+                flip = True if attacker.x < self.x else False
+                self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
+    # def on_hit_by_power(self, attacker, attack_data):
+    #     # --- 1. 基礎防護檢查 ---
+    #     if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
+    #         return
+    #     if self.super_armor_timer > 0:
+    #         pass  # 鋼體僅不跳動畫，傷害照吃
+    #
+    #     self.hit = True
+    #     self.hit_timer = 20
+    #     if attacker and attacker.attack_state:
+    #         attacker.attack_state.has_hit.append(self)
+    #
+    #     # --- 2. 🟢 動能傳導核心結算 ---
+    #     # 取得 Power (支援 callable 公式)
+    #     if callable(attack_data.power):
+    #         raw_power = attack_data.power(attacker)
+    #     else:
+    #         raw_power = attack_data.power
+    #
+    #     # A. 傷害結算 (做功 x 吸收率)
+    #     final_damage = int(raw_power * attack_data.absorption)
+    #     _, damage = self.take_damage(attacker, attack_data, manual_damage=final_damage)
+    #
+    #     # B. 位移結算 (殘餘能量 / 體重)
+    #     residual_energy = raw_power * (1 - attack_data.absorption)
+    #     # 🟢 修正 1：引入一個「動量轉換率」常數 (例如 0.2 ~ 0.3)
+    #     # 這樣 100 Power 的招式才不會產生 100 速度
+    #     KINETIC_CONVERSION_RATE = 0.1
+    #
+    #     # 🟢 修正 2：加強重量的影響力 (平方或加乘)
+    #     resistance = max(0.2, self.weight)
+    #     impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
+    #
+    #     # C. 角度分解
+    #     import math
+    #     rad = math.radians(attack_data.impact_angle)
+    #     dir_x = self.get_knock_direction(attacker, attack_data)
+    #
+    #     new_vx = impulse * math.cos(rad) * dir_x
+    #     new_vz = impulse * math.sin(rad)
+    #
+    #     print(f'{attack_data.attack_type}: {attack_data.damage}->{final_damage:.3f} impulse{impulse:.3f} ({new_vx:.3f},{new_vz:.3f})')
+    #
+    #     # --- 3. 狀態套用與物理緩衝 ---
+    #     if self.combat_state != CombatState.DEAD:
+    #         self.resolve_combat_state_on_hit(attack_data)
+    #         # 這裡套用重構後的狀態鎖
+    #         #self.into_knockback_state(new_vx, new_vz)
+    #         self.apply_attack_effects(attacker, attack_data)
+    #
+    #
+    #     # --- 4. 清理與特效 ---
+    #     if self.attack_state:
+    #         self.attack_state = None
+    #         self.state = MoveState.STAND
+    #     self.on_hit_count += 1
+    #
+    #     # 產生打擊火花與 HitStop
+    #     if attacker and attacker.get_hitbox():
+    #         hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+    #         self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
+    #         if attack_data.hit_stop_frames > 0:
+    #             self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
     def update(self):
         self.current_frame += 1
         if self.rigid_timer > 0:
@@ -1456,14 +1602,14 @@ class CharacterBase(Entity):
 
         # 每禎遞減攻擊計時器
         #死亡消失
-        if self.health <= 0 and self.combat_state not in [CombatState.KNOCKBACK] and self.death_knockback == False:
-
+        if self.health <= 0 and self.combat_state not in [CombatState.KNOCKBACK] and self.death_knockback == False and self.vel_x <= 0 and abs(self.vz) <= 0:
+            #只有本身沒有被動位移者會強加一個小的擊退
             if self.facing == DirState.LEFT:
-                vel_x = 0.5
+                vel_x = 0.1
             else:
-                vel_x = -0.5
+                vel_x = -0.1
             vz = 0.1
-            self.jump_z = 0.3
+            self.jump_z = 0.1
             #self.combat_state = CombatState.KNOCKBACK
             self.into_knockback_state(vel_x, vz)
             self.death_knockback = True
@@ -1667,7 +1813,7 @@ class CharacterBase(Entity):
                 xy_hitbox['z1'] = abs_z - 1.0
                 xy_hitbox['z2'] = abs_z + self.height
                 xy_hitbox['z_abs'] = abs_z  # 物理引擎改回讀取目前的實際高度
-                print(f'{self.name}: xy_hitbox_z=[{abs_z-1.0}, {abs_z+self.height}], z_abs={abs_z}')
+                #print(f'{self.name}: xy_hitbox_z=[{abs_z-1.0}, {abs_z+self.height}], z_abs={abs_z}')
             return xy_hitbox
             #return self.attack_state.get_hitbox(self.x+self.width/2, self.y, self.facing)
 
@@ -2793,7 +2939,7 @@ class Enemy(CharacterBase):
         self.ai_move_speed = ai_move_speed
         self.popup=config_dict.get("popup")
         if self.popup and "landing" in self.popup:
-            self.jump_z = 20
+            self.jump_z = 5
             self.vz = -0.2
 
         # 4) 調整動畫貼圖大小

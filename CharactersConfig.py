@@ -195,6 +195,7 @@ NPC_SHUKI_0_CONFIG={
     'name': "shuki0",
     "image_path": "..\\Assets_Drive\\madou\\shuki0_96.png",
     "scale":7/4,
+"weight":1.5,
     "animator_config":{
         "frame_width":96,
         "frame_height":96,
@@ -209,6 +210,7 @@ NPC_SHUKI_1_CONFIG={
     'name': "shuki1",
     "image_path": "..\\Assets_Drive\\madou\\shuki1_96.png",
     "scale":5/4,
+"weight":1.1,
     "animator_config":{
         "frame_width":96,
         "frame_height":96,
@@ -223,6 +225,7 @@ NPC_SHUKI_2_CONFIG={
     'name': "shuki2",
     "image_path": "..\\Assets_Drive\\madou\\shuki2_96.png",
     "scale":6/4,
+"weight":1.2,
     "animator_config":{
         "frame_width":96,
         "frame_height":96,
@@ -237,6 +240,7 @@ NPC_SHUKI_3_CONFIG={
     'name': "shuki3",
     "image_path": "..\\Assets_Drive\\madou\\shuki3_96.png",
     "scale":1.0,
+    "weight":0.8,
     "animator_config":{
         "frame_width":96,
         "frame_height":96,
@@ -251,6 +255,7 @@ NPC_SHUKI_BOSS_CONFIG={
     'name': "boss",
     "image_path": "..\\Assets_Drive\\madou\\shuki_boss_96.png",
     "scale": 2.0,
+"weight":1.5,
     "animator_config":{
         "frame_width":96,
         "frame_height":96,
@@ -265,6 +270,7 @@ NPC_SHUKI_NEW_1_CONFIG={
     'name': "shuki_new1",
     "image_path": "..\\Assets_Drive\\madou\\shuki_new1.png",
     "scale":1.3,
+"weight":1.3,
     "animator_config":{
         "frame_width":128,
         "frame_height":128,

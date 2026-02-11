@@ -348,31 +348,40 @@ class SceneManager:
                 # 2. 仲裁物理事件 (這解決寫在 Mixin 裡的混亂)
                 for event_type, value in phys_events:
                     if event_type == "LANDING":
+                        # value 在 PhysicsUtils 裡已經被定義為 impact_energy (位能)
+                        impact_energy = value
                         # 取得該單位的時停狀態
                         unit_frozen = is_time_frozen and unit not in self.env_manager.highlight_units
 
                         # 1. 取得單位的控制狀態
                         # 判斷是否為主動動作：跳躍中、下落中、或是特定技能中
-                        is_active_behavior = False
-                        nonactive_behavior = True
+                        is_passive = True
                         if hasattr(unit, 'state'):
-                            nonactive_behavior = unit.combat_state in [CombatState.KNOCKBACK, CombatState.DOWN]
+                            is_passive = unit.combat_state in [CombatState.KNOCKBACK, CombatState.DOWN]
+                        # 2. 🟢 修正：呼叫 landing 邏輯時帶入能量
+                        # 這裡會觸發 Character.on_land_reaction
+                        print(f'{unit.name} energy={impact_energy}')
+                        unit.on_land_reaction(impact_energy=impact_energy, is_passive=is_passive)
 
-                        # 2. 定義動態閾值 (白話：主動跳下很耐摔，被動摔落很痛)
-                        # 主動時：除非高到離譜（例如 vz < -2.5），否則不判定為摔傷
-                        # 被動時：維持你原本觀察到的敏感度 (例如 vz < -0.3)
-                        damage_threshold = -2.5 if nonactive_behavior else -4
-                        print(f'{unit.name} jump value: {value}')
-                        # 🟢 在此處實作你想要的「負 vz 強制倒地」
-                        if value < damage_threshold and unit.unit_type == 'character':
+                        if is_passive and impact_energy > 30 and unit.unit_type == 'character':
                             if unit_frozen:
                                 unit.pending_down = True
                             else:
                                 unit.into_down_state()
-                                self.trigger_shake(duration=15, intensity=8)
-                                self.create_effect(unit.x+unit.width/2, unit.y+unit.height/4, unit.z, 'grounding_impact')
+                                # self.trigger_shake(duration=15, intensity=8)
+                                # self.create_effect(unit.x + unit.width / 2, unit.y + unit.height / 4, unit.z, 'grounding_impact')
                         else:
                             unit.check_ground_contact()  # 執行一般落地邏輯
+                        # # 🟢 在此處實作你想要的「負 vz 強制倒地」
+                        # if value < damage_threshold and unit.unit_type == 'character' and is_passive:
+                        #     if unit_frozen:
+                        #         unit.pending_down = True
+                        #     else:
+                        #         unit.into_down_state()
+                        #         self.trigger_shake(duration=15, intensity=8)
+                        #         self.create_effect(unit.x+unit.width/2, unit.y+unit.height/4, unit.z, 'grounding_impact')
+                        # else:
+                        #     unit.check_ground_contact()  # 執行一般落地邏輯
 
                     elif event_type == "WALL_HIT":
                         if abs(value) > 0.2:
@@ -1345,8 +1354,40 @@ class SceneManager:
                                 victim.on_hit(attacker, attacker.attack_state.data)
 
                         # 2. 如果是飛行物體 (保齡球效應：Item 或正在飛的角色)
-                        elif attacker.flying:
-                            self.resolve_projectile_impact(attacker, victim)
+                        # elif attacker.flying:
+                        #     self.resolve_projectile_impact(attacker, victim)
+                                # 情況 2：飛行物體 (保齡球效應：Item 或正在 KNOCKBACK 飛行的角色)
+                        elif attacker.flying or (hasattr(attacker,'combat_state') and attacker.combat_state == CombatState.KNOCKBACK):
+                            # 🟢 核心修正：計算動態動量
+                            # 1. 取得絕對水平動量 p = m * v
+                            impact_velocity = abs(attacker.vel_x)
+                            momentum = impact_velocity * attacker.weight
+
+                            # 2. 設定動量轉 Power 係數 (建議 60~100，視乎你的重力與速度感)
+                            # 在你的新物理下 (GRAVITY=0.02)，速度量級較小，係數可以稍微調高
+                            MOMENTUM_TO_POWER_SCALE = 80.0
+                            impact_power = momentum * MOMENTUM_TO_POWER_SCALE
+
+                            # 3. 建立動態碰撞專用的 AttackData (利用 Skill.py 中的 AttackData 類別)
+                            # 我們設定低吸收率 (absorption=0.3)，讓被撞的人飛得比受傷更遠
+                            from Skill import AttackData, AttackType
+                            crash_data = AttackData(
+                                attack_type=AttackType.THROW_CRASH,  # 需在你的 AttackType 定義
+                                duration=1,
+                                power=impact_power,
+                                absorption=0.3,  # 30% 轉傷害，70% 轉位移
+                                impact_angle=20  # 被撞到後稍微往斜上方彈
+                            )
+                            # 3. 🔴 修正：讓「雙方」都受傷
+                            # 被撞者受傷
+                            victim.on_hit(attacker, crash_data)
+
+                            # 攻擊者(投擲物)也承受反作用力傷害
+                            # 我們可以給予一個較高的吸收率，模擬撞擊硬物的反震
+                            attacker.on_hit(victim, crash_data)
+                            # 5. 物理反作用力：攻擊者撞到人後速度大幅衰減 (模擬能量傳導)
+                            attacker.vel_x *= 0.4
+                            print(f"[IMPACT] {attacker.name} 撞擊 {victim.name}: Power={impact_power:.2f}")
 
                     # B. 處理受擊對象是物品 (Item)
                     elif getattr(victim, 'unit_type', None) == 'item':
