@@ -21,7 +21,6 @@ class Item(Entity):
         self.jump_z = 0.0  # 可選：讓 item 可以「拋起」
         self.color = (150, 150, 150)  # 預設灰色
         self.timer = 0
-        self.flying = False
         self.breakthrough = False
         self.attack_state = None
         self.swing_damage = 2
@@ -32,7 +31,7 @@ class Item(Entity):
         self.attacker_attack_data = None
 
     def clear_autonomous_behavior(self):
-        self.flying = False
+        self.is_thrown = False
         self.breakthrough = False
         self.attack_state = None
         self.hit_someone = False
@@ -59,6 +58,7 @@ class Item(Entity):
     def is_pickable(self):
         return not self.held_by
     def update(self):
+        self.timer -=1
         if self.external_control:
             self.update_by_external_control()
             return
@@ -66,13 +66,6 @@ class Item(Entity):
         if self.held_by:
             self.on_held_location()
             return
-
-            # 🟢 修正：如果是飛行狀態，只執行 Z 軸變化 (on_fly_z)
-        # if self.flying:
-        #     self.on_fly_z()
-
-            # 🟢 關鍵：一定要呼叫這個，才能讓 vel_x 正確轉換為位移
-        #self.update_physics_only()
 
         self.z = self.get_tile_z(self.x, self.y)
 
@@ -147,7 +140,7 @@ class Rock(Item):
         cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
 
         color = self.color
-        if self.flying:
+        if self.is_thrown:
             color = self.fly_color
         pygame.draw.circle(win, color, (cx, cy), int(TILE_SIZE * 0.4))
 
@@ -155,10 +148,10 @@ class Rock(Item):
 
 class Fireball(Item):
     def __init__(self, x, y, map_info, owner=None):
-        super().__init__(name='火球', x=x, y=y, map_info=map_info, weight=0.0)
+        super().__init__(name='fireball', x=x, y=y, map_info=map_info, weight=0.0)
         self.owner = owner
         self.facing = owner.facing
-        self.speed = 0.1  # 自訂速度
+        self.speed = 0.15  # 自訂速度
         self.timer = 90  # 最多存活幀數
         self.width = 1.0
         self.height = 1.0
@@ -179,34 +172,46 @@ class Fireball(Item):
 
     def update(self):
         super().update()
-        if self.hit_someone or self.is_out_of_bounds():
+        if self.hit_someone or self.is_out_of_bounds() or self.timer <= 0 or self.x <= self.width/2 or self.x > self.map_w-self.width/2 :
             self.scene.mark_for_removal(self)
 
 
     def draw(self, win, cam_x, cam_y, tile_offset_y=0):
         offset_x, offset_y = 0, 0
         if self.held_by:
-            if self.held_by.facing == DirState.RIGHT:
-                offset_x = self.held_by.width*TILE_SIZE*0.6
-            elif self.held_by.facing == DirState.LEFT:
-                offset_x = 0
+            offset_x = self.held_by.width * TILE_SIZE * 0.3 * -1.0
+            if self.held_by.facing == DirState.LEFT:
+                offset_x *=-1.0
         cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
-        rect = self.image.get_rect(center=(cx, cy))
+        if self.held_by:
+            offset_y -= self.held_by.height*TILE_SIZE*0.3
+        rect = self.image.get_rect(center=(cx+offset_x, cy+offset_y))
+
         #print('fireball.draw')
         win.blit(self.image, rect)
         pygame.draw.rect(win, (255, 0, 0), rect, 1)
+
+    def get_hurtbox(self):
+        # 🟢 修正：讓火球的物理判定盒在 Z 軸向上與向下延伸
+        # 這樣火球即使在胸口高度，也能撞到稍微跳起或倒地的敵人
+        box = self.get_physics_box()
+        box['z1'] = self.get_abs_z() - 1.0  # 向下延伸
+        box['z2'] = self.get_abs_z() + 1.0  # 向上延伸
+        box['z_abs'] = self.get_abs_z()
+        return box
 
     def get_throw_attack_data(self, attacker):
         return AttackData(
         attack_type=AttackType.THROW,
         duration=32,
-        trigger_frame=16,
+        trigger_frame=20,
         recovery=8,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
         damage=200,
-        frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        frame_map_ratio=[16,16]
+        frame_map_ratio=[16,16],
+        power=200,
+        knock_back_power=[1.0,0.0],
     )
 
 class Bullet(Item):

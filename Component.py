@@ -301,7 +301,7 @@ class HoldFlyLogicMixin:
         # 🟢 修正：確保被持有時 jump_z 永遠不會低於地表偏移，避免掉落瞬間觸發落地
         self.jump_z = max(0.5, self.held_by.jump_z + self.held_by.height)
         self.vz = 0
-        self.flying = False  # 🟢 強制退出拋出狀態
+        self.is_thrown = False  # 🟢 強制退出拋出狀態
         self.hitting = []
         #print(f'{self.name} (x={self.x}, y={self.y}, z={self.z}, jump_z={self.jump_z}, jump_z_vel = {self.jump_z_vel}')
         #print('on_held_location')
@@ -310,7 +310,7 @@ class HoldFlyLogicMixin:
     def down_to_ground(self):
         self.jump_z = 0
         self.vz = 0
-        self.flying = False
+        self.is_thrown = False
         self.vz = 0
         print(f"[LOG] {self.name} 落地了")
     def check_collision(self, target):

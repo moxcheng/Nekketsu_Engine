@@ -67,7 +67,7 @@ PLAYER_KONOMI_CONFIG={
             "swing": [[9], [11]],
             "throw": [[27], [42,43]],
             "guard":[[41]],
-            "down_attack":[[13,48,49,48,49,48]],
+            "down_attack":[[13,48,49]],
             "hold_item":[[27]]
         }
     },
@@ -127,40 +127,9 @@ PLAYER_KONOMI_CONFIG={
         },
         "damage": 16}
     },
+    "super_ability": {"action":["stand", "timestop"], "mp":3}
 }
 
-PLAYER_REN_CONFIG={
-    'name': "player",
-    "image_path": "..//Assets_Drive//yamashiro_96.png",
-    "special_move": "..//Assets_Drive//yamashiro_super_move_96.png",
-    "special_move_staging":{
-        "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png","..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
-                            "..\\Assets_Drive\\madou\\pre_pose5.png","..\\Assets_Drive\\madou\\pre_pose6.png", "..\\Assets_Drive\\madou\\pre_pose7.png","..\\Assets_Drive\\madou\\pre_pose8.png",
-                            "..\\Assets_Drive\\madou\\pre_pose9.png", "..\\Assets_Drive\\madou\\pre_pose10.png"],
-        "portraits": [
-            {"path": "..\\Assets_Drive\\madou\\tachie_00.png", "start": 0.7, "end": 0.525, "dir": "L2R", "Offset_y": -50},
-            {"path": "..\\Assets_Drive\\madou\\tachie_01.png", "start": 0.525, "end": 0.4, "dir": "R2L", "Offset_y": -15},
-            {"path": "..\\Assets_Drive\\madou\\tachie_02.png", "start": 0.4, "end": 0.3, "dir": "L2R", "Offset_y": 15},
-            {"path": "..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir": "R2L", "Offset_y": 0}],
-        "effect": "..\\Assets_Drive\\madou\\tachie_5.png",
-        "portraits_begin": 0.7,
-        "timer": 500},
-    "frame_width": 96,
-    "frame_height": 96,
-    "enable_special_move":{
-            "pre_pose_background":["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
-                                 "..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
-                                 "..\\Assets_Drive\\madou\\pre_pose5.png","..\\Assets_Drive\\madou\\pre_pose6.png", "..\\Assets_Drive\\madou\\pre_pose7.png",
-                                 "..\\Assets_Drive\\madou\\pre_pose8.png","..\\Assets_Drive\\madou\\pre_pose9.png", "..\\Assets_Drive\\madou\\pre_pose10.png"],
-            "portraits":[{"path": "..\\Assets_Drive\\madou\\tachie_00.png", "start": 0.7, "end": 0.525, "dir": "L2R","Offset_y": -50},
-                       {"path": "..\\Assets_Drive\\madou\\tachie_01.png", "start": 0.525, "end": 0.4, "dir": "R2L","Offset_y": -15},
-                       {"path": "..\\Assets_Drive\\madou\\tachie_02.png", "start": 0.4, "end": 0.3, "dir": "L2R","Offset_y": 15},
-                       {"path": "..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir": "R2L","Offset_y": 0}],
-            "effect":"..\\Assets_Drive\\madou\\tachie_5.png",
-            "portraits_begin":0.7,
-            "timer":500
-        },
-    }
 # 定義每種狀態的 frame index list
 basic_anim_map1 = {
     "stand": [[0]],
@@ -190,6 +159,95 @@ basic_anim_map1 = {
     "popup":[[24,25,26,27]],
     "guard":[[1]]
 }
+
+PLAYER_REN_128_CONFIG={
+    "name": "player",
+    "image_path": "..//Assets_Drive//yamashiro_128.png",
+    "special_move": {"path":"..//Assets_Drive//yamashiro_super_move_128.png","width":128,"height":128},
+    "super_move_staging":{
+        "pre_pose_background": ["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png","..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
+                            "..\\Assets_Drive\\madou\\pre_pose5.png","..\\Assets_Drive\\madou\\pre_pose6.png", "..\\Assets_Drive\\madou\\pre_pose7.png","..\\Assets_Drive\\madou\\pre_pose8.png",
+                            "..\\Assets_Drive\\madou\\pre_pose9.png", "..\\Assets_Drive\\madou\\pre_pose10.png"],
+        "portraits": [
+            {"path": "..\\Assets_Drive\\madou\\tachie_00.png", "start": 0.7, "end": 0.525, "dir": "L2R", "Offset_y": -50},
+            {"path": "..\\Assets_Drive\\madou\\tachie_01.png", "start": 0.525, "end": 0.4, "dir": "R2L", "Offset_y": -15},
+            {"path": "..\\Assets_Drive\\madou\\tachie_02.png", "start": 0.4, "end": 0.3, "dir": "L2R", "Offset_y": 15},
+            {"path": "..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir": "R2L", "Offset_y": 0}],
+        "effect": "..\\Assets_Drive\\madou\\tachie_5.png",
+        "portraits_begin": 0.7,
+        "timer": 500},
+
+    "enable_special_move":{
+            "pre_pose_background":["..\\Assets_Drive\\madou\\pre_pose1.png", "..\\Assets_Drive\\madou\\pre_pose2.png",
+                                 "..\\Assets_Drive\\madou\\pre_pose3.png", "..\\Assets_Drive\\madou\\pre_pose4.png",
+                                 "..\\Assets_Drive\\madou\\pre_pose5.png","..\\Assets_Drive\\madou\\pre_pose6.png", "..\\Assets_Drive\\madou\\pre_pose7.png",
+                                 "..\\Assets_Drive\\madou\\pre_pose8.png","..\\Assets_Drive\\madou\\pre_pose9.png", "..\\Assets_Drive\\madou\\pre_pose10.png"],
+            "portraits":[{"path": "..\\Assets_Drive\\madou\\tachie_00.png", "start": 0.7, "end": 0.525, "dir": "L2R","Offset_y": -50},
+                       {"path": "..\\Assets_Drive\\madou\\tachie_01.png", "start": 0.525, "end": 0.4, "dir": "R2L","Offset_y": -15},
+                       {"path": "..\\Assets_Drive\\madou\\tachie_02.png", "start": 0.4, "end": 0.3, "dir": "L2R","Offset_y": 15},
+                       {"path": "..\\Assets_Drive\\madou\\tachie_2.png", "start": 0.3, "end": 0.01, "dir": "R2L","Offset_y": 0}],
+            "effect":"..\\Assets_Drive\\madou\\tachie_5.png",
+            "portraits_begin":0.7,
+            "timer":500
+        },
+    "animator_config": {
+        "frame_width": 128,
+        "frame_height": 128,
+        "anim_map":{        "stand": [[29,30,31]],
+        "walk": [[1, 3, 2]],
+        "run": [[42,43,44]],
+        "punch": [[4], [5], [6]],
+        "special_punch": [[4], [22], [23]],
+        "bash": [[41,40],[7]],
+        "jump": [[8]],
+        "fall": [[8]],
+        "push":[[13],[22],[23]],
+        "flykick": [[9]],
+        "kick": [[11], [10]],
+        "special_kick": [[37,38], [27,39]],
+        "on_fly": [[12]],
+        "slash": [[13], [14], [15]],
+        "on_hit": [[16]],
+        "weak": [[17]],
+        "down": [[18]],
+        "dead": [[19]],
+        "hold_item":[[20]],
+        'swing': [[20], [32]],
+        'throw': [[20], [37,36,36]],
+        'meteofall': [[7]],
+        'pose_1': [[6]],
+        "knockback": [[33,34,35], [18]],
+        "mahahpunch": [[4], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5]],
+        "brust": [[0], [28]],
+        "guard":[[28]],
+        "down_attack":[[24,25,26]]},
+    },
+    "stand":None,
+    "attack_table": {
+        'z_attack': {'default': AttackType.MAHAHPUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.BRUST,
+                     'down_action': AttackType.DOWN_STOMP},
+        'x_attack': {'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'run': AttackType.PUSH},
+        'c_attack': {'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
+        'swing_item': {'default': AttackType.SWING},
+        'throw_item': {'default': AttackType.THROW, 'jump': AttackType.THROW}},
+    "skill_overrides": {
+        AttackType.BASH: {"effect_component_config": {
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_power_fly_256.png",  # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 150,
+                "frame_width": 256,
+                "frame_height": 256
+            }
+        },
+            "damage": 16}},
+    "super_ability": {"action":["super_move"], "mp":3}
+
+}
+# 定義每種狀態的 frame index list
+
 
 NPC_SHUKI_0_CONFIG={
     'name': "shuki0",

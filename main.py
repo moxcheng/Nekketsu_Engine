@@ -597,6 +597,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
     #player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
     player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
+
+    #player = Player(px, py, map_info, PLAYER_REN_128_CONFIG)
+
     player.name='player'
     #掛載component
     player.health=500
@@ -674,8 +677,11 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             # scene.toggle_highlight_test(player)
             # scene.toggle_highlight_test(player.stand)
             # scene.trigger_za_warudo(player, 540)
-            player.try_use_ability('stand')
-            player.try_use_ability('timestop')
+
+            # player.try_use_ability('stand')
+            # player.try_use_ability('timestop')
+
+            #player.enable_super_move()
             #player.try_use_ability('haste')
             from Skill import ABILITY_DATA
             from Component import AbilityComponent

@@ -58,6 +58,7 @@ class SpriteAnimator:
 
     def slice_sheet(self):
         sheet_w, sheet_h = self.sheet.get_size()
+        print(f'slice_sheet>{sheet_w}({self.frame_width}) {sheet_h}')
         cols = sheet_w // self.frame_width
         rows = sheet_h // self.frame_height
         frames = []
@@ -163,7 +164,6 @@ class CharacterBase(Entity):
         self.scene = None
 
         self.weight = weight # 作為投擲用物件
-        self.flying = False
         self.held_by = None
         self.throw_damage = 15   #投擲物件傷害
         self.swing_damage = 10
@@ -243,6 +243,14 @@ class CharacterBase(Entity):
             return comp.held_object
         return None
     def try_use_ability(self, ability_key):
+        #優先攔截function類
+        if ability_key == 'super_move':
+            if hasattr(self, "enable_super_move"):
+                self.enable_super_move()
+                return True
+            else:
+                return False
+        #接著處理Component類
         from Skill import ABILITY_DATA
         from Component import AbilityComponent, StandComponent
 
@@ -319,7 +327,7 @@ class CharacterBase(Entity):
             self.get_burning = False
 
     def clear_autonomous_behavior(self):
-        self.flying = False
+        self.is_thrown = False
         self.held_by = None
         self.attack_intent = None
         self.vel_x = 0
@@ -501,6 +509,7 @@ class CharacterBase(Entity):
                              'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw']:
                 index_map = self.frame_map_cache.get(anim_name)
                 if not index_map:
+                    print(f'{anim_name}')
                     index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, self.animator.anim_map.get(anim_name))
                     #print(f'{self.name} cache {anim_name} = {index_map}')
                     self.frame_map_cache[anim_name] = index_map.copy()
@@ -585,7 +594,7 @@ class CharacterBase(Entity):
         swing_offset_x,swing_offset_y = 0,0
         if self.held_by:
             #swing_offset_y =  -self.held_by.height*TILE_SIZE*0.8
-            swing_offset_y = -self.held_by.height * 0.8
+            swing_offset_y = -self.held_by.height * 0.95
         if self.held_by and self.held_by.attack_state and self.held_by.attack_state.name == 'swing':
             #is_being_swung = True
 
@@ -916,7 +925,7 @@ class CharacterBase(Entity):
             self.dead_timer = 160
             self.hit_count = 100
             # 🟢 核心修正：死亡是所有「飛行/持有」狀態的終點
-            self.flying = False
+            self.is_thrown = False
             self.held_by = None
             self.vz = 0
             self.vel_x = 0
@@ -1311,7 +1320,8 @@ class CharacterBase(Entity):
 
         #格擋判定
         can_guard = (self.attack_state and not self.is_invincible()
-                     and not self.is_super_armor() and self.facing != attacker.facing)
+                     and not self.is_super_armor() and self.facing != attacker.facing
+                     and self.attack_state.data.guardable)
         if can_guard:
             if not self.attack_state.should_trigger_hit() and self.attack_state.frame_index < ON_GUARD_MAX_WINDOW:
                 #前搖狀態中才能格擋
@@ -1659,8 +1669,8 @@ class CharacterBase(Entity):
             self.on_held_location()  # 執行座標同步
             return  # 被抓取時，跳過 AI 與自主移動邏輯
         # 🟢 重要：如果已經落地且速度歸零，但 flying 還是 True，強行修正
-        if self.jump_z <= 0 and abs(self.vel_x) < 0.05 and self.flying:
-            self.flying = False
+        if self.jump_z <= 0 and abs(self.vel_x) < 0.05 and self.is_thrown:
+            self.is_thrown = False
 
 
 
@@ -1833,7 +1843,7 @@ class CharacterBase(Entity):
             st = st + f'[{attack_state.data.attack_type.name}]'
         else:
             st = st + 'None '
-        st = st + f'\nFlags: is_knockbacking[{self.is_knockbacking()}] is_falling[{self.is_falling()}] is_locked[{self.is_locked()}] flying[{self.flying}]'
+        st = st + f'\nFlags: is_knockbacking[{self.is_knockbacking()}] is_falling[{self.is_falling()}] is_locked[{self.is_locked()}] is_thrown[{self.is_thrown}]'
         suspend(st)
 
     def handle_input(self, intent):
@@ -1848,7 +1858,7 @@ class CharacterBase(Entity):
             return
         if self.is_knockbacking() or self.is_falling() or self.is_locked():
             return
-        if self.flying:
+        if self.is_thrown:
             return
 
 
@@ -2042,6 +2052,8 @@ class CharacterBase(Entity):
             create_func = Bullet
         if create_func:
             flying_object = create_func(self.x, self.y, rebuild_map_info, owner=self)
+            if item_to_create == 'fireball':
+                flying_object.on_picked_up(self)
             self.scene.register_unit(flying_object, side=self.side, tags=['item', 'temp_object'], type='item')
         return flying_object
     def drop_loot(self):
@@ -2365,11 +2377,18 @@ class Player(CharacterBase):
             self.stand_image = pygame.image.load(config.get("stand")).convert_alpha()
         self.super_move_animator = None
         if config.get("special_move"):
-            self.super_move_animator = SpriteAnimator(config.get("special_move"), {"frame_width":96, "frame_height":96, "anim_map":None})
+            super_move_anim = config.get("special_move")
+            super_move_anim_path = super_move_anim.get('path', None)
+            super_move_anim_frame_w = super_move_anim.get('width', None)
+            super_move_anim_frame_h = super_move_anim.get('height', None)
+            self.super_move_animator = SpriteAnimator(super_move_anim_path,
+                                                      {"frame_width":super_move_anim_frame_w,
+                                                       "frame_height":super_move_anim_frame_h, "anim_map":None})
         self.super_move_staging = config.get("super_move_staging")
         self.super_move_max_time = 0
         self.last_dir_input = [0,0,0,0]
         self.stand_config = config.get("stand_config", None)
+        self.super_ability = config.get("super_ability", None)
 
 
         #for dir in ['left', 'right', 'up', 'down']:
@@ -2562,16 +2581,27 @@ class Player(CharacterBase):
         # 2. 優先判定 BRUST (組合鍵優先權最高，不進緩衝直接發動)
         if u and x and z:
             # 觸發：霸體 Buff (上 + Z + X)
-            if self.mp >= 2 and self.super_armor_timer <= 0:
-                print(f"{self.name} 集中精神，進入霸體狀態！")
-                self.mp -= 2
-                self.super_armor_timer = 900  # 持續 5 秒 (假設 60FPS)
-                #self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
-                self.execute_command('brust')
-                #def say(self, unit, text, duration=90, direction='up'):
-                self.activate_stand()
-                self.say("無窮之鎖,煌星")
-                return  # 攔截，不執行後續普通攻擊
+            # if self.mp >= 2 and self.super_armor_timer <= 0:
+            #     print(f"{self.name} 集中精神，進入霸體狀態！")
+            #     self.mp -= 2
+            #     self.super_armor_timer = 900  # 持續 5 秒 (假設 60FPS)
+            #     #self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
+            #     self.execute_command('brust')
+            #     #def say(self, unit, text, duration=90, direction='up'):
+            #     self.activate_stand()
+            #     self.say("無窮之鎖,煌星")
+            #     return  # 攔截，不執行後續普通攻擊
+            if self.super_ability:
+                acts = self.super_ability.get("action", [])
+                mp_cost = self.super_ability.get("mp", 11)
+                print(f"mp:{self.mp} cost:{mp_cost}")
+                if self.mp >= mp_cost:
+                    self.mp -= mp_cost
+                    for act in acts:
+                        self.try_use_ability(act)
+                else:
+                    self.say("mp不足...")
+                return
         elif (z + x + c) >= 2:
             if self.attack_state is None:  # 只有非攻擊時能主動爆氣
                 self.execute_command('brust')
@@ -2705,23 +2735,23 @@ class Player(CharacterBase):
 
     #def enable_super_move(self, pre_pose_background = None, portraits=None, effect=None, timer=350, portraits_begin=0.6):
     def enable_super_move(self):
-        #print(f'{self.super_move_staging}')
         if self.super_move_staging is None:
+            print("ccccccc")
             return
-        if self.mp > 0:
-            config_dict = self.super_move_staging
-            #print(f'enable super move damage {40+self.mp*30}')
-            timer = config_dict.get("timer", 350)
-            super_move_dict = {"pre_pose_background": config_dict.get("pre_pose_background", None),
-                               "portraits": config_dict.get("portraits", None),
-                               "effect": config_dict.get("effect", None),
-                               "timer": timer,
-                               "damage": 40+self.mp*30,
-                               "portraits_begin": config_dict.get("portraits_begin", 0.6)}
-            self.super_move_max_time = timer
-            self.scene.start_super_move(self, super_move_dict)
-            self.set_rigid(30)
-            self.mp = 0
+        #if self.mp > 0:
+        config_dict = self.super_move_staging
+        #print(f'enable super move damage {40+self.mp*30}')
+        timer = config_dict.get("timer", 350)
+        super_move_dict = {"pre_pose_background": config_dict.get("pre_pose_background", None),
+                           "portraits": config_dict.get("portraits", None),
+                           "effect": config_dict.get("effect", None),
+                           "timer": timer,
+                           "damage": 40+self.mp*30,
+                           "portraits_begin": config_dict.get("portraits_begin", 0.6)}
+        self.super_move_max_time = timer
+        self.scene.start_super_move(self, super_move_dict)
+        self.set_rigid(30)
+#            self.mp = 0
 
     def draw_super_move_character(self, win, cam_x, cam_y, tile_offset_y, show_period=0.5):
 

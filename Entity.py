@@ -31,7 +31,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.side = 'neutral'
         self.held_by = None
         self.thrown_by = None
-        self.flying = False
+        self.is_thrown = False
         self.hit_someone = False
         self.attacker_attack_data = None
 
@@ -62,7 +62,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         """物件的最基礎物理體積，用於受傷、互動、拼招"""
         return {
             'x1': self.x, 'x2': self.x + self.width,
-            'y1': self.y, 'y2': self.y + self.height,
+            'y1': self.y, 'y2': self.y + self.width,
             'z_abs': self.get_abs_z(),
             'z1': self.get_abs_z(),
             'z2': self.get_abs_z() + self.height

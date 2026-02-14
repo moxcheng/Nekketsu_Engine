@@ -213,7 +213,7 @@ class ThrowAttackState(AttackState):
                 # if hasattr(self.item, 'speed'):
                 #     move_rate = self.item.speed
                 # self.item.vel_x = offset * move_rate # 水平飛行速度
-                self.item.flying = True  # ✅ 切換 item 的控制狀態
+                self.item.is_thrown = True  # ✅ 切換 item 的控制狀態
                 print(f'{self.item.name} 飛行!')
                 self.item.held_by = None   #無人持有
                 self.item.thrown_by = self.character
@@ -251,6 +251,7 @@ class AttackData:
         self.hit_stop_frames = kwargs.get('hit_stop_frames', 0)  # 凍結幀數 (通常 3~8 幀就很強烈)
         self.damage_multiplier = 1.0
         self.contextual_trigger_frames = kwargs.get('contextual_trigger_frames', [1])
+        self.guardable = kwargs.get('guardable', True)
 
         # 🟢 新增動能傳導參數
         # 如果沒給，我們就從 damage 與 knock_back 反推一個預設值，實現平滑過渡
@@ -497,15 +498,15 @@ power=50, absorption=0.1, angle=80
     ),
     AttackType.MAHAHPUNCH: AttackData(
         attack_type=AttackType.MAHAHPUNCH,
-        duration=64,
+        duration=48,
         trigger_frame=8,
         recovery=2,
         hitbox_func = punch_hitbox_func,
         condition_func=lambda actor: True,
         effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
         knock_back_power=[1.5,0.0],
-        damage = 7,
-        frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
+        damage = 10,
+        frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
         effect_component_config={
             # 必須使用 Component 類別的字串名稱，以便動態載入
             "component_name": "AuraEffectComponent",
@@ -514,14 +515,13 @@ power=50, absorption=0.1, angle=80
             "params": {
                 "image_path": "..//Assets_Drive//hyakuretsu.png",
                 "expire_type":EffectExpireMode.ATTACK_END,
-                "alpha":128,
+                "alpha":180,
                 "anim_speed":4
             },
             "frame_width":128,
             "frame_height":128
         },
-        dialogue = '啊達達達達達',
-        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4]
+        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4]
     ),
     AttackType.KICK: AttackData(
         attack_type=AttackType.KICK,
@@ -664,10 +664,11 @@ power=50, absorption=0.1, angle=80
         trigger_frame=0,
         recovery=16,
         hitbox_func=item_hitbox,
-        damage=0,
+        power=100,
         knock_back_power=[1.0,1.5],
         frame_map=[0] * 20,
-        frame_map_ratio = [20]
+        frame_map_ratio = [20],
+        guardable=False
     ),
     AttackType.BRUST: AttackData(
         attack_type=AttackType.BRUST,
@@ -698,12 +699,13 @@ power=50, absorption=0.1, angle=80
     AttackType.DOWN_STOMP: AttackData(
         attack_type=AttackType.DOWN_STOMP,
         effects=[],
-        duration = 30,
+        duration = 45,
         trigger_frame = 0,
-        contextual_trigger_frames=[5,15,25],
+        contextual_trigger_frames=[10,20,30],
         recovery=1,
         hitbox_func=None,
-        damage=4,
-        frame_map_ratio=[6,6,6,6,6]
+        damage=8,
+        knock_back_power=[0.0, -3.0],
+        frame_map_ratio=[5]*9
     )
 }
