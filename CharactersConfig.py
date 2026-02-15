@@ -44,7 +44,7 @@ PLAYER_KONOMI_CONFIG={
             "jump": [[5, 6]],  # 須修正與Z軸的關係
             "fall": [[6]],
             "flykick": [[8]],
-            "punch": [[9], [11], [12]],
+            "punch": [[9,47], [12], [12]],
             "special_punch": [[18], [19], [9]],
             "kick": [[13, 7], [14]],
             "special_kick": [[24, 25], [26]],
@@ -69,6 +69,10 @@ PLAYER_KONOMI_CONFIG={
             "guard":[[41]],
             "down_attack":[[13,48,49]],
             "hold_item":[[27]]
+        },
+        "anim_map_varient":{
+            "punch": [[9,45], [11], [11]],
+            "kick":[[20,13],[48]]
         }
     },
     "popup":["landing"],
@@ -127,7 +131,13 @@ PLAYER_KONOMI_CONFIG={
         },
         "damage": 16}
     },
-    "super_ability": {"action":["stand", "timestop"], "mp":3}
+    "super_ability": {"action":["stand", "haste"], "mp":2},
+    "display_name": "一番組組長 多多良 木乃實",
+    "neon_color": (0, 255, 255), # 青色霓虹
+    "description": "「金色形意拳」",
+    "skill_info": " [MP:2] 無窮之鎖˙霸衣",
+    "preview_tachie": "..\\Assets_Drive\\konomi_full.png", # 大立繪路徑
+
 }
 
 # 定義每種狀態的 frame index list
@@ -204,7 +214,7 @@ PLAYER_REN_128_CONFIG={
         "push":[[13],[22],[23]],
         "flykick": [[9]],
         "kick": [[11], [10]],
-        "special_kick": [[37,38], [27,39]],
+        "special_kick": [[37,38,27], [39]],
         "on_fly": [[12]],
         "slash": [[13], [14], [15]],
         "on_hit": [[16]],
@@ -220,11 +230,15 @@ PLAYER_REN_128_CONFIG={
         "mahahpunch": [[4], [5], [6], [5], [6], [5], [6], [5], [6], [5], [6], [5]],
         "brust": [[0], [28]],
         "guard":[[28]],
-        "down_attack":[[24,25,26]]},
+        "down_attack":[[24,25,26]],
+        "meteofall":[[45]]},
+        "anim_map_varient":{
+            "kick":[[37],[36]]
+        }
     },
     "stand":None,
     "attack_table": {
-        'z_attack': {'default': AttackType.MAHAHPUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.BRUST,
+        'z_attack': {'default': AttackType.MAHAHPUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL,
                      'down_action': AttackType.DOWN_STOMP},
         'x_attack': {'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'run': AttackType.PUSH},
         'c_attack': {'default': AttackType.SLASH, 'run': AttackType.FIREBALL},
@@ -241,9 +255,25 @@ PLAYER_REN_128_CONFIG={
                 "frame_width": 256,
                 "frame_height": 256
             }
-        },
-            "damage": 16}},
-    "super_ability": {"action":["super_move"], "mp":3}
+        },"power": 25},
+        AttackType.SPECIAL_KICK: {"effect_component_config": {
+            "component_name": "AuraEffectComponent",
+            "component_key": "aura_effect",
+            "params": {
+                "image_path": "..//Assets_Drive//aura_arc_256.png",  # 專屬靈氣圖
+                "expire_type": EffectExpireMode.ATTACK_END,
+                "alpha": 180,
+                "frame_width": 256,
+                "frame_height": 256
+            }
+        }, "power": 40}
+    },
+    "super_ability": {"action":["super_move"], "mp":1},
+    "display_name": "十番組組長 總組長 山城 戀",
+    "neon_color": (0, 255, 255),  # 青色霓虹
+    "description": "「總括萬物之無限宇宙之全一」",
+    "skill_info": " [MP:全] 開幕的炮火",
+    "preview_tachie": "..\\Assets_Drive\\ren_full.png",  # 大立繪路徑
 
 }
 # 定義每種狀態的 frame index list

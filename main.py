@@ -553,7 +553,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         clock.tick(FPS)
 
 from CharactersConfig import *
-def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png"):
+def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png", player_config = PLAYER_REN_128_CONFIG):
 
     # === 搖桿初始化 ===
     joystick = None
@@ -596,9 +596,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     px, py = 16.0, 2.0
     #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
     #player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
-    player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
+    #player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
 
-    #player = Player(px, py, map_info, PLAYER_REN_128_CONFIG)
+    player = Player(px, py, map_info, player_config)
 
     player.name='player'
     #掛載component
@@ -807,6 +807,74 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         clock.tick(FPS)
 
 
+def selection_menu():
+    from MenuManager import CharacterSelectMenu
+    # 1. 初始化
+    pygame.init()
+    pygame.joystick.init()
+    joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
+    for j in joysticks: j.init()
+
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    bg_image = pygame.image.load("..\\Assets_Drive\\madou\\CharacterSelectBackground.png").convert()
+    bg_image = pygame.transform.scale(bg_image, (WIDTH, HEIGHT))
+
+    menu = CharacterSelectMenu(screen, bg_image)
+    selected_config = None
+    running = True
+
+    # 手把按鈕映射 (A, B, X 均視為確認)
+    CONFIRM_BUTTONS = [0, 1, 2]
+
+    while running:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            # --- 鍵盤輸入處理 ---
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    menu.index = (menu.index - 1) % len(menu.choices)
+                    menu.preview_unit = menu.rebuild_preview_unit()
+                    menu.idle_timer = 0
+                    menu.ui_alpha = 0
+                elif event.key == pygame.K_RIGHT:
+                    menu.index = (menu.index + 1) % len(menu.choices)
+                    menu.preview_unit = menu.rebuild_preview_unit()
+                    menu.idle_timer = 0
+                    menu.ui_alpha = 0
+                # 🟢 支援 Z/X/C 作為 Enter
+                elif event.key in [pygame.K_RETURN, pygame.K_z, pygame.K_x, pygame.K_c]:
+                    selected_config = menu.choices[menu.index]
+                    running = False
+
+            # --- 🟢 手把輸入處理 ---
+            if event.type == pygame.JOYBUTTONDOWN:
+                if event.button in CONFIRM_BUTTONS:
+                    selected_config = menu.choices[menu.index]
+                    running = False
+
+            if event.type == pygame.JOYHATMOTION:
+                hat_x, _ = event.value
+                if hat_x == -1:  # 左
+                    menu.index = (menu.index - 1) % len(menu.choices)
+                    menu.preview_unit = menu.rebuild_preview_unit()
+                    menu.idle_timer = 0
+                    menu.ui_alpha = 0
+                elif hat_x == 1:  # 右
+                    menu.index = (menu.index + 1) % len(menu.choices)
+                    menu.preview_unit = menu.rebuild_preview_unit()
+                    menu.idle_timer = 0
+                    menu.ui_alpha = 0
+
+        menu.update()
+        menu.draw()
+        pygame.display.flip()
+
+    return selected_config
+
 
 def main():
     pygame.init()
@@ -815,7 +883,8 @@ def main():
     clear_font = pygame.font.SysFont(None, 48)
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
-    scene_mato(win, font, clear_font)
+    selected_player = selection_menu()
+    scene_mato(win, font, clear_font, player_config=selected_player)
 
 
 main()

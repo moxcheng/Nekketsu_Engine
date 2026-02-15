@@ -55,6 +55,7 @@ class SpriteAnimator:
         self.frames = self.slice_sheet()
         # 定義每種狀態的 frame index list
         self.anim_map = config_dict.get("anim_map")
+        self.anim_map_varient = config_dict.get("anim_map_varient", {})
 
     def slice_sheet(self):
         sheet_w, sheet_h = self.sheet.get_size()
@@ -243,36 +244,26 @@ class CharacterBase(Entity):
             return comp.held_object
         return None
     def try_use_ability(self, ability_key):
-        #優先攔截function類
-        if ability_key == 'super_move':
-            if hasattr(self, "enable_super_move"):
-                self.enable_super_move()
-                return True
-            else:
-                return False
-        #接著處理Component類
         from Skill import ABILITY_DATA
         from Component import AbilityComponent, StandComponent
-
         data = ABILITY_DATA.get(ability_key)
         comp_key = f"ability_{ability_key}"
-
+        #優先攔截function類
+        if ability_key == 'super_move':
+            if not hasattr(self, "enable_super_move") or self.scene.super_move_timer > 0:
+                return False
+            self.enable_super_move()
+        else:
         # 1. 檢查是否已經在該技能狀態中 (避免重複註冊)
-        if self.get_component(comp_key):
-            print(f"[LOG] {self.name}的{data.name} 正在冷卻或持續中，無法重複使用")
-            return False
-
-        # 2. 檢查 MP (從 Data 讀取)
-        if self.mp >= data.mp_cost:
-            self.mp -= data.mp_cost
+            if self.get_component(comp_key):
+                print(f"[LOG] {self.name}的{data.name} 正在冷卻或持續中，無法重複使用")
+                return False
             if ability_key in ['stand'] and self.stand_config:
                 self.add_component(comp_key, StandComponent(self.stand_config, data.duration))
             else:
                 self.add_component(comp_key, AbilityComponent(data))
-            return True
-
-        print(f"[LOG] {self.name}的 MP 不足，{data.name}啟動失敗")
-        return False
+        self.mp -= data.mp_cost
+        return True
     def trigger_guard_success(self, attacker, attack_data):
         """
         熱血物語式格擋成功：將攻擊前搖轉化為防禦。
@@ -453,10 +444,31 @@ class CharacterBase(Entity):
         if anim_name == 'stand' and self.is_holding():
             anim_name = 'hold_item'
 
-        anim_frames = self.animator.anim_map.get(anim_name)
-        if anim_frames is None:
+        base_frames = self.animator.anim_map.get(anim_name)
+        # 使用 getattr 安全取得可能不存在的變體字典
+        var_map = getattr(self.animator, 'anim_map_varient', {})
+        var_frames = var_map.get(anim_name, None)
+
+        anim_stage_frames = base_frames
+        # 判定是否處於戰鬥招式中 (排除 stand, walk 等基礎狀態)
+        choosed = 0
+        if self.attack_state and var_frames:
+            # 🟢 修正：向右位移 4 位 (相當於除以 16) 再取奇偶
+            offset_index_value =id(self.attack_state) >> 4
+            if offset_index_value % 2 == 0:
+                anim_stage_frames = var_frames
+                choosed = 2
+            else:
+                anim_stage_frames = base_frames
+                choosed = 1
+        # if self.name=="player" and var_frames:
+        #     print(f'[{choosed}]frame_compares:{base_frames}/{var_frames}, {offset_index_value}')
+
+        if anim_stage_frames is None:
             #print(f'[draw_anim]{self.name} has no {anim_name} frame, change to stand')
             anim_name = 'stand'
+            anim_stage_frames = self.animator.anim_map.get(anim_name)
+
         if anim_name in common_anim_material:
             if anim_name == 'burn':
                 # 👇 繪製燃燒效果（如果標記為 get_burning）
@@ -468,8 +480,8 @@ class CharacterBase(Entity):
                     sh = f.get_height()
                     resize_burn_frames.append(pygame.transform.scale(f, (sw * self.width/1.5, sh * self.height/2.5)))
                 frame = resize_burn_frames[burn_idx]
-        elif len(self.animator.anim_map.get(anim_name)) == 1:
-            frames = self.animator.anim_map.get(anim_name)[0]
+        elif len(anim_stage_frames) == 1:
+            frames = anim_stage_frames[0]
             #只有一個stage的動畫
             if len(frames) == 1:
                 #只有一張圖的動畫
@@ -506,20 +518,13 @@ class CharacterBase(Entity):
             #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
             if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust','push',
-                             'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw']:
-                index_map = self.frame_map_cache.get(anim_name)
-                if not index_map:
-                    print(f'{anim_name}')
-                    index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, self.animator.anim_map.get(anim_name))
-                    #print(f'{self.name} cache {anim_name} = {index_map}')
-                    self.frame_map_cache[anim_name] = index_map.copy()
+                             'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw', 'meteofall']:
+                index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, anim_stage_frames)
                 use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
                 frame_index = index_map[use_index]
             elif anim_name in ['knockback']:
                 kb_frames = self.animator.anim_map.get('knockback')
                 near_ground_bound = 3.0
-                #if self.jump_z >= near_ground_bound:
-
                 if (self.jump_z >= near_ground_bound or self.is_knockbacking()) and self.health > 0:
                     # 使用frames[1]
                     frames = kb_frames[0]
@@ -543,7 +548,6 @@ class CharacterBase(Entity):
             vertical_flip = True
         if anim_name not in common_anim_material:
             frame = self.animator.get_frame_by_index(frame_index, flip_x = vertical_flip)
-            # knockback
 
         # 新規則<--
 
@@ -621,7 +625,7 @@ class CharacterBase(Entity):
         # DEBUG: 繪製 hitbox
         if DEBUG:
             self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
-        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
+        #self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
         # win.blit(frame, (px, py))
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
@@ -700,7 +704,7 @@ class CharacterBase(Entity):
         # print(f'{self.name} draw debug {self.current_frame}')
         if DEBUG:
             self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
-        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
+        #self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
     def draw_silhouette(self, win):
         # 取得玩家當前應該顯示的那一幀 (從 animator 拿)
         # 假設我們已經在原本的 draw 流程算好了 frame
@@ -809,12 +813,17 @@ class CharacterBase(Entity):
                     real_intent = 'throw_item'
 
 
-
-            print(f'意圖:{self.attack_intent} -> {real_intent}')
+            #jump_flag = self.is_jump()
+            #print(f'意圖:{self.attack_intent} -> {real_intent} (jz:{self.jump_z}, is_jump {jump_flag})')
             if real_intent in ['pickup_item']+CONTEXTUAL_ATTACK and not self.is_jump():
                 return real_intent
+            elif real_intent not in ['swing_item', 'throw_item']:
+                # rollback回去
+                real_intent = self.attack_intent
+
             atk_table = self.attack_table.get(real_intent, {})            
             attack = atk_table.get('default', None)
+            print(f'attack1 {attack}')
             #if self.z > 0 and 'jump' in atk_table:
             if self.jump_z > 0:
                 attack = atk_table.get('jump', None)
@@ -826,6 +835,7 @@ class CharacterBase(Entity):
             elif self.state==MoveState.RUN and 'run' in atk_table:
                 attack = atk_table.get('run', None)
                 print(f'>>> run attack = {attack}<<<<')
+            print(f'attack2 {attack}')
         if attack in [AttackType.PUNCH, AttackType.KICK]:
             enemy_side = 'enemy_side' if self.side == 'player_side' else 'player_side'
             # 定義偵測中心（通常在角色前方一點）
@@ -1000,7 +1010,7 @@ class CharacterBase(Entity):
         # 🟢 修正後的門檻邏輯
         # 主動跳躍：門檻極高 (例如 150)，除非從懸崖跳下否則不扣血
         # 被動摔落：門檻低 (例如 30)，體現重摔感
-        current_threshold = 35 if is_passive else 150
+        current_threshold = 19 if is_passive else 50
         print(f'{self.name} on_land_reaction: TH {current_threshold}, energy {impact_energy}, passive {is_passive}')
 
         # 建立一個虛擬的落地傷害 AttackData
@@ -1428,7 +1438,8 @@ class CharacterBase(Entity):
         # 判斷條件：有攻擊狀態、非無敵/鋼體、且面向與攻擊者相反
         can_guard = (self.attack_state and not self.is_invincible()
                      and self.super_armor_timer <= 0 and attacker
-                     and self.facing != attacker.facing)
+                     and self.facing != attacker.facing
+                     and self.attack_state.data.guardable)
 
         if can_guard:
             # 前搖狀態中 (frame_index 較小) 才能觸發格擋
@@ -2183,8 +2194,8 @@ class CharacterBase(Entity):
         #print(f'try_consume_buffer={self.input_buffer}')
         can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL and not self.is_locked()
         # 狀態判斷 B: 受身系統 (在擊飛狀態快落地時按跳)
-        is_tech_roll = (self.combat_state == CombatState.KNOCKBACK and
-                        self.jump_z > 1.0 and self.input_buffer == 'jump')
+        is_tech_roll = (self.combat_state in [CombatState.KNOCKBACK, CombatState.DOWN] and
+                        self.jump_z > 0.1 and self.input_buffer == 'jump')
         if can_act:
             cmd = self.input_buffer
             self.clean_input_buffer()
@@ -2193,9 +2204,9 @@ class CharacterBase(Entity):
         elif is_tech_roll:
             print(f"✨ {self.name} 受身成功！")
             self.into_normal_state()
-            self.vz = 0.8  # 🚀 關鍵：給予向上的瞬時速度，造成「翻身跳」的效果
+            self.vz = 0.1  # 🚀 關鍵：給予向上的瞬時速度，造成「翻身跳」的效果
             #改由方向鍵控制方向
-            self.vel_x = 0.6 if self.last_intent['direction'] == DirState.RIGHT else -0.6  # 稍微後跳拉開距離
+            self.vel_x = 0.3 if self.last_intent['direction'] == DirState.RIGHT else -0.3  # 稍微後跳拉開距離
             self.invincible_timer = 20
             return True
         return False
@@ -2596,9 +2607,11 @@ class Player(CharacterBase):
                 mp_cost = self.super_ability.get("mp", 11)
                 print(f"mp:{self.mp} cost:{mp_cost}")
                 if self.mp >= mp_cost:
-                    self.mp -= mp_cost
+                    success = True
                     for act in acts:
-                        self.try_use_ability(act)
+                        success = success & self.try_use_ability(act)
+                    if success:
+                        self.mp -= mp_cost
                 else:
                     self.say("mp不足...")
                 return
@@ -2736,22 +2749,18 @@ class Player(CharacterBase):
     #def enable_super_move(self, pre_pose_background = None, portraits=None, effect=None, timer=350, portraits_begin=0.6):
     def enable_super_move(self):
         if self.super_move_staging is None:
-            print("ccccccc")
             return
-        #if self.mp > 0:
         config_dict = self.super_move_staging
-        #print(f'enable super move damage {40+self.mp*30}')
         timer = config_dict.get("timer", 350)
         super_move_dict = {"pre_pose_background": config_dict.get("pre_pose_background", None),
                            "portraits": config_dict.get("portraits", None),
                            "effect": config_dict.get("effect", None),
                            "timer": timer,
-                           "damage": 40+self.mp*30,
+                           "damage": 50+self.mp*30,
                            "portraits_begin": config_dict.get("portraits_begin", 0.6)}
         self.super_move_max_time = timer
         self.scene.start_super_move(self, super_move_dict)
         self.set_rigid(30)
-#            self.mp = 0
 
     def draw_super_move_character(self, win, cam_x, cam_y, tile_offset_y, show_period=0.5):
 

@@ -975,6 +975,8 @@ class SceneManager:
         from Skill import attack_data_dict
         super_data = attack_data_dict.get(AttackType.SUPER_FINAL)
         super_data.damage = self.super_move_damage
+        super_data.power = self.super_move_damage*2
+        print(f'executae_super_damage = {super_data.damage}')
         for enemy in enemies:
             if enemy.is_alive():
                 # 觸發命中邏輯
@@ -1138,6 +1140,7 @@ class SceneManager:
         self.super_move_caster = caster
         self.super_move_timer = super_move_dict['timer']
         self.super_move_damage = super_move_dict['damage']
+        #print(f'start_super_move, damage={self.super_move_damage}')
         self.super_move_max_timer = super_move_dict['timer']
         self.super_move_portrait_begin = super_move_dict['portraits_begin']
 

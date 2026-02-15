@@ -62,6 +62,8 @@ ABILITY_DATA = {
     "timestop": SystemAbilityData("timestop", 1, 540, on_trigger=za_warudo_trigger, on_update=za_warudo_update, on_expire=za_warudo_expire),
     #實體類:
     "stand": SystemAbilityData("stand", 1, 900),
+    #演出類:
+    "super_move": SystemAbilityData("stand", 3, 0),
 }
 
 # === Attack State ===
@@ -107,7 +109,7 @@ class AttackState:
                     # 產生物理回饋與特效
                     if self.character.scene:
                         # 在目標位置產生打擊火花
-                        self.character.scene.create_effect(target.x, target.y, target.z, 'hit')
+                        self.character.scene.create_effect(target.x+target.width/2, target.y, target.z, 'hit')
                         # 每次踩踏都來一點小震動增加打擊感
                         self.character.scene.trigger_shake(duration=5, intensity=3)
             if self.frame_index == self.timer -1:
@@ -449,11 +451,10 @@ attack_data_dict = {
         hitbox_func=front_hitbox_func,
         condition_func=lambda actor: actor.state != MoveState.JUMP and actor.state != MoveState.FALL,
         effects=[AttackEffect.SHORT_STUN],
-        knock_back_power=[0.5,2.0],
+        knock_back_power=[0.5,3.0],
         damage = 20,
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio = [15,10,35], #必須與duration等長
-power=50, absorption=0.1, angle=80
     ),
     AttackType.PUSH: AttackData(
         attack_type=AttackType.PUSH,
@@ -503,8 +504,8 @@ power=50, absorption=0.1, angle=80
         recovery=2,
         hitbox_func = punch_hitbox_func,
         condition_func=lambda actor: True,
-        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
-        knock_back_power=[1.5,0.0],
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE, AttackEffect.FORCE_WEAK],
+        #knock_back_power=[1.5,0.0],
         damage = 10,
         frame_map = [0]*4 + [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4 + [1]*4+ [2]*4+ [1]*4+ [2]*4+ [1]*4+ [2]*4,
         effect_component_config={
@@ -664,8 +665,8 @@ power=50, absorption=0.1, angle=80
         trigger_frame=0,
         recovery=16,
         hitbox_func=item_hitbox,
-        power=100,
-        knock_back_power=[1.0,1.5],
+        damage=0,
+        knock_back_power=[3.0,1.5],
         frame_map=[0] * 20,
         frame_map_ratio = [20],
         guardable=False
