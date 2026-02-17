@@ -616,60 +616,6 @@ class SceneManager:
 
 
 
-    # --- 在每幀繪圖最後呼叫 ---
-    # def draw_overlay(self, win):
-    #     # 畫面變暗
-    #     if self.darken_enabled and self.scene_end_countdown > 0:
-    #         if self.darken_alpha < self.darken_alpha_max:
-    #             self.darken_alpha = min(
-    #                 self.darken_alpha_max,
-    #                 self.darken_alpha + self.darken_speed
-    #             )
-    #         dark_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-    #         dark_surface.fill((0, 0, 0, self.darken_alpha))
-    #         win.blit(dark_surface, (0, 0))
-    #
-    #
-    #
-    #
-    #     # 通關
-    #     if self.cleared and self.clear_font and self.clear_text:
-    #         txt = self.clear_font.render(self.clear_text, True, (255, 255, 0))
-    #         outline = self.clear_font.render(self.clear_text, True, (0, 0, 0))
-    #         x = (WIDTH - txt.get_width()) // 2
-    #         y = (HEIGHT - txt.get_height()) // 2
-    #
-    #         for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
-    #             win.blit(outline, (x + dx, y + dy))
-    #         win.blit(txt, (x, y))
-    #
-    #         if len(self.end_cuts) > 0:
-    #             cut_count = len(self.end_cuts)
-    #             life_cycle = 180/cut_count
-    #             cut_duration = int(life_cycle/2)
-    #             fading = int(cut_duration/2)
-    #             for i, cut in enumerate(self.end_cuts):
-    #                 frame_fadein = (fading+cut_duration)*(cut_count-i)+fading
-    #                 frame_highlight = frame_fadein-fading
-    #                 frame_fadeout = frame_highlight-cut_duration
-    #                 frame_disspear = frame_fadeout-fading
-    #                 #print(f"[{self.scene_end_countdown}] endcut {i}, ({frame_fadein}, {frame_highlight}, {frame_fadeout}, {frame_disspear})")
-    #                 if frame_fadein > self.scene_end_countdown >= frame_highlight:
-    #                     alpha = min(255, max(0, int(255*(frame_fadein - self.scene_end_countdown)/fading)))
-    #                 elif frame_highlight > self.scene_end_countdown >= frame_fadeout:
-    #                     alpha=255
-    #                 elif frame_fadeout > self.scene_end_countdown >= frame_disspear:
-    #                     if i != cut_count-1:
-    #                         alpha = min(255, max(0, int(255*(frame_fadeout-self.scene_end_countdown)/fading)))
-    #                     else:
-    #                         alpha=255
-    #                 else:
-    #                     alpha = 0
-    #                 if alpha > 0:
-    #                     cut.set_alpha(alpha)
-    #                     win.blit(cut, (WIDTH // 2 - cut.get_width() // 2, HEIGHT // 2 - cut.get_height() // 2))
-    #
-
     def draw_super_move_overlay(self, win, cam_x, cam_y, tile_offset_y):
 
         if self.state != SceneState.SUPER_MOVE:

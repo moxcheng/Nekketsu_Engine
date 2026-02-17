@@ -41,6 +41,8 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.cached_pivot = (0, 0)
         self.z = self.get_tile_z(self.x, self.y)
         self.hitting_cache = []
+        self.is_blocking = False  # 🟢 預設不阻擋
+        self.is_destructible = False  # 預設不可破壞
 
     def get_tile_z(self, x, y):
         """通用高度獲取，增加邊界夾緊保護"""
@@ -58,11 +60,16 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         return (self.z or 0) + self.jump_z
 
     # Entity.py
-    def get_physics_box(self):
+    def get_physics_box(self, specified_x=None, specified_y=None):
         """物件的最基礎物理體積，用於受傷、互動、拼招"""
+        base_x, base_y = specified_x, specified_y
+        if specified_x is None:
+            base_x = self.x
+        if specified_y is None:
+            base_y = self.y
         return {
-            'x1': self.x, 'x2': self.x + self.width,
-            'y1': self.y, 'y2': self.y + self.width,
+            'x1': base_x, 'x2': base_x + self.width,
+            'y1': base_y, 'y2': base_y + self.width,
             'z_abs': self.get_abs_z(),
             'z1': self.get_abs_z(),
             'z2': self.get_abs_z() + self.height
@@ -75,7 +82,26 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
     def get_hitbox(self):
         return None  # 預設沒有攻擊判定
 
+    def drop_loot(self):
+        return None
+    # Entity.py
+    def get_feet_box(self, nx=None, ny=None):
+        """用於位移阻擋的微小判定區"""
+        curr_x = nx if nx is not None else self.x
+        curr_y = ny if ny is not None else self.y
 
+        # 這裡只取腳底中心 20% 的寬度，以及極薄的深度
+        padding_x = self.width*0.2
+        padding_y = self.width*0.1
+
+        return {
+            'x1': curr_x + padding_x,
+            'x2': curr_x + self.width - padding_x,
+            'y1': curr_y - padding_y,
+            'y2': curr_y + padding_y,
+            'z1': self.get_abs_z(),
+            'z2': self.get_abs_z() + 0.5
+        }
 
     def check_ground_contact(self):
         """

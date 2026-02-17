@@ -1010,7 +1010,7 @@ class CharacterBase(Entity):
         # 🟢 修正後的門檻邏輯
         # 主動跳躍：門檻極高 (例如 150)，除非從懸崖跳下否則不扣血
         # 被動摔落：門檻低 (例如 30)，體現重摔感
-        current_threshold = 19 if is_passive else 50
+        current_threshold = 18 if is_passive else 50
         print(f'{self.name} on_land_reaction: TH {current_threshold}, energy {impact_energy}, passive {is_passive}')
 
         # 建立一個虛擬的落地傷害 AttackData
@@ -1655,7 +1655,8 @@ class CharacterBase(Entity):
                 print(f'{self.name} 消失')
                 if self.money > 0:
                     loot = self.drop_loot()
-                    print('{} 掉落 {} 的 {}'.format(self.name, loot['type'], loot['value']))
+                    if loot:
+                        print('{} 掉落 {} 的 {}'.format(self.name, loot['type'], loot['value']))
 
                 if self.scene:
                     #self.scene.unregister_unit(self)
@@ -1912,8 +1913,33 @@ class CharacterBase(Entity):
             if target_z is not None:
                 # 這裡也要確保 z 軸差距判定後才更新
                 if abs(target_z - self.z) <= 1 or (self.jump_z > 0 and self.z + self.jump_z >= target_z):
+                    # 2. 新增: is_blocking物件阻擋檢查
+                    if self.scene:
+                        others = self.scene.get_all_units()
+                        for other in others:
+                            if other != self and getattr(other, 'is_blocking', False) and other.side!=self.side and other.combat_state not in [CombatState.DOWN, CombatState.DEAD, CombatState.KNOCKBACK]:
+                                # 判斷兩者在物理空間（包含 Z 軸高度）是否重疊
+                                #print(f"{other.name} 我能撞人")
+                                if is_box_overlap(self.get_feet_box(), other.get_feet_box()):
+                                    print('撞到了撞到了撞到了撞到了撞到了撞到了撞到了')
+                                    # 分別檢查 X 與 Y 軸，是否正在「惡化」重疊情況
+                                    current_dist_x = abs(self.x - other.x)
+                                    new_dist_x = abs(new_x - other.x)
+                                    current_dist_y = abs(self.y - other.y)
+                                    new_dist_y = abs(new_y - other.y)
+                                    # 如果新的 X 座標讓距離變短，則鎖定 X 軸
+                                    if new_dist_x < current_dist_x:
+                                        new_x = self.x-dx * move_rate
+                                    # 如果新的 Y 座標讓距離變短，則鎖定 Y 軸
+                                    if new_dist_y < current_dist_y:
+                                        new_y = self.y-dy*move_rate
+                    new_x = max(self.width/2, min(self.map_w-self.width/2, new_x))
+                    new_y = max(self.width / 2, min(self.map_h - self.width / 2, new_y))
+
                     self.x, self.y = new_x, new_y  # 現在 new_y 已經安全了
-                    self.z = target_z
+                    self.z = self.get_tile_z(self.x, self.y)
+
+
             # if target_z is None:
             #     # 如果目標位置超出地圖，不更新座標 (或是執行擋牆邏輯)
             #     moved = False
@@ -2068,21 +2094,18 @@ class CharacterBase(Entity):
             self.scene.register_unit(flying_object, side=self.side, tags=['item', 'temp_object'], type='item')
         return flying_object
     def drop_loot(self):
-        from Items import Coin, MagicPotion  # 假設你有 Coin 類別
+        from Items import create_dropping_items  # 假設你有 Coin 類別
         #加入機率掉落
         import random
         if self.scene:
             prob = random.random()
             if prob > self.drop_mana_rate:
-                potion = MagicPotion(self.x, self.y, [self.terrain, self.map_w, self.map_h])
-                potion.mana = 1
-                self.scene.register_unit(potion, side='netural', tags=['item'], type='item')
+                create_dropping_items(self, 'potion', 1)
                 return {'type': 'MagicPotion', 'value': 1}
         #掉落硬幣
-            coin = Coin(self.x, self.y, [self.terrain, self.map_w, self.map_h])
-            coin.money = self.money
-            self.scene.register_unit(coin, side='netural', tags=['item'], type='item')
-            return {'type':'money', 'value':coin}
+            gold = random.randint(5, 15)
+            create_dropping_items(self, 'coin', gold)
+            return {'type':'money', 'value':gold}
         return None
 
     def apply_skill_effect_components(self, attack_data):
@@ -2976,7 +2999,8 @@ class Enemy(CharacterBase):
         self.side = 'enemy_side'
         self.money = 10 #loot
         self.ai_move_speed = ai_move_speed
-        self.popup=config_dict.get("popup")
+        self.popup = config_dict.get("popup")
+        self.is_blocking = config_dict.get("is_blocking", False)
         if self.popup and "landing" in self.popup:
             self.jump_z = 5
             self.vz = -0.2

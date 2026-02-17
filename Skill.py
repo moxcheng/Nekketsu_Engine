@@ -455,6 +455,7 @@ attack_data_dict = {
         damage = 20,
         #frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio = [15,10,35], #必須與duration等長
+        hit_stop_frames=5
     ),
     AttackType.PUSH: AttackData(
         attack_type=AttackType.PUSH,
@@ -468,6 +469,7 @@ attack_data_dict = {
         damage=20,
         # frame_map = [0]*15 + [1]*10 + [2]*35,   #必須與duration等長
         frame_map_ratio=[15, 10, 35],  # 必須與duration等長
+        hit_stop_frames=5,
         power=40, absorption=0.9, angle=0
     ),
     AttackType.PUNCH: AttackData(
@@ -522,7 +524,8 @@ attack_data_dict = {
             "frame_width":128,
             "frame_height":128
         },
-        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4]
+        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4],
+        hit_stop_frames=5
     ),
     AttackType.KICK: AttackData(
         attack_type=AttackType.KICK,
@@ -588,7 +591,8 @@ attack_data_dict = {
             },
         },
         dialogue="飛翔白麗!",
-        frame_map_ratio = [999]
+        frame_map_ratio = [999],
+        hit_stop_frames=5
     ),
     AttackType.BASH: AttackData(
         attack_type=AttackType.BASH,

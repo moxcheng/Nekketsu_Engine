@@ -352,7 +352,8 @@ NPC_SHUKI_BOSS_CONFIG={
     "combos": ELITE_COMBOS,
     "popup":["landing","shake"],
     "ai_move_speed":0.15,
-    "attack_cooldown":30
+    "attack_cooldown":30,
+    "is_blocking":True,
 }
 NPC_SHUKI_NEW_1_CONFIG={
     'name': "shuki_new1",

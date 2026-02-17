@@ -89,17 +89,6 @@ class Item(Entity):
             frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
             frame_map_ratio = [12, 20]
         )
-    # def get_swing_attack_data(self, attacker):
-    #     return AttackData(
-    #         attack_type=AttackType.SWING,
-    #         duration=32,
-    #         trigger_frame=12,
-    #         recovery=16,
-    #         hitbox_func=item_hitbox,
-    #         damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
-    #         effects=[AttackEffect.SHORT_STUN],
-    #         frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
-    #     )
     def get_throw_attack_data(self, attacker):
         return AttackData(
         attack_type=AttackType.THROW,
@@ -116,6 +105,51 @@ class Item(Entity):
     def is_out_of_bounds(self):
         return not (0 <= self.x < self.map_w and 0 <= self.y < self.map_h)
 
+
+class DestructibleMixin:
+    """
+    賦予物件 HP 系統與受擊反應。
+    """
+
+    def init_destructible(self, hp=50):
+        self.max_hp = hp
+        self.health = hp
+        self.is_destructible = True
+
+    def on_be_hit(self, attacker):
+        """覆寫 Entity 的預留接受器"""
+        if not hasattr(self, 'health') or self.health <= 0:
+            return
+
+        # 1. 取得傷害數據
+        damage = 10
+        if hasattr(attacker, 'attack_state') and attacker.attack_state:
+            damage = attacker.attack_state.data.get_damage(attacker)
+
+        self.health -= damage
+
+        # 2. 受擊視覺與震動
+        if self.scene:
+            self.scene.create_effect(self.x + self.width / 2, self.y, self.z, 'hit')
+            self.scene.trigger_shake(5, 3)
+
+        # 3. 毀滅判定
+        if self.health <= 0:
+            self.on_destroyed()
+
+    def on_destroyed(self):
+        """毀滅時的標準程序：掉落物 -> 特效 -> 移除"""
+        # 🟢 直接呼叫 Entity 層級的 drop_loot()
+        if hasattr(self, 'drop_loot'):
+            self.drop_loot()
+
+        if self.scene:
+            self.scene.create_effect(self.x + self.width / 2, self.y, self.z, 'dust')
+            self.scene.mark_for_removal(self)
+
+class PickableItem(Item):
+    def __init__(self, **kwargs):
+        super().__init(**kwargs)
 
 class Rock(Item):
     def __init__(self, x, y, map_info):
@@ -143,10 +177,22 @@ class Rock(Item):
         if self.is_thrown:
             color = self.fly_color
         pygame.draw.circle(win, color, (cx, cy), int(TILE_SIZE * 0.4))
+    def on_be_hit(self, attacker):
+        #測試被打時的反應
+        print(f'{self.name} 被 {attacker.name} 打到')
 
 
+class ProjectileItem(Item):
+    #飛行道具類，有生命週期
+    def __init(self, **kwargs):
+        super().__init__(**kwargs)
+    def update(self):
+        super().update()
+        #消滅條件: 撞擊、超出邊界、壽命終了
+        if self.hit_someone or self.is_out_of_bounds() or self.timer <= 0 or self.x <= self.width/2 or self.x > self.map_w-self.width/2 or self.jump_z <= 0:
+            self.scene.mark_for_removal(self)
 
-class Fireball(Item):
+class Fireball(ProjectileItem):
     def __init__(self, x, y, map_info, owner=None):
         super().__init__(name='fireball', x=x, y=y, map_info=map_info, weight=0.0)
         self.owner = owner
@@ -170,12 +216,6 @@ class Fireball(Item):
             self.y = self.owner.y + self.owner.height / 2
 
 
-    def update(self):
-        super().update()
-        if self.hit_someone or self.is_out_of_bounds() or self.timer <= 0 or self.x <= self.width/2 or self.x > self.map_w-self.width/2 :
-            self.scene.mark_for_removal(self)
-
-
     def draw(self, win, cam_x, cam_y, tile_offset_y=0):
         offset_x, offset_y = 0, 0
         if self.held_by:
@@ -191,15 +231,6 @@ class Fireball(Item):
         win.blit(self.image, rect)
         pygame.draw.rect(win, (255, 0, 0), rect, 1)
 
-    def get_hurtbox(self):
-        # 🟢 修正：讓火球的物理判定盒在 Z 軸向上與向下延伸
-        # 這樣火球即使在胸口高度，也能撞到稍微跳起或倒地的敵人
-        box = self.get_physics_box()
-        box['z1'] = self.get_abs_z() - 1.0  # 向下延伸
-        box['z2'] = self.get_abs_z() + 1.0  # 向上延伸
-        box['z_abs'] = self.get_abs_z()
-        return box
-
     def get_throw_attack_data(self, attacker):
         return AttackData(
         attack_type=AttackType.THROW,
@@ -214,7 +245,7 @@ class Fireball(Item):
         knock_back_power=[1.0,0.0],
     )
 
-class Bullet(Item):
+class Bullet(ProjectileItem):
     def __init__(self, x, y, map_info, owner=None):
         super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.1)
         self.owner = owner
@@ -236,12 +267,6 @@ class Bullet(Item):
             #self.attacker_attack_data = self.owner.attack_state.data
             self.x = self.owner.x + self.owner.width / 2
             self.y = self.owner.y + self.owner.height / 2
-
-
-    def update(self):
-        super().update()
-        if self.hit_someone or self.is_out_of_bounds():
-            self.scene.mark_for_removal(self)
 
 
     def draw(self, win, cam_x, cam_y, tile_offset_y=0):
@@ -273,7 +298,33 @@ class Bullet(Item):
 
 from PhysicsUtils import is_box_overlap
 
-class Coin(Item):
+class ConsumableItem(Item):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    def on_touched_me(self, picked_by):
+        print(f'{self.name}被撿起')
+        return
+    def update(self):
+        self.anim_timer += 1
+        for unit in self.scene.get_units_by_name('player'):
+            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
+                self.on_touched_me(picked_by=unit)
+                self.scene.mark_for_removal(self)
+                break
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y):
+        # 計算畫面位置
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
+        # 每 15 frame 換一張
+        frame_index = (self.anim_timer // 15) % self.num_frames
+        frame = self.frames[frame_index]
+        frame_rect = frame.get_rect()
+        draw_x = cx - frame_rect.width // 2
+        draw_y = cy - frame_rect.height
+        # 繪製當前幀
+        win.blit(frame, (draw_x, draw_y))
+
+class Coin(ConsumableItem):
     def __init__(self, x, y, map_info):
         #        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
         super().__init__(name='coin', x=x, y=y, map_info=map_info)
@@ -294,38 +345,16 @@ class Coin(Item):
         self.z = self.get_tile_z(x, y)
         self.anim_timer = 0
 
-    def update(self):
-        self.anim_timer += 1
-        for unit in self.scene.get_units_by_name('player'):
-            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
-                print(f'{unit.name} 撿起{self.money}元！')
-                unit.money += self.money
-                self.scene.add_floating_text(x=unit.x + unit.width / 2,
-                        y=unit.y + unit.height,
-                        value=f'+{self.money}',
-                        map_h=self.map_h,
-                        color=(255, 215, 0))
-                self.scene.mark_for_removal(self)
-                break
+    def on_touched_me(self, picked_by):
+        print(f'{picked_by.name} 撿起{self.money}元！')
+        picked_by.money += self.money
+        self.scene.add_floating_text(x=picked_by.x + picked_by.width / 2,
+                                     y=picked_by.y + picked_by.height,
+                                     value=f'+{self.money}',
+                                     map_h=self.map_h,
+                                     color=(255, 215, 0))
 
-    def draw(self, win, cam_x, cam_y, tile_offset_y):
-        # win.blit(frame, (px, py))
-
-
-
-        # 計算畫面位置
-        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
-        # 每 15 frame 換一張，共 4 張動畫
-        frame_index = (self.anim_timer // 15) % self.num_frames
-        frame = self.frames[frame_index]
-        frame_rect = frame.get_rect()
-        draw_x = cx - frame_rect.width // 2
-        draw_y = cy - frame_rect.height
-
-        # 繪製當前幀
-        win.blit(frame, (draw_x, draw_y))
-
-class MagicPotion(Item):
+class MagicPotion(ConsumableItem):
     def __init__(self, x, y, map_info):
         #        super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.0)
         super().__init__(name='coin', x=x, y=y, map_info=map_info)
@@ -346,30 +375,26 @@ class MagicPotion(Item):
         self.money=0
         self.z = self.get_tile_z(x, y)
         self.anim_timer = 0
+    def on_touched_me(self, picked_by):
+        unit = picked_by
+        print(f'{unit.name} 獲得{self.mana}MP ！')
+        unit.mp += self.mana
+        self.scene.add_floating_text(x=unit.x + unit.width / 2,
+                                     y=unit.y + unit.height,
+                                     value=f'+{self.mana}',
+                                     map_h=self.map_h,
+                                     color=(30, 144, 255))
 
-    def update(self):
-        self.anim_timer += 1
-        for unit in self.scene.get_units_by_name('player'):
-            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
-                print(f'{unit.name} 獲得{self.money}點mp！')
-                unit.mp += self.mana
-                self.scene.add_floating_text(x=unit.x + unit.width / 2,
-                        y=unit.y + unit.height,
-                        value=f'+{self.mana}',
-                        map_h=self.map_h,
-                        color=(30, 144, 255))
-                self.scene.mark_for_removal(self)
-                break
 
-    def draw(self, win, cam_x, cam_y, tile_offset_y):
-        # 計算畫面位置
-        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
-        # 每 15 frame 換一張，共 4 張動畫
-        frame_index = (self.anim_timer // 15) % self.num_frames
-        frame = self.frames[frame_index]
-        frame_rect = frame.get_rect()
-        draw_x = cx - frame_rect.width // 2
-        draw_y = cy - frame_rect.height
-
-        # 繪製當前幀
-        win.blit(frame, (draw_x, draw_y))
+def create_dropping_items(drop_by, item_name, value=0):
+    if item_name == 'coin':
+        coin = Coin(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
+        coin.money = value
+        drop_by.scene.register_unit(coin, side='netural', tags=['item'], type='item')
+    elif item_name == 'potion':
+        potion = MagicPotion(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
+        potion.mana = value
+        drop_by.scene.register_unit(potion, side='netural', tags=['item'], type='item')
+    elif item_name == 'rock':
+        rock = Rock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
+        drop_by.scene.register_unit(rock, side='netural', tags=['item'], type='item')

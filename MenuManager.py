@@ -98,7 +98,7 @@ class CharacterSelectMenu:
             # 3. 隨機動作播放 (重點：模擬動作)
             # 邏輯：當玩家停下 1.5 秒後，每隔 2 秒隨機展示一次動作
             if self.idle_timer > self.INFO_DELAY + 30:
-                if self.idle_timer % 180 == 0:
+                if self.idle_timer % 120 == 0:
                     # 🟢 增加動作池：包含攻擊、跳躍、倒地、跑步
                     self.preview_unit.remove_component("aura_effect")
                     self.preview_unit.attack_state = None
@@ -107,7 +107,7 @@ class CharacterSelectMenu:
                     self.preview_unit.down_to_ground()
                     self.preview_unit.into_normal_state()
 
-                    if self.demo_play_actions%6==0:
+                    if self.demo_play_actions%8==0:
                         self.preview_unit.state = MoveState.STAND
                     else:
                         if not self.demo_skills:
