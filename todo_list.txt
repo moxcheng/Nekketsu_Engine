@@ -1,0 +1,17 @@
+戲開發待辦清單 (2026-02-18)
+1. 實作與測試 DestructibleItem 效果
+Mixin 整合：將 DestructibleMixin 導入 Items.py，確保其包含 health 初始化、on_be_hit 傷害計算，以及與 Entity 統一的 drop_loot 框架。
+物理測試：測試 is_blocking 旗標在物件毀滅前後的切換是否正常，確保碎裂後的空間可以順暢通行。
+推擠回饋：驗證今天實作的「倒彈（Rebound）」與「趨勢判定」在撞擊靜止物件（如箱子、岩石）時的手感是否紮實。
+2. 製作美術素材 (Pixel Art)
+岩石素材：製作 1x1 柱狀體積的岩石，以及毀滅後的小石塊碎片。
+可破壞物件：製作如木箱（Crate）或汽油桶（Barrel）的素材，並考慮加入簡單的「受擊晃動」或「損壞程度」貼圖變化。
+對齊校準：確保素材繪製時，腳底與地面接觸點符合 y + height * 0.1 的渲染偏移量。
+3. 強化招式系統 (Skill System)
+招式標價：在 Skill.py 的 ATTACK_TABLE 中，為 FIREBALL 或其他高 CP 值招式新增 mp_cost 屬性。
+邏輯降級：修改 resolve_attack_table，實作「檢查 MP -> 足夠則扣除並出招 -> 不足則觸發 UI 警告並執行普攻」的邏輯流。
+狀態過濾：維持「倒地/擊退不擋人」的判定，確保連招（Combo）流暢度。
+4. 實作 SceneManager UI 提示系統
+全域調度器：在 SceneManager 建立 ui_effects 狀態字典（如 mp_flash）。
+觸發介面：實作 trigger_ui_effect(type, duration) 方法，供 Characters 呼叫。
+渲染反饋：在 draw_ui 繪製 MP 條時，加入基於計時器的閃爍（如紅藍交替）效果，並預留未來給「大傷害（HP 閃爍）」使用的空間。

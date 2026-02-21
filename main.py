@@ -553,6 +553,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         clock.tick(FPS)
 
 from CharactersConfig import *
+from Items import *
 def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png", player_config = PLAYER_REN_128_CONFIG):
 
     # === 搖桿初始化 ===
@@ -613,9 +614,11 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     scene.speech_bubbles = [bubble]
     boss_barserker = False
 
-    rock = Rock(x=player.x - 1.5, y=player.y, map_info=map_info)
-    rock.scene=scene
-    scene.register_unit(rock, side='netural', tags=['item', 'interactable'], type='item')
+    # rock = Rock(x=player.x - 1.5, y=player.y, map_info=map_info)
+    # rock.scene=scene
+    # scene.register_unit(rock, side='netural', tags=['item', 'interactable'], type='item')
+    big_rock = BigRock(x=player.x - 1.5, y=player.y, map_info=map_info, scene=scene)
+    scene.register_unit(big_rock, side='netural', tags=['item', 'interactable'], type='item')
 
 
     #小兵清單

@@ -4,19 +4,19 @@ from Config import TILE_SIZE
 import pygame
 from State_enum import *
 from Skill import *
-
+import random
 
 class Item(Entity):
     #Entity def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
-    def __init__(self, name, x, y, map_info, weight=0.3):
-        super().__init__(x, y, map_info, weight=weight)
+    def __init__(self, x, y, map_info, **kwargs):
+        super().__init__(x, y, map_info, **kwargs)
         self.unit_type = 'item'
-        self.name = name
+        self.name = kwargs.get("name", "item")
         self.x = x
         self.y = y
         self.width = 1.0
         self.height = 1.0
-        self.weight = weight
+        self.weight = kwargs.get("weight", 0.3)
         self.vz = 0.0
         self.jump_z = 0.0  # 可選：讓 item 可以「拋起」
         self.color = (150, 150, 150)  # 預設灰色
@@ -29,6 +29,7 @@ class Item(Entity):
         self.map_h = map_info[2]
         self.hit_someone = False
         self.attacker_attack_data = None
+        self.facing = DirState.RIGHT
 
     def clear_autonomous_behavior(self):
         self.is_thrown = False
@@ -99,11 +100,31 @@ class Item(Entity):
         effects=[AttackEffect.SHORT_STUN],
         damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 7,
         frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        frame_map_ratio=[16, 16]
+        frame_map_ratio=[16, 16],
+            power = attacker.throw_power if hasattr(attacker, 'throw_power') else 20
     )
 
     def is_out_of_bounds(self):
         return not (0 <= self.x < self.map_w and 0 <= self.y < self.map_h)
+
+    def on_land_reaction(self, impact_energy=0, is_passive=False):
+        """
+        當物品落地時觸發。
+        這是修復 Bug 的關鍵：落地即失去攻擊判定。
+        """
+        # 1. 解除投擲狀態
+        self.is_thrown = False
+
+        # 2. 清除攻擊數據，防止 SceneManager 繼續進行 Hitbox 檢測
+        self.attack_state = None
+
+        # 3. 重置碰撞黑名單 (如果有的話)，避免下次投擲失效
+        self.hitting = []
+
+        # 4. 物理靜止
+        self.vel_x = 0
+
+        print(f"DEBUG: {self.name} landed safely. Attack state cleared.")
 
 
 class DestructibleMixin:
@@ -115,22 +136,28 @@ class DestructibleMixin:
         self.max_hp = hp
         self.health = hp
         self.is_destructible = True
+        self.is_destroyed = False
 
     def on_be_hit(self, attacker):
+        from PhysicsUtils import get_overlap_center
         """覆寫 Entity 的預留接受器"""
+
         if not hasattr(self, 'health') or self.health <= 0:
             return
 
         # 1. 取得傷害數據
-        damage = 10
+        damage = 1
         if hasattr(attacker, 'attack_state') and attacker.attack_state:
             damage = attacker.attack_state.data.get_damage(attacker)
 
         self.health -= damage
+        print(f'{self.name} 受到 {damage} 傷害 ({self.health}/{self.max_hp})')
 
         # 2. 受擊視覺與震動
         if self.scene:
-            self.scene.create_effect(self.x + self.width / 2, self.y, self.z, 'hit')
+            print('aaaaaaaaaaa')
+            hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
+            self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
             self.scene.trigger_shake(5, 3)
 
         # 3. 毀滅判定
@@ -147,9 +174,96 @@ class DestructibleMixin:
             self.scene.create_effect(self.x + self.width / 2, self.y, self.z, 'dust')
             self.scene.mark_for_removal(self)
 
-class PickableItem(Item):
-    def __init__(self, **kwargs):
-        super().__init(**kwargs)
+
+class BigRock(DestructibleMixin, Item):
+    def __init__(self, x, y, map_info, **kwargs):
+        # 大岩石體積較大，設定寬高為 1.5~2.0 單位
+        super().__init__(x, y, map_info, name="big_rock", width=kwargs.get("width", 3.0), height=kwargs.get("height", 3.0), weight=kwargs.get("weight", 999), scene=kwargs.get("scene", None))
+        self.init_destructible(hp=600)
+        self.is_blocking = True  # 阻擋位移
+        self.sheet = pygame.image.load("..\\Assets_Drive\\big_rock.png").convert_alpha()
+        self.frame_width = 96
+        self.frame_height = 192
+        self.num_frames = 1
+        self.frames = [
+            self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            for i in range(self.num_frames)
+        ]
+        self.combat_state = CombatState.NORMAL
+    def is_pickable(self):
+        return False
+    def on_destroyed(self):
+        """碎裂時的特定邏輯"""
+        # 1. 觸發特效
+        print(f"大石頭 on destroyed! {self.scene}")
+        if self.scene:
+            # 假設傳入當前中心座標與高度
+            self.scene.create_effect(self.x+self.width/2, self.y, self.z, "crashed_rock")
+
+            # 2. 掉出 2 個 Pickable Mid Rock
+            for i in range(2):
+                drop_x = self.x + random.uniform(-0.5, 0.5)
+                drop_y = self.y + random.uniform(-0.5, 0.5)
+                vel_x = random.uniform(-0.5, 0.5)
+                vz = 0.2  # 向上噴出
+                create_dropping_items(self, "mid_rock", x=drop_x, y=drop_y, vel_x=vel_x, vz=vz)
+            self.scene.mark_for_removal(self)
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y=0):
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
+        rect = self.frames[0].get_rect(center=(cx , cy ))
+
+        draw_x = cx - rect.width // 2
+        draw_y = cy - rect.height
+
+        win.blit(self.frames[0], rect)
+        pygame.draw.rect(win, (255, 0, 0), rect, 1)
+        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y)
+
+
+class MidRock(Item):
+    """可被撿起的小石塊原型"""
+
+    def __init__(self, x, y, map_info, **kwargs):
+        super().__init__(x, y, map_info, width=kwargs.get("width", 0.8), height=kwargs.get("height", 0.8), weight=kwargs.get("weight", 0.5), scene=kwargs.get("scene", None))
+        self.unit_type = 'item'
+        self.is_blocking = False  # 小石塊不會阻擋走路
+        # 這裡可掛載 HoldableComponent 讓玩家撿起
+        self.sheet = pygame.image.load("..\\Assets_Drive\\mid_rock.png").convert_alpha()
+        self.frame_width = 64
+        self.frame_height = 64
+        self.num_frames = 4
+        self.throw_damage = 7
+        self.swing_damge = 6
+        self.breakthrough = False
+        self.frames = [
+            self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            for i in range(self.num_frames)
+        ]
+        self.cached_frame = self.frames[0]
+    def draw(self, win, cam_x, cam_y, tile_offset_y=0):
+        offset_x, offset_y = 0, 0
+        if self.held_by:
+            offset_x = self.held_by.width * TILE_SIZE * 0.3 * -1.0
+            if self.held_by.facing == DirState.LEFT:
+                offset_x *=-1.0
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
+        if self.held_by:
+            offset_y -= self.held_by.height*TILE_SIZE*0.3
+        selected_image = self.frames[int(self.x*10)%4]
+        use_frame = selected_image
+        if self.held_by:
+            use_frame = self.cached_frame
+        else:
+            self.cached_frame = selected_image
+        rect = use_frame.get_rect(center=(cx+offset_x, cy+offset_y))
+
+        win.blit(use_frame, rect)
+        pygame.draw.rect(win, (255, 0, 0), rect, 1)
+
+
+
+
 
 class Rock(Item):
     def __init__(self, x, y, map_info):
@@ -193,10 +307,10 @@ class ProjectileItem(Item):
             self.scene.mark_for_removal(self)
 
 class Fireball(ProjectileItem):
-    def __init__(self, x, y, map_info, owner=None):
-        super().__init__(name='fireball', x=x, y=y, map_info=map_info, weight=0.0)
-        self.owner = owner
-        self.facing = owner.facing
+    def __init__(self, x, y, map_info, **kwargs):
+        super().__init__(map_info=map_info, name='fireball', x=x, y=y, weight=0.0, scene=kwargs.get("scene", None))
+        self.owner = kwargs.get("owner", None)
+        self.facing = self.owner.facing if self.owner else DirState.RIGHT
         self.speed = 0.15  # 自訂速度
         self.timer = 90  # 最多存活幀數
         self.width = 1.0
@@ -207,7 +321,7 @@ class Fireball(ProjectileItem):
         self.raw_image = pygame.image.load("..\\Assets_Drive\\hadouken.png").convert_alpha()
         self.image = self.raw_image
 
-        self.ignore_side = [owner.side]
+        self.ignore_side = self.owner.side if self.owner else "player"
         if self.facing == DirState.LEFT:
             self.image = pygame.transform.flip(self.raw_image, True, False)
         if self.owner:
@@ -246,10 +360,11 @@ class Fireball(ProjectileItem):
     )
 
 class Bullet(ProjectileItem):
-    def __init__(self, x, y, map_info, owner=None):
+    def __init__(self, x, y, map_info, **kwargs):
         super().__init__(name='子彈', x=x, y=y, map_info=map_info, weight=0.1)
+        owner = kwargs.get("owner", None)
         self.owner = owner
-        self.facing = owner.facing
+        self.facing = owner.facing if owner else DirState.RIGHT
         self.speed = 0.5  # 自訂速度
         self.timer = 90  # 最多存活幀數
         self.width = 1.0
@@ -386,7 +501,8 @@ class MagicPotion(ConsumableItem):
                                      color=(30, 144, 255))
 
 
-def create_dropping_items(drop_by, item_name, value=0):
+def create_dropping_items(drop_by, item_name, **kwargs):
+    value = kwargs.get('value', 0)
     if item_name == 'coin':
         coin = Coin(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
         coin.money = value
@@ -397,4 +513,11 @@ def create_dropping_items(drop_by, item_name, value=0):
         drop_by.scene.register_unit(potion, side='netural', tags=['item'], type='item')
     elif item_name == 'rock':
         rock = Rock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
+        drop_by.scene.register_unit(rock, side='netural', tags=['item'], type='item')
+    elif item_name == 'mid_rock':
+        rock = MidRock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h], scene=drop_by.scene)
+        rock.x = kwargs.get("x", drop_by.x)
+        rock.y = kwargs.get("y", drop_by.y)
+        rock.vel_x = kwargs.get("vel_x", 0.0)
+        rock.vz = kwargs.get("vz", 0.0)
         drop_by.scene.register_unit(rock, side='netural', tags=['item'], type='item')

@@ -1,17 +1,24 @@
 from Component import ComponentHost,HoldFlyLogicMixin
 from Config import *
+import pygame
 class Entity(ComponentHost, HoldFlyLogicMixin):
-    def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
+    def __init__(self, x, y, map_info, **kwargs):
         super().__init__()
         # 空間座標
         # 地圖資訊
+
         self.terrain = map_info[0]
         self.map_w = map_info[1]
         self.map_h = map_info[2]
         # 物理屬性
+        width = kwargs.get("width", 1.0)
+        height = kwargs.get("height", 1.0)
+        weight = kwargs.get("weight", 1.0)
+        self.scene = kwargs.get("scene", None)
         self.width = width
         self.height = height
         self.weight = weight
+
 
         self.x = max(width/2, min(x, self.map_w-width/2))
         self.y = max(height/2, min(y, self.map_h-height/2))
@@ -133,3 +140,12 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         pass
     def update(self):
         pass
+    def draw_hurtbox(self, win, cam_x, cam_y, tile_offset_y, terrain_z_offset=0):
+        # === 顯示 hurtbox ===
+        hurtbox = self.get_hurtbox()
+        hx1 = int(hurtbox['x1'] * TILE_SIZE) - cam_x
+        hy1 = int((self.map_h - hurtbox['y2']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
+        hx2 = int(hurtbox['x2'] * TILE_SIZE) - cam_x
+        hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
+
+        pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)

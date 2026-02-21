@@ -55,16 +55,19 @@ def update_passive_physics(unit):
 
     is_flying_projectile = getattr(unit, 'is_thrown', False) and getattr(unit, 'weight', 0.1) == 0
     # --- Z 軸物理 ---
-    if unit.vz != 0 or unit.jump_z > 0:
+    if unit.vz != 0.0 or unit.jump_z > 0.0:
         old_vz = unit.vz
         unit.jump_z += unit.vz
-        current_gravity = GRAVITY
+
 
         # if -0.1 < unit.vz < 0.1:
         #     current_gravity = GRAVITY * 0.5
-        #print(f'[{unit.current_frame}] vz={unit.vz}, gravity={current_gravity}, jump_z={unit.jump_z}')
+
         if not is_flying_projectile:
             current_gravity = GRAVITY
+            #current_gravity = 0.25*GRAVITY if -0.15 < unit.vz < 0 else GRAVITY
+            print(f'[{unit.current_frame}] vz={unit.vz}, gravity={current_gravity}, jump_z={unit.jump_z}')
+            #增加最高點璇停
             unit.vz -= current_gravity
         else:
             #不受重力影響
@@ -76,6 +79,7 @@ def update_passive_physics(unit):
             events.append(("LANDING", impact_energy))
             unit.jump_z = 0  # 強制對齊地表
             unit.vz = 0  # 徹底切斷垂直動量
+            unit.check_ground_contact()
 
     # --- 2. 水平物理 (Momentum & Horizontal Movement) ---
     if unit.vel_x != 0:

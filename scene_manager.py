@@ -3,7 +3,7 @@ import pygame
 from Config import *
 from State_enum import *
 import math
-
+import random
 
 
 #新增EnvironmentManager，用於控制圖片插入/高亮/前後景渲染
@@ -288,6 +288,7 @@ class SceneManager:
         self.shockwave_effect_frames = self.load_effect_assets(path="..//Assets_Drive//shockwave_effect1.png", frame_w=128,frame_h=128)  # 預載特效圖
         self.grounding_impact_effect_frames = self.load_effect_assets(path="..//Assets_Drive//grounding_impact_effect.png",frame_w=128, frame_h=128)  # 預載特效圖
         self.fireball_hit_frames = self.load_effect_assets(path="..//Assets_Drive//effect_fireball_hit.png", frame_w=100, frame_h=100)  # 預載特效圖
+        self.crashed_rock_frames = self.load_effect_assets(path="..//Assets_Drive//crashed_rock.png",frame_w=384, frame_h=384)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
@@ -563,6 +564,10 @@ class SceneManager:
             new_effect = VisualEffect(x, y, z, self.fireball_hit_frames,
                                       anim_speed=kwargs.get('anim_speed', 6),
                                       alpha=kwargs.get('alpha', 230))
+        elif type == 'crashed_rock':
+            new_effect = VisualEffect(x, y, z, self.crashed_rock_frames,
+                                      anim_speed=kwargs.get('anim_speed', 6),
+                                      alpha=kwargs.get('alpha', 180))
 
         if new_effect:
             self.visual_effects.append(new_effect)
@@ -956,55 +961,6 @@ class SceneManager:
         bubble = SpeechBubble(unit, text, duration, direction=direction)
         self.speech_bubbles.append(bubble)
 
-    # def draw_all(self,win, cam_x, cam_y, tile_offset_y):
-    #     all_drawables = []
-    #
-    #     # 包裝所有可繪製物件，加上 type 標記方便後續判斷
-    #     for unit in self.interactables:
-    #         if self.state == SceneState.SUPER_MOVE:
-    #             #在draw_super_move_overlay繪製專用animator
-    #             if unit == self.super_move_caster:
-    #                 continue
-    #         all_drawables.append(("unit", unit))
-    #         #print(f'{unit.name}sY={unit.y}')
-    #     for proj in self.projectiles:
-    #         all_drawables.append(("projectile", proj))
-    #
-    #     font = get_cjk_font(20, prefer='tc')  # or 'tc'
-    #     all_drawables.sort(key=lambda item: getattr(item[1], 'y', 0), reverse=True)
-    #     for item_type, obj in all_drawables:
-    #         if item_type == "text":
-    #             obj.draw(win, cam_x, cam_y, tile_offset_y, font)
-    #         else:
-    #             obj.draw(win, cam_x, cam_y, tile_offset_y)
-    #     # 2. 在所有角色畫完之後，額外「疊加」玩家剪影
-    #     players = self.get_units_by_name("player")
-    #     if players:
-    #         player = players[0]
-    #         # 建立一個半透明的影子 (Alpha 設為 100~128)
-    #         # 這裡可以直接呼叫 player 的 draw，但內部需要支持 alpha 覆蓋
-    #         player.draw_silhouette(win)
-    #
-    #
-    #     for text in self.floating_texts:
-    #         text.draw(win, cam_x, cam_y, tile_offset_y, self.default_font_36)  # 顯示傷害文字
-    #
-    #     # 2. 畫特效 (確保特效覆蓋在角色上方)
-    #     for vfx in self.visual_effects:
-    #         vfx.draw(win, cam_x, cam_y, tile_offset_y, self.map_h)
-    #     # ✅ 繪製 SpeechBubble
-    #     #font = pygame.font.SysFont(None, 18)
-    #
-    #     for bubble in self.speech_bubbles:
-    #         bubble.draw(win, cam_x, cam_y, tile_offset_y, font)
-    #
-    #
-    #
-    #     self.draw_overlay(win)
-    #     if self.state == SceneState.SUPER_MOVE:
-    #         self.draw_super_move_overlay(win, cam_x, cam_y, tile_offset_y)
-    #
-    #     self.draw_ui(win, font)
     def draw_all(self, win, cam_x, cam_y, tile_offset_y):
         # --- 準備工作 ---
         font = get_cjk_font(20, prefer='tc')
@@ -1296,6 +1252,8 @@ class SceneManager:
 
                     # B. 處理受擊對象是物品 (Item)
                     elif getattr(victim, 'unit_type', None) == 'item':
+                        victim.on_be_hit(attacker)
+                        print("<<<<<<<<<<<<ITEM ON BE HIT>>>>>>>>>>")
                         if hasattr(victim, 'on_be_hit'):
                             victim.on_be_hit(attacker)
     def resolve_clash(self, u1, u2):
@@ -1340,10 +1298,32 @@ class FloatingText:
         self.map_h = map_h
         self.font_size = font_size
 
+        # 🟢 拋物線物理參數
+        # x 方向隨機噴射 (-0.05 ~ 0.05)
+        #self.timer = self.duration
+        self.vel_x = random.uniform(-0.08, 0.08)
+        # y 方向向上初速 (負值代表向上)
+        self.vel_y = 0.15
+        # 重力常數
+        self.gravity = 0.008
+        self.alpha = 255
+
+    # def update(self):
+    #     self.duration -= 1
+    #     speed = 0.3 if self.font_size < 36 else 0.15
+    #     self.offset_y += speed
     def update(self):
+        # 🟢 更新座標：位移 = 速度
+        self.x += 0.2*self.vel_x
+        self.y += 0.2*self.vel_y
+
+        # 🟢 更新速度：受到重力影響，速度不斷向下增加
+        self.vel_y -= 0.5*self.gravity
+
+        # 淡出效果
         self.duration -= 1
-        speed = 0.3 if self.font_size < 36 else 0.15
-        self.offset_y += speed
+        if self.duration < 20:
+            self.alpha = max(0, self.alpha - 12)
 
     def is_alive(self):
         return self.duration > 0

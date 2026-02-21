@@ -746,15 +746,6 @@ class CharacterBase(Entity):
                 step_info = f"{step_dir.name}"
         self.draw_combat_bar(win, px, py)
         self.draw_hp_bar(win, px, py)
-    def draw_hurtbox(self, win, cam_x, cam_y, tile_offset_y, terrain_z_offset=0):
-        # === 顯示 hurtbox ===
-        hurtbox = self.get_hurtbox()
-        hx1 = int(hurtbox['x1'] * TILE_SIZE) - cam_x
-        hy1 = int((self.map_h - hurtbox['y2']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
-        hx2 = int(hurtbox['x2'] * TILE_SIZE) - cam_x
-        hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
-
-        pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)
 
     def scene_items(self):
         if hasattr(self, 'scene'):
@@ -1029,7 +1020,7 @@ class CharacterBase(Entity):
                 if self.scene:
                     self.scene.trigger_shake(duration=15, intensity=5)
                     # 根據能量決定是否產生落地煙塵特效
-                    self.scene.create_effect(self.x+self.width/2, self.y, self.z, 'grounding_impact')
+                    self.scene.create_effect(self.x+self.width/2, self.y+self.width/2, self.z, 'grounding_impact')
 
         if self.attack_state:
             self.attack_state = None
@@ -1436,7 +1427,8 @@ class CharacterBase(Entity):
 
         # --- 2. 🟢 格擋系統 (Guard) 整合 ---
         # 判斷條件：有攻擊狀態、非無敵/鋼體、且面向與攻擊者相反
-        can_guard = (self.attack_state and not self.is_invincible()
+        can_guard = (self.unit_type not in ['item'] and
+                     self.attack_state and not self.is_invincible()
                      and self.super_armor_timer <= 0 and attacker
                      and self.facing != attacker.facing
                      and self.attack_state.data.guardable)
@@ -2100,11 +2092,11 @@ class CharacterBase(Entity):
         if self.scene:
             prob = random.random()
             if prob > self.drop_mana_rate:
-                create_dropping_items(self, 'potion', 1)
+                create_dropping_items(self, 'potion', value =1)
                 return {'type': 'MagicPotion', 'value': 1}
         #掉落硬幣
             gold = random.randint(5, 15)
-            create_dropping_items(self, 'coin', gold)
+            create_dropping_items(self, 'coin', value=gold)
             return {'type':'money', 'value':gold}
         return None
 

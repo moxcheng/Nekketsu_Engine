@@ -260,11 +260,11 @@ PLAYER_REN_128_CONFIG={
             "component_name": "AuraEffectComponent",
             "component_key": "aura_effect",
             "params": {
-                "image_path": "..//Assets_Drive//aura_arc_256.png",  # 專屬靈氣圖
+                "image_path": "..//Assets_Drive//aura_arc_192.png",  # 專屬靈氣圖
                 "expire_type": EffectExpireMode.ATTACK_END,
                 "alpha": 180,
-                "frame_width": 256,
-                "frame_height": 256
+                "frame_width": 192,
+                "frame_height": 192
             }
         }, "power": 40}
     },
