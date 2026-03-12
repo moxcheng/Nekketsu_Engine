@@ -19,9 +19,11 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.height = height
         self.weight = weight
 
+        # 🟢 修正：增加 0.1 的安全邊距 (Safe Margin)，防止 int() 轉換後的邊界溢出
+        margin = 0.1
+        self.x = max(margin, min(x, self.map_w - width - margin))
+        self.y = max(margin, min(y, self.map_h - margin))
 
-        self.x = max(width/2, min(x, self.map_w-width/2))
-        self.y = max(height/2, min(y, self.map_h-height/2))
         self.z = 0.0
         self.jump_z = 0.0
 

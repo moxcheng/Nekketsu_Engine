@@ -3,7 +3,7 @@ import pygame
 import sys
 import numpy as np
 import pandas as pd
-from Characters import Player, Enemy, Ally, BigEnemy
+from Characters import Player, Enemy, Ally
 from Config import *
 from scene_manager import SceneManager, SpeechBubble
 from Items import Rock
@@ -809,6 +809,119 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         pygame.display.update()
         clock.tick(FPS)
 
+def scene_sandbox(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png", player_config = PLAYER_REN_128_CONFIG):
+
+    # === 搖桿初始化 ===
+    joystick = None
+    joy_buttons_prev = []
+    pygame.joystick.init()
+    if pygame.joystick.get_count() > 0:
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        print(f"[JOYPAD] 使用搖桿: {joystick.get_name()}")
+        joy_buttons_prev = [0] * joystick.get_numbuttons()
+    else:
+        print("[JOYPAD] 沒有偵測到搖桿，維持鍵盤操作")
+    joy_axis_left = False
+    joy_axis_right = False
+    # === 搖桿初始化 ===
+
+
+    # 地圖資訊化
+    map_info = load_terrain_map(flip_vertical=True)
+    terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
+    transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
+
+    global background_img
+    background_img = pygame.image.load(backgroung_path).convert()
+    background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
+
+    clock = pygame.time.Clock()
+
+
+
+
+    #宣告場景
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=backgroung_path)
+    scene.set_clear_font(clear_font)
+    scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
+    stage_cleared = False
+    #宣告玩家單位
+    tile_offset_y = 0
+    px, py = 16.0, 2.0
+
+
+    player = Player(px, py, map_info, player_config)
+
+    player.name='player'
+    #掛載component
+    player.health=500
+    player.max_hp = 500
+    player.mp=3
+    player.add_component("holdable", HoldableComponent(player))
+    player.scene = scene
+    scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    #scene.register_item(item1)  # 未來可新增的 item 類
+    bubble = SpeechBubble(player, "木樁測試開始！", 120)
+    scene.speech_bubbles = [bubble]
+    boss_barserker = False
+
+    big_rock = BigRock(x=player.x - 1.5, y=player.y, map_info=map_info, scene=scene)
+    scene.register_unit(big_rock, side='netural', tags=['item', 'interactable'], type='item')
+
+
+    e = Enemy(px+3, py, terrain[int(py), int(px)], map_info, config_dict = NPC_SHUKI_NEW_1_CONFIG)
+    e.dummy = True
+    e.health = 99999
+    e.max_hp = 99999
+    e.scene = scene
+    scene.register_unit(e, side='enemy_side', tags=['enemy','interactable'], type='character')
+
+    destroyed_enemy = 0
+    while True:
+        e.health = 99999
+        e.max_hp = 99999
+
+        kb_keys = pygame.key.get_pressed()
+        if 'joystick' in locals() and joystick is not None:
+            keys, joy_axis_left, joy_axis_right, joy_buttons_prev = input_joypad_handler(player, joystick, joy_axis_left, joy_axis_right,kb_keys, joy_buttons_prev)
+        else:
+            keys = kb_keys
+            # --- 在這裡檢查 Enter ---
+        if kb_keys[pygame.K_RETURN]:
+            print('Enter is being held!')
+            from Skill import ABILITY_DATA
+        player.handle_input(keys)
+
+
+
+        if len(scene.get_units_by_side('player_side')) > 0:
+            destroyed_enemy += scene.update_all()  # 這會更新所有註冊單位
+
+        base_cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        base_cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+
+        # 2. 進行地圖邊界限制 (Clamp)，確保基礎背景座標不越界
+        base_cam_x = max(0, min(base_cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        base_cam_y = max(0, min(base_cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+
+        # 3. 取得震動偏移量
+        ox, oy = scene.get_camera_offset()
+
+        # 4. 最終繪製用的 cam_x/y 等於「基礎座標」加上「震動偏移」
+        # 注意：這裡不要再做一次邊界限制，否則震動會被擋住
+        cam_x = base_cam_x + ox
+        cam_y = base_cam_y + oy
+
+        # --- 接下來進行繪圖 ---
+        win.fill(WHITE)
+        #draw_map(win, cam_x, cam_y, font, tile_offset_y)
+        scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+
+        #pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
+        pygame.display.update()
+        clock.tick(FPS)
+
 
 def selection_menu():
     from MenuManager import CharacterSelectMenu
@@ -828,6 +941,7 @@ def selection_menu():
 
     # 手把按鈕映射 (A, B, X 均視為確認)
     CONFIRM_BUTTONS = [0, 1, 2]
+    clock = pygame.time.Clock()
 
     while running:
         events = pygame.event.get()
@@ -875,6 +989,8 @@ def selection_menu():
         menu.update()
         menu.draw()
         pygame.display.flip()
+        clock.tick(FPS*2)
+
 
     return selected_config
 
@@ -888,6 +1004,7 @@ def main():
     pygame.display.set_caption("熱血引擎")
     selected_player = selection_menu()
     scene_mato(win, font, clear_font, player_config=selected_player)
+    #scene_sandbox(win, font, clear_font, player_config=selected_player)
 
 
 main()

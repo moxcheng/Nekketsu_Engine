@@ -16,7 +16,7 @@ class Item(Entity):
         self.y = y
         self.width = 1.0
         self.height = 1.0
-        self.weight = kwargs.get("weight", 0.3)
+        self.weight = kwargs.get("weight", 0.5)
         self.vz = 0.0
         self.jump_z = 0.0  # 可選：讓 item 可以「拋起」
         self.color = (150, 150, 150)  # 預設灰色
@@ -78,7 +78,31 @@ class Item(Entity):
     def get_hurtbox(self):
         return self.get_physics_box()
 
+    def get_impact_power(self, user=None, action_type=AttackType.SWING):
+        """
+        核心公式：計算該物品產生的物理強度。
+        採用非線性加權：Power = (速度因子) * (重量因子^1.2)
+        """
+        # 1. 基礎力量來源
+        strength = user.strength if user else 10.0
+
+        # 2. 動作係數 (揮舞通常比投擲更直接)
+        action_mult = 1.2 if action_type == AttackType.SWING else 1.0
+
+        if action_type == AttackType.SWING:
+            # 揮舞時：速度由人決定，但重量提供「勢能」補償
+            # 公式：Strength * (Weight^0.8 + 0.5) -> 確保輕物不廢，重物極強
+            weight_bias = (self.weight ** 0.8) + 0.5
+            return strength * weight_bias * action_mult
+
+        elif action_type == AttackType.THROW_CRASH:
+            # 投擲碰撞時：直接抓取真實物理速度
+            current_speed = (self.vel_x ** 2 + self.vz ** 2) ** 0.5
+            # 補償公式：速度 * (重量^1.2) -> 速度慢但重量大的物體，能量衰減較少
+            return current_speed * (self.weight ** 1.2) * 20.0  # 20 為常數校準
+
     def get_swing_attack_data(self, attacker):
+        # ... 原有 duration 計算 ...
         return AttackData(
             attack_type=AttackType.SWING,
             duration=32,
@@ -88,21 +112,29 @@ class Item(Entity):
             damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 7,
             effects=[AttackEffect.SHORT_STUN],
             frame_map=[0] * 12 + [1] * 20,  # 必須與duration等長
-            frame_map_ratio = [12, 20]
+            frame_map_ratio=[12, 20],
+            # 🟢 關鍵修正：power 傳入一個 callable，指向我們剛寫好的公式
+            power=lambda _: self.get_impact_power(user=attacker, action_type=AttackType.SWING),
+            absorption=0.8,  # 揮舞武器通常能量吸收較高（肉搏感）
+            impact_angle=0,
         )
+
     def get_throw_attack_data(self, attacker):
         return AttackData(
-        attack_type=AttackType.THROW,
-        duration=32,
-        trigger_frame=16,
-        recovery=16,
-        hitbox_func=item_hitbox,
-        effects=[AttackEffect.SHORT_STUN],
-        damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 7,
-        frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        frame_map_ratio=[16, 16],
-            power = attacker.throw_power if hasattr(attacker, 'throw_power') else 20
-    )
+            attack_type=AttackType.THROW_CRASH,
+            # 🟢 投擲碰撞時，根據當下速度計算 power
+            power=lambda _: self.get_impact_power(action_type=AttackType.THROW_CRASH),
+            absorption=1.0,  # 投擲物撞擊後能量通常全額轉化為傷害
+            impact_angle=15,  # 帶有一點向上的彈跳感
+            duration=32,
+            trigger_frame=16,
+            recovery=16,
+            hitbox_func=item_hitbox,
+            effects=[AttackEffect.SHORT_STUN],
+            damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 7,
+            frame_map = [0]*16 + [1]*16,   #必須與duration等長
+            frame_map_ratio=[16, 16],
+        )
 
     def is_out_of_bounds(self):
         return not (0 <= self.x < self.map_w and 0 <= self.y < self.map_h)
@@ -155,7 +187,7 @@ class DestructibleMixin:
 
         # 2. 受擊視覺與震動
         if self.scene:
-            print('aaaaaaaaaaa')
+            #print('aaaaaaaaaaa')
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
             self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
             self.scene.trigger_shake(5, 3)
@@ -199,6 +231,8 @@ class BigRock(DestructibleMixin, Item):
         if self.scene:
             # 假設傳入當前中心座標與高度
             self.scene.create_effect(self.x+self.width/2, self.y, self.z, "crashed_rock")
+            self.scene.trigger_shake(duration=15, intensity=5)
+            self.scene.trigger_hit_stop(5)
 
             # 2. 掉出 2 個 Pickable Mid Rock
             for i in range(2):
@@ -225,7 +259,7 @@ class MidRock(Item):
     """可被撿起的小石塊原型"""
 
     def __init__(self, x, y, map_info, **kwargs):
-        super().__init__(x, y, map_info, width=kwargs.get("width", 0.8), height=kwargs.get("height", 0.8), weight=kwargs.get("weight", 0.5), scene=kwargs.get("scene", None))
+        super().__init__(x, y, map_info, width=kwargs.get("width", 0.8), height=kwargs.get("height", 0.8), weight=kwargs.get("weight", 1.0), scene=kwargs.get("scene", None))
         self.unit_type = 'item'
         self.is_blocking = False  # 小石塊不會阻擋走路
         # 這裡可掛載 HoldableComponent 讓玩家撿起
@@ -233,8 +267,8 @@ class MidRock(Item):
         self.frame_width = 64
         self.frame_height = 64
         self.num_frames = 4
-        self.throw_damage = 7
-        self.swing_damge = 6
+        self.throw_damage = 12
+        self.swing_damge = 10
         self.breakthrough = False
         self.frames = [
             self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
@@ -242,14 +276,25 @@ class MidRock(Item):
         ]
         self.cached_frame = self.frames[0]
     def draw(self, win, cam_x, cam_y, tile_offset_y=0):
-        offset_x, offset_y = 0, 0
+        offset_x, offset_y = 0.0, 0.0
         if self.held_by:
             offset_x = self.held_by.width * TILE_SIZE * 0.3 * -1.0
             if self.held_by.facing == DirState.LEFT:
                 offset_x *=-1.0
+            offset_y -= self.held_by.height * TILE_SIZE * 0.3
+        if self.held_by and self.held_by.attack_state and self.held_by.attack_state.name == 'swing':
+            dir = 1
+            if self.held_by.facing == DirState.LEFT:
+                dir = -1
+            # swing_offset_x = dir*int(self.held_by.width * TILE_SIZE * 0.6)
+            # swing_offset_y += self.held_by.height*TILE_SIZE*0.4
+            offset_x = dir * self.held_by.height * 0.6*TILE_SIZE
+            offset_y += self.held_by.width*0.6*TILE_SIZE
+            print(f'{self.name} 被揮舞 {offset_x}, {offset_y}!')
+
+
         cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
-        if self.held_by:
-            offset_y -= self.held_by.height*TILE_SIZE*0.3
+
         selected_image = self.frames[int(self.x*10)%4]
         use_frame = selected_image
         if self.held_by:
@@ -257,6 +302,8 @@ class MidRock(Item):
         else:
             self.cached_frame = selected_image
         rect = use_frame.get_rect(center=(cx+offset_x, cy+offset_y))
+        if offset_x != 0.0 or offset_y != 0.0:
+            print(f"{self.name}被揮舞! {offset_x}/{offset_y}")
 
         win.blit(use_frame, rect)
         pygame.draw.rect(win, (255, 0, 0), rect, 1)
@@ -349,12 +396,12 @@ class Fireball(ProjectileItem):
         return AttackData(
         attack_type=AttackType.THROW,
         duration=32,
-        trigger_frame=20,
+        trigger_frame=1,
         recovery=8,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
         damage=200,
-        frame_map_ratio=[16,16],
+        frame_map_ratio=[1,31],
         power=200,
         knock_back_power=[1.0,0.0],
     )
@@ -401,14 +448,14 @@ class Bullet(ProjectileItem):
         return AttackData(
         attack_type=AttackType.THROW,
         duration=48,
-        trigger_frame=16,
+        trigger_frame=1,
         recovery=16,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
         knock_back_power=[0.5,0.1],
         damage=lambda _: self.swing_damage if hasattr(self, 'throw_damage') else 1,
-        frame_map = [0]*16 + [1]*32,   #必須與duration等長
-        frame_map_ratio = [16,32]
+        frame_map = [0]*1 + [1]*47,   #必須與duration等長
+        frame_map_ratio = [1,47]
     )
 
 from PhysicsUtils import is_box_overlap
@@ -422,7 +469,7 @@ class ConsumableItem(Item):
     def update(self):
         self.anim_timer += 1
         for unit in self.scene.get_units_by_name('player'):
-            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
+            if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()) and unit.name == 'player':
                 self.on_touched_me(picked_by=unit)
                 self.scene.mark_for_removal(self)
                 break
@@ -515,7 +562,7 @@ def create_dropping_items(drop_by, item_name, **kwargs):
         rock = Rock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h])
         drop_by.scene.register_unit(rock, side='netural', tags=['item'], type='item')
     elif item_name == 'mid_rock':
-        rock = MidRock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h], scene=drop_by.scene)
+        rock = MidRock(drop_by.x, drop_by.y, [drop_by.terrain, drop_by.map_w, drop_by.map_h], scene=drop_by.scene, weight=1.0)
         rock.x = kwargs.get("x", drop_by.x)
         rock.y = kwargs.get("y", drop_by.y)
         rock.vel_x = kwargs.get("vel_x", 0.0)

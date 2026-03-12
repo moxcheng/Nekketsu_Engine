@@ -55,6 +55,34 @@ def haste_expire(owner):
     owner.scene.env_manager.set_dim(False)
 
 
+# Skill.py
+
+# Skill.py
+
+def trigger_clone_skill(owner, duration):
+    """分身術啟動邏輯"""
+    from Characters import ClonePlayer  # 延遲導入防止循環引用
+
+    # 計算生成位置：玩家面向的前方 1 單位
+    offset_x = 1.0 if owner.facing == DirState.RIGHT else -1.0
+
+    # 建立實體
+    clone = ClonePlayer(
+        owner.x + offset_x,
+        owner.y,
+        [owner.terrain, owner.map_w, owner.map_h],
+        owner.config_backup,  # 使用本體的貼圖配置備份
+        owner
+    )
+
+    # 🟢 註冊到場景：設定標籤與陣營
+    owner.scene.register_unit(clone, side='player_side', tags=['player_clone'], type='character')
+
+    # 視覺回饋：在生成點產生煙霧或爆氣特效
+    owner.scene.create_effect(clone.x, clone.y, clone.z, "brust", alpha=180)
+    owner.say("分身術！")
+
+
 # --- 數據庫實例 ---
 ABILITY_DATA = {
     #狀態類:
@@ -62,6 +90,7 @@ ABILITY_DATA = {
     "timestop": SystemAbilityData("timestop", 1, 540, on_trigger=za_warudo_trigger, on_update=za_warudo_update, on_expire=za_warudo_expire),
     #實體類:
     "stand": SystemAbilityData("stand", 1, 900),
+    "clone": SystemAbilityData("clone", 1, 900, on_trigger=trigger_clone_skill),
     #演出類:
     "super_move": SystemAbilityData("stand", 3, 0),
 }
@@ -406,6 +435,24 @@ def punch_hitbox_func(x, y, facing, actor=None):
     else:
         return {'x1': x - reach, 'x2': x - 0.2, 'y1': y_top, 'y2': y_bottom }
 
+def spear_hitbox_func(x, y, facing, actor=None):
+    if actor is not None:
+        w = getattr(actor, "width", 1.5)
+        h = getattr(actor, "height", 2.5)
+    else:
+        w = 1.5
+        h = 2.5
+    # 2. 計算攻擊觸及距離（reach）
+    #    舉例：讓 reach 跟寬度成比例
+    reach = 0.9 + 1.6 * (w / 1.5)
+    # 3. 垂直覆蓋範圍也用角色高度來估
+    y_top = y+h*0.4
+    y_bottom = y + h * 0.6
+    if facing == DirState.RIGHT:
+        return {'x1': x + 0.2, 'x2': x + reach, 'y1': y_top, 'y2': y_bottom }
+    else:
+        return {'x1': x - reach, 'x2': x - 0.2, 'y1': y_top, 'y2': y_bottom }
+
 def kick_hitbox_func(x, y, facing, actor=None):
     if actor is not None:
         w = getattr(actor, "width", 1.5)
@@ -485,6 +532,20 @@ attack_data_dict = {
         cancel_table = {AttackType.SLASH: 12, AttackType.PUNCH: 8, AttackType.KICK: 8},
         frame_map_ratio = [8,16,8],
     ),
+    AttackType.SPEAR: AttackData(
+        attack_type=AttackType.SPEAR,
+        duration=32,
+        trigger_frame=8,
+        recovery=2,
+        hitbox_func=spear_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN],
+        damage=10,
+        power=30,
+        frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
+        cancel_table={AttackType.SLASH: 12, AttackType.SPEAR: 12},
+        frame_map_ratio=[8, 16, 8],
+    ),
     AttackType.SPECIAL_PUNCH: AttackData(
         attack_type=AttackType.SPECIAL_PUNCH,
         duration=32,
@@ -497,6 +558,20 @@ attack_data_dict = {
         frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
         frame_map_ratio=[8, 16, 8],
         knock_back_power=[1.0,0.1],
+        hit_stop_frames=5
+    ),
+    AttackType.SPECIAL_SPEAR: AttackData(
+        attack_type=AttackType.SPECIAL_SPEAR,
+        duration=32,
+        trigger_frame=8,
+        recovery=2,
+        hitbox_func=spear_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE],
+        damage=8,
+        frame_map=[0] * 8 + [2] * 16 + [1] * 8,  # 必須與duration等長
+        frame_map_ratio=[8, 16, 8],
+        knock_back_power=[1.0, 0.1],
         hit_stop_frames=5
     ),
     AttackType.MAHAHPUNCH: AttackData(
@@ -524,7 +599,22 @@ attack_data_dict = {
             "frame_width":128,
             "frame_height":128
         },
-        frame_map_ratio = [4,4,4,4,4,4,4,4,4,4,4,4],
+        frame_map_ratio = [4]*12,
+        hit_stop_frames=5
+    ),
+    AttackType.MAHAHSPEAR: AttackData(
+        attack_type=AttackType.MAHAHSPEAR,
+        duration=48,
+        trigger_frame=8,
+        recovery=2,
+        hitbox_func=spear_hitbox_func,
+        condition_func=lambda actor: True,
+        effects=[AttackEffect.SHORT_STUN, AttackEffect.AFTER_IMAGE, AttackEffect.FORCE_WEAK],
+        # knock_back_power=[1.5,0.0],
+        damage=15,
+        # frame_map=[0] * 4 + [2] * 4 + [1] * 4 + [2] * 4 + [1] * 4 + [2] * 4 + [1] * 4 + [2] * 4 + [1] * 4 + [2] * 4 + [
+        #     1] * 4 + [2] * 4,
+        frame_map_ratio=[4] * 12,
         hit_stop_frames=5
     ),
     AttackType.KICK: AttackData(
@@ -622,13 +712,13 @@ attack_data_dict = {
     AttackType.THROW: AttackData(
         attack_type=AttackType.THROW,
         duration=32,
-        trigger_frame=8,
+        trigger_frame=1,
         recovery=16,
         hitbox_func=item_hitbox,
         effects=[AttackEffect.SHORT_STUN],
         damage = 15,
-        frame_map = [0]*16 + [1]*16,   #必須與duration等長
-        frame_map_ratio = [16,16]
+        frame_map = [0]*1 + [1]*31,   #必須與duration等長
+        frame_map_ratio = [1,31]
     ),
     AttackType.THROW_CRASH: AttackData(
         attack_type=AttackType.THROW,

@@ -8,7 +8,8 @@ from Component import StandComponent
 from Entity import Entity
 from CharactersConfig import *
 import random
-
+import math
+import copy
 DEBUG = False
 
 def suspend(info=''):
@@ -32,8 +33,6 @@ KEY_TO_ACTION = {
     pygame.K_x: "x_attack",
     pygame.K_c: "c_attack"
 }
-
-import pygame
 from Config import WIDTH, HEIGHT
 
 
@@ -114,7 +113,7 @@ def get_component_class(name):
 class CharacterBase(Entity):
     #Entity的初始化def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
     def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 1.0):
-        super().__init__(x=max(0, min(x, map_info[1]-1)), y=max(0, min(y, map_info[2]-1)), map_info=map_info, width=width, height=height, weight=weight)
+        super().__init__(x=x, y=y, map_info=map_info, width=width, height=height, weight=weight)
         self.unit_type = "character"
 
         self.color = (0,0,0)
@@ -233,6 +232,11 @@ class CharacterBase(Entity):
         self.breakthrough=False
         self.attacker_attack_data=None
         self.interact_target = None #用來儲存倒地攻擊的互動對象
+        self.strength = 10.0
+        self.unable_to_grab_item = None
+
+        self.attack_cooldown = 0  # 攻擊冷卻倒數
+
 
     def take_contextual_attack(self, attacker_attack_state):
         atk_data = attacker_attack_state.data
@@ -400,7 +404,8 @@ class CharacterBase(Entity):
             AttackType.BASH:"bash",AttackType.SLASH:"slash",AttackType.KICK:"kick",AttackType.FLY_KICK:"flykick",
             AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
             AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
-            AttackType.BRUST:"brust",AttackType.PUSH:"push",AttackType.DOWN_STOMP:"down_attack"
+            AttackType.BRUST:"brust",AttackType.PUSH:"push",AttackType.DOWN_STOMP:"down_attack",AttackType.SPEAR:"spear",
+            AttackType.SPECIAL_SPEAR:"special_spear",AttackType.MAHAHSPEAR:"mahahspear"
         }
         move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run", MoveState.GUARD:"guard"}
         common_anim_material = ['burn']
@@ -518,7 +523,8 @@ class CharacterBase(Entity):
             #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
             if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust','push',
-                             'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw', 'meteofall']:
+                             'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw', 'meteofall',
+                             'spear','special_spear','mahahspear']:
                 index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, anim_stage_frames)
                 use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
                 frame_index = index_map[use_index]
@@ -625,7 +631,7 @@ class CharacterBase(Entity):
         # DEBUG: 繪製 hitbox
         if DEBUG:
             self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
-        #self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
+        self.draw_hit_box(win, cam_x, cam_y, tile_offset_y, (255, 0, 0), terrain_z_offset)
         # win.blit(frame, (px, py))
         frame_rect = frame.get_rect()
         draw_x = cx - frame_rect.width // 2
@@ -633,14 +639,14 @@ class CharacterBase(Entity):
 
         #顫抖特效區
         if self.scene and self.scene.hit_stop_timer > 0:
-            import random
+            #import random
             draw_x += random.randint(-2, 2)
             draw_y += random.randint(-2, 2)
 
             # --- 抖動回饋整合 ---
         if self.is_mashing:
             # 產生 -2 到 2 像素的隨機偏移
-            import random
+            #import random
             draw_x += random.randint(-2, 2)
             draw_y += random.randint(-2, 2)
 
@@ -651,7 +657,7 @@ class CharacterBase(Entity):
             #print(f'{self.name} momentum {momentum}')
             intensity = int(min(6, momentum))  # 最大震動幅度限制在 12 像素
             if intensity > 0:
-                import random
+                #import random
                 draw_x += random.randint(-intensity, intensity)
                 draw_y += random.randint(-intensity, intensity)
 
@@ -704,7 +710,7 @@ class CharacterBase(Entity):
         # print(f'{self.name} draw debug {self.current_frame}')
         if DEBUG:
             self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
-        #self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
+        self.draw_hurtbox(win, cam_x, cam_y, tile_offset_y, terrain_z_offset)
     def draw_silhouette(self, win):
         # 取得玩家當前應該顯示的那一幀 (從 animator 拿)
         # 假設我們已經在原本的 draw 流程算好了 frame
@@ -787,17 +793,25 @@ class CharacterBase(Entity):
                 elif d:
                     something_nearby, avail_items = comp.find_nearby_item()
                     if something_nearby:
-                        real_intent = "pickup_item"
+                        if self.unable_to_grab_item == False:
+                            real_intent = "pickup_item"
+                        else:
+                            real_intent = "z_attack"
                         z_table = self.attack_table.get("z_attack", None)
                         if z_table:
                             real_intent = z_table.get("down_action", real_intent)
                         if real_intent in CONTEXTUAL_ATTACK:
                             if only_item_nearby(avail_items):
-                                real_intent = "pickup_item"
+                                #real_intent = "pickup_item"
                                 # 只有"沒有敵人可已做down_attack，只有物品"時，退化為pickup_item
+                                if self.unable_to_grab_item == False:
+                                    real_intent = "pickup_item"
+                                else:
+                                    real_intent = "z_attack"
                             else:
                                 #從avail_items抓出最近的那個敵人
                                 self.interact_target = get_nearest_target(self, avail_items)
+
 
             elif real_intent == 'x_attack':
                 if comp.held_object:
@@ -827,7 +841,7 @@ class CharacterBase(Entity):
                 attack = atk_table.get('run', None)
                 print(f'>>> run attack = {attack}<<<<')
             print(f'attack2 {attack}')
-        if attack in [AttackType.PUNCH, AttackType.KICK]:
+        if attack in [AttackType.PUNCH, AttackType.KICK, AttackType.SPEAR]:
             enemy_side = 'enemy_side' if self.side == 'player_side' else 'player_side'
             # 定義偵測中心（通常在角色前方一點）
             check_dist = 1.5 if self.facing == DirState.RIGHT else -1.5
@@ -837,8 +851,15 @@ class CharacterBase(Entity):
             # 檢查是否有任何敵人處於 WEAK 狀態
             has_weak_target = any(e.combat_state == CombatState.WEAK for e in nearby_enemies)
             if has_weak_target:
-                print(f"[REACTION] 偵測到 Weak 敵人，{self.name} 的 PUNCH 轉變為 SPECIAL_PUNCH！")
-                attack = AttackType.SPECIAL_PUNCH if attack == AttackType.PUNCH else AttackType.SPECIAL_KICK
+                atk_table = self.attack_table.get(real_intent, None)
+                # z_table = self.attack_table.get("z_attack", None)
+                if atk_table:
+                    attack = atk_table.get("special", attack)
+                print(f"[REACTION] 偵測到 Weak 敵人，{self.name} 的 {real_intent} 使用 {attack}!")
+                # attack = AttackType.SPECIAL_PUNCH if attack == AttackType.PUNCH else AttackType.SPECIAL_KICK
+
+
+
 
         #處理技能的動量變化
         if attack is not None:
@@ -1151,7 +1172,7 @@ class CharacterBase(Entity):
             trigger_frame=12,
             recovery=16,
             hitbox_func=swing_hitbox_func,
-            damage=lambda _: self.throw_damage if hasattr(self, 'swing_damage') else 11,
+            damage=lambda _: self.swing_damage if hasattr(self, 'swing_damage') else 11,
             knock_back_power=[0.3,0.2],
             effects=[AttackEffect.FORCE_DOWN],
             frame_map = [0] * 12 + [1] * (duration - 12),  # 必須與duration等長
@@ -1166,14 +1187,14 @@ class CharacterBase(Entity):
         return AttackData(
             attack_type=AttackType.THROW,
             duration=duration,
-            trigger_frame=16,
+            trigger_frame=1,
             recovery=16,
             hitbox_func=item_hitbox,
             effects=[AttackEffect.SHORT_STUN],
             damage=lambda _: self.throw_damage if hasattr(self, 'throw_damage') else 7,
             knock_back_power=[0.6,0.2],
-            frame_map = [0] * 16 + [1] * (duration - 16),  # 必須與duration等長
-            frame_map_ratio = [16, duration-16]
+            frame_map = [0] * 1 + [1] * (duration - 1),  # 必須與duration等長
+            frame_map_ratio = [1, duration-1]
         )
 
     def get_knock_direction(self, attacker, attack_data):
@@ -1205,7 +1226,7 @@ class CharacterBase(Entity):
         # if AttackEffect.FORCE_DOWN in effects:
         #     self.into_down_state()
         #force down用knock_back取代
-        if AttackEffect.FORCE_WEAK in effects:
+        if AttackEffect.FORCE_WEAK in effects and self.combat_state not in [CombatState.WEAK, CombatState.DOWN, CombatState.DEAD]:
             self.into_weak_state()
         else:
             # 普通攻擊後的邏輯
@@ -1231,7 +1252,7 @@ class CharacterBase(Entity):
         # 其他特效依照 enum 加入即可
         # if AttackEffect.FORCE_DOWN in effects:
         #     self.into_down_state()
-        if AttackEffect.FORCE_WEAK in effects:
+        if AttackEffect.FORCE_WEAK in effects and self.combat_state not in [CombatState.WEAK, CombatState.DOWN, CombatState.KNOCKBACK, CombatState.DEAD]:
             self.into_weak_state()
 
         #擊退處理
@@ -1359,7 +1380,7 @@ class CharacterBase(Entity):
         resistance = 1.0 + (self.weight * 5.0)
         impulse = residual_energy / resistance
         # 3. 角度分解 (將角度轉為弧度)
-        import math
+
         rad = math.radians(attack_data.impact_angle)
         # 這裡的 direction 是根據攻擊者位置判斷 (1 或 -1)
         dir_x = 1 if (attacker and attacker.x < self.x) else -1
@@ -1486,7 +1507,7 @@ class CharacterBase(Entity):
             impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
 
             # 角度分解
-            import math
+
             rad = math.radians(attack_data.impact_angle)
             dir_x = self.get_knock_direction(attacker, attack_data)
 
@@ -1612,6 +1633,8 @@ class CharacterBase(Entity):
             self.on_hit_timer -= 1
         if self.combat_timer > 0:
             self.combat_timer -= 1
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
 
         # 每禎遞減攻擊計時器
         #死亡消失
@@ -1913,7 +1936,7 @@ class CharacterBase(Entity):
                                 # 判斷兩者在物理空間（包含 Z 軸高度）是否重疊
                                 #print(f"{other.name} 我能撞人")
                                 if is_box_overlap(self.get_feet_box(), other.get_feet_box()):
-                                    print('撞到了撞到了撞到了撞到了撞到了撞到了撞到了')
+                                    #print('撞到了撞到了撞到了撞到了撞到了撞到了撞到了')
                                     # 分別檢查 X 與 Y 軸，是否正在「惡化」重疊情況
                                     current_dist_x = abs(self.x - other.x)
                                     new_dist_x = abs(new_x - other.x)
@@ -2188,23 +2211,6 @@ class CharacterBase(Entity):
         """檢查當前狀態是否可以執行緩衝中的指令"""
         if not self.input_buffer: return False
 
-        # # # 取消override，把解釋權全部交給resolve_attack_table
-        # 這裡先檢查元件是否有改寫意圖的需求
-        # final_intent = self.input_buffer
-        # for comp in self.components.values():
-        #     overridden = comp.override_attack_intent(self.input_buffer)
-        #     if overridden != self.input_buffer:
-        #         final_intent = overridden
-        #         break
-        #
-        # # 如果被改寫成 pickup_item，我們就執行 final_intent 並清空緩衝
-        # if final_intent == 'pickup_item' and self.attack_state is None:
-        #     print("try_consome buffer final_intent = pickup_item")
-        #     self.execute_command('pickup_item')
-        #     self.clean_input_buffer()
-        #     self.attack_intent = None
-        #     return True
-
         # 狀態判斷 A: 正常行動 (招式結束或 IDLE)
         #print(f'try_consume_buffer={self.input_buffer}')
         can_act = self.attack_state is None and self.combat_state == CombatState.NORMAL and not self.is_locked()
@@ -2225,9 +2231,6 @@ class CharacterBase(Entity):
             self.invincible_timer = 20
             return True
         return False
-
-    import math
-    import random
 
     def distance_to_target(self, target):
         dx = target.x - self.x
@@ -2251,7 +2254,10 @@ class CharacterBase(Entity):
         if abs(p_dx) > 0.01:
             intent['direction'] = DirState.RIGHT if p_dx > 0 else DirState.LEFT
 
-        has_token = self in self.scene.token_holders
+        if self.side != 'player_side':
+            has_token = self in self.scene.token_holders
+        else:
+            has_token = True
         self.ai_recalc_timer = max(0, self.ai_recalc_timer - 1)
 
         # 決定移動目標點
@@ -2349,6 +2355,7 @@ class CharacterBase(Entity):
                 else:
                     attack_range = 2.5
                 if dist <= attack_range and dz < 1.0:
+                    #print(f'<<<<<dist = {dist}>>>>>>')
                     if self.attack_cooldown <= 0:
                         intent['action'] = self.combos[int(self.combo_count) % len(self.combos)]
                         self.combo_count += 1
@@ -2385,6 +2392,7 @@ class Player(CharacterBase):
         self.side = 'player_side'
         self.popup=config.get("popup")
         self.skill_overrides = config.get("skill_overrides", {})
+        self.config_backup = copy.copy(config)
         # self.attack_map = {
         #     "z_attack": lambda: AttackType.BASH if self.state == MoveState.RUN else AttackType.PUNCH,
         #     "x_attack": lambda: AttackType.KICK,
@@ -2415,6 +2423,8 @@ class Player(CharacterBase):
         self.last_dir_input = [0,0,0,0]
         self.stand_config = config.get("stand_config", None)
         self.super_ability = config.get("super_ability", None)
+        self.strength = config.get("strength", 10.0)
+        self.unable_to_grab_item = config.get("unable_to_grab_item", False)
 
 
         #for dir in ['left', 'right', 'up', 'down']:
@@ -2584,7 +2594,7 @@ class Player(CharacterBase):
             if skill not in ['pickup_item']:
                 self.set_attack_by_skill(skill)
                 print(f'player set_attackc_by_skill {skill}')
-                if skill in CONTEXTUAL_ATTACK:
+                if skill in CONTEXTUAL_ATTACK and self.interact_target:
                     self.interact_target.take_contextual_attack(self.attack_state)
 
 
@@ -2593,72 +2603,85 @@ class Player(CharacterBase):
 
 
 
-    def handle_input(self, keys):
-        # 1. 偵測按鍵
-        z = keys[pygame.K_z]
-        x = keys[pygame.K_x]
-        c = keys[pygame.K_c]
-        jump = keys[pygame.K_SPACE]
-        u = keys[pygame.K_UP]
-        d = keys[pygame.K_DOWN]
-        l = keys[pygame.K_LEFT]
-        r = keys[pygame.K_RIGHT]
+    def handle_input(self, input_source):
+        # --- 1. 檢查輸入鎖定 (防止連發) ---
+        if getattr(self, 'input_lock_timer', 0) > 0:
+            self.input_lock_timer -= 1
+            # 在鎖定期間，我們仍需更新移動意圖，但不允許觸發新攻擊
+            intent = self.input_intent(input_source) if not isinstance(input_source, dict) else input_source
+            super().handle_input(intent)
+            return
+
+
+        is_ai = isinstance(input_source, dict)
+
+        if is_ai:
+            # AI 模式：從傳入的字典直接讀取布林值
+            z = input_source.get('z', False)
+            x = input_source.get('x', False)
+            c = input_source.get('c', False)
+            jump = input_source.get('jump', False)
+            # 方向鍵模擬
+            u, d, l, r = input_source.get('dirs', (False, False, False, False))
+        else:
+            # 玩家模式：讀取 pygame 按鍵物件
+            z, x, c = input_source[pygame.K_z], input_source[pygame.K_x], input_source[pygame.K_c]
+            jump = input_source[pygame.K_SPACE]
+            u, d, l, r = input_source[pygame.K_UP], input_source[pygame.K_DOWN], input_source[pygame.K_LEFT], \
+            input_source[pygame.K_RIGHT]
+
+        # --- 後續邏輯統一使用變數 z, x, c, jump ---
+
+        # # 1. 偵測按鍵
+        # z = keys[pygame.K_z]
+        # x = keys[pygame.K_x]
+        # c = keys[pygame.K_c]
+        # jump = keys[pygame.K_SPACE]
+        # u = keys[pygame.K_UP]
+        # d = keys[pygame.K_DOWN]
+        # l = keys[pygame.K_LEFT]
+        # r = keys[pygame.K_RIGHT]
 
         # 2. 優先判定 BRUST (組合鍵優先權最高，不進緩衝直接發動)
         if u and x and z:
-            # 觸發：霸體 Buff (上 + Z + X)
-            # if self.mp >= 2 and self.super_armor_timer <= 0:
-            #     print(f"{self.name} 集中精神，進入霸體狀態！")
-            #     self.mp -= 2
-            #     self.super_armor_timer = 900  # 持續 5 秒 (假設 60FPS)
-            #     #self.scene.create_effect(self.cached_pivot[0], self.cached_pivot[1], self.z, 'brust')
-            #     self.execute_command('brust')
-            #     #def say(self, unit, text, duration=90, direction='up'):
-            #     self.activate_stand()
-            #     self.say("無窮之鎖,煌星")
-            #     return  # 攔截，不執行後續普通攻擊
             if self.super_ability:
                 acts = self.super_ability.get("action", [])
                 mp_cost = self.super_ability.get("mp", 11)
                 print(f"mp:{self.mp} cost:{mp_cost}")
                 if self.mp >= mp_cost:
                     success = True
+                    self.input_lock_timer = 15  # 鎖定 15 幀 (約 0.25秒)
                     for act in acts:
                         success = success & self.try_use_ability(act)
-                    if success:
-                        self.mp -= mp_cost
+                    # if success:
+                    #     self.mp -= mp_cost
                 else:
                     self.say("mp不足...")
                 return
         elif (z + x + c) >= 2:
             if self.attack_state is None:  # 只有非攻擊時能主動爆氣
                 self.execute_command('brust')
+                self.input_lock_timer = 15  # 鎖定 15 幀 (約 0.25秒)
                 return  # 發動組合鍵後，不進行後續單鍵緩衝
 
         # 3. 單鍵緩衝判定 (若在硬直中按鍵，會被 queue 起來)
-
-        # if z:
-        #     self.queue_command('z_attack')
-        # elif x:
-        #     self.queue_command('x_attack')
-        # elif c:
-        #     self.queue_command('c_attack')
         if jump:
             self.queue_command('jump')
 
 
+        # 生成移動意圖 (若是 AI，直接使用傳入的 intent)
+        if is_ai:
+            intent = input_source
+        else:
+            intent = self.input_intent(input_source)
+
         # 4. 嘗試消耗緩衝 (如果剛好是 IDLE 狀態，這一幀就會執行)
         did_action = self.try_consume_buffer()
-        # if did_action:
-        #     print(f'[{self.current_frame}]handle_input: did action = {did_action}')
 
+        super().handle_input(intent)
 
         # 5. 處理移動意圖 (移動不緩衝，因為移動是持續性的)
-        intent = self.input_intent(keys)
-
-        # if did_action:
-        #     print(f'[{self.current_frame}]handle_input: earse intent state\n{intent}')
-
+        #intent = self.input_intent(keys)
 
         # 偵測方向是否有變化
         input_changed = []
@@ -2814,7 +2837,6 @@ class Ally(CharacterBase):
         super().__init__(x, y, map_info)
         move_speed = config_dict.get("move_speed", 0.5)
         attack_cooldown_duration = config_dict.get("attack_cooldown",240)
-        self.attack_cooldown = 0  # 攻擊冷卻倒數
         self.attack_cooldown_duration = attack_cooldown_duration  # 冷卻時間（可調整）
         self.default_color = (100, 100, 255)
         self.jump_color = (100, 150, 255)
@@ -2863,8 +2885,7 @@ class Ally(CharacterBase):
                 # 不能動作的狀態
                 return
 
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
+
         if enemy_target:
             intent = self.decide_intent(enemy_target)
             self.handle_input(intent)
@@ -3125,60 +3146,116 @@ class Enemy(CharacterBase):
                 self.vz = 0
                 self.color = self.default_color
 
-class BigEnemy(Enemy):
-    def __init__(self, x, y, z, map_info, material, big_ratio=2.0):
-        super().__init__(x, y, z, map_info, material)
+# class BigEnemy(Enemy):
+#     def __init__(self, x, y, z, map_info, material, big_ratio=2.0):
+#         super().__init__(x, y, z, map_info, material)
+#
+#         # 1) 放大碰撞尺寸
+#         self.width = self.width * big_ratio
+#         self.height = self.height * big_ratio
+#
+#         # 2) 視覺區別 (顏色或其他旗標)
+#         self.default_color = (200, 80, 20)
+#         self.jump_color = (220, 140, 40)
+#         self.fall_color = (180, 80, 30)
+#
+#         # 3) 能力值強化
+#         #   - 血量大幅提升
+#         #   - money 掉更多
+#         base_max_hp = getattr(self, "max_hp", 100)
+#         self.max_hp = base_max_hp * 3
+#         self.health = self.max_hp
+#
+#         base_money = getattr(self, "money", 10)
+#         self.money = base_money * 5
+#
+#         # 攻擊冷卻更長，顯得笨重但危險
+#         self.attack_cooldown_duration = max(
+#             15,
+#             int(self.attack_cooldown_duration * 1.8)
+#         )
+#         self.attack_cooldown = 0
+#
+#         # 召喚後僵直時間（或開場不動秒數）可以調整
+#         self.summon_sickness = 10
+#
+#         # 4) 調整動畫貼圖大小
+#         #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface
+#         if hasattr(self, "animator") and self.animator and hasattr(self.animator, "frames"):
+#             scaled_frames = []
+#             for f in self.animator.frames:
+#                 sw = f.get_width()
+#                 sh = f.get_height()
+#                 scaled_frames.append(pygame.transform.scale(f, (sw * big_ratio, sh * big_ratio)))
+#             self.animator.frames = scaled_frames
+#
+#             # 如果 animator 有 frame_width/height 屬性就同步更新
+#             if hasattr(self.animator, "frame_width"):
+#                 self.animator.frame_width *= big_ratio
+#             if hasattr(self.animator, "frame_height"):
+#                 self.animator.frame_height *= big_ratio
+#
+#         # 5) 改招式組合（可依你遊戲平衡調）
+#         self.combos = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
+#
+#         # 6) metadata / 辨識
+#         self.name = 'big_enemy'
+#         self.side = 'enemy_side'
 
-        # 1) 放大碰撞尺寸
-        self.width = self.width * big_ratio
-        self.height = self.height * big_ratio
 
-        # 2) 視覺區別 (顏色或其他旗標)
-        self.default_color = (200, 80, 20)
-        self.jump_color = (220, 140, 40)
-        self.fall_color = (180, 80, 30)
+# Characters.py
+# Characters.py
 
-        # 3) 能力值強化
-        #   - 血量大幅提升
-        #   - money 掉更多
-        base_max_hp = getattr(self, "max_hp", 100)
-        self.max_hp = base_max_hp * 3
-        self.health = self.max_hp
+# Characters.py
 
-        base_money = getattr(self, "money", 10)
-        self.money = base_money * 5
+class ClonePlayer(Player):
+    def __init__(self, x, y, map_info, config, owner, duration=600):
+        super().__init__(x, y, map_info, config)
+        self.owner = owner
+        self.side = 'player_side'  # 盟友陣營
+        #self.unit_type = 'Character'
+        self.name='clone'
+        self.is_ai_controlled = True
 
-        # 攻擊冷卻更長，顯得笨重但危險
-        self.attack_cooldown_duration = max(
-            15,
-            int(self.attack_cooldown_duration * 1.8)
-        )
-        self.attack_cooldown = 0
+        # 🟢 設定分身的戰鬥性格與 Combo
+        self.combos = config.get("combos", [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH, AttackType.KICK, AttackType.KICK, AttackType.SPECIAL_KICK, AttackType.MAHAHPUNCH, AttackType.SLASH, AttackType.BASH])
+        self.combo_count = 0
+        self.attack_cooldown = 90
+        self.attack_cooldown_duration = 30  # 分身出招較快
+        self.aggressiveness = 0.9  # 極具攻擊性
+        self.morale = 1.0
+        self.lifetime = duration
 
-        # 召喚後僵直時間（或開場不動秒數）可以調整
-        self.summon_sickness = 10
+    # Characters.py -> 修正 ClonePlayer.update
 
-        # 4) 調整動畫貼圖大小
-        #    如果 Enemy 原本有 self.animator 並且 animator.frames 是一組 pygame.Surface
-        if hasattr(self, "animator") and self.animator and hasattr(self.animator, "frames"):
-            scaled_frames = []
-            for f in self.animator.frames:
-                sw = f.get_width()
-                sh = f.get_height()
-                scaled_frames.append(pygame.transform.scale(f, (sw * big_ratio, sh * big_ratio)))
-            self.animator.frames = scaled_frames
+    def update(self):
+        # 1. 生命週期處理
+        self.lifetime -= 1
+        if self.lifetime <= 0 or self.health <= 0:
+            self.scene.mark_for_removal(self)
+            return
 
-            # 如果 animator 有 frame_width/height 屬性就同步更新
-            if hasattr(self.animator, "frame_width"):
-                self.animator.frame_width *= big_ratio
-            if hasattr(self.animator, "frame_height"):
-                self.animator.frame_height *= big_ratio
+        # 2. 🟢 關鍵修正：執行收招與碰撞檢查
+        # 分身必須模擬與敵人的互動，才能讓 attack_state 倒數到 0
+        enemies = self.scene.get_units_by_side('enemy_side')
+        for enemy in enemies:
+            # 這個函式會處理 attack_state 的結束與回到 STAND 狀態
+            self.update_common_opponent(enemy)
 
-        # 5) 改招式組合（可依你遊戲平衡調）
-        self.combos = [AttackType.SLASH, AttackType.BASH, AttackType.KICK]
+        # 3. 自主 AI 思考 (僅在非攻擊、非受擊時執行)
+        if self.combat_state == CombatState.NORMAL and not self.attack_state:
+            if enemies:
+                target = min(enemies, key=lambda e: self.distance_to_target(e))
+                intent = {
+                    'direction': self.facing, 'horizontal': MoveState.STAND,
+                    'dx': 0, 'dy': 0, 'jump': False, 'action': None,
+                    'z': False, 'x': False, 'c': False,
+                    'dirs': (False, False, False, False)
+                }
+                self.ai_attack_logic(target, intent, act='Enemy')
+                self.ai_move_logic(target, intent, far_speed=0.4, near_speed=0.2)
+                self.handle_input(intent)
 
-        # 6) metadata / 辨識
-        self.name = 'big_enemy'
-        self.side = 'enemy_side'
-
-
+        # 4. 🟢 物理位移更新
+        # 這裡呼叫 Player.update 會處理跳躍物理與 anim_timer
+        super().update()

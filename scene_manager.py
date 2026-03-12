@@ -288,7 +288,7 @@ class SceneManager:
         self.shockwave_effect_frames = self.load_effect_assets(path="..//Assets_Drive//shockwave_effect1.png", frame_w=128,frame_h=128)  # 預載特效圖
         self.grounding_impact_effect_frames = self.load_effect_assets(path="..//Assets_Drive//grounding_impact_effect.png",frame_w=128, frame_h=128)  # 預載特效圖
         self.fireball_hit_frames = self.load_effect_assets(path="..//Assets_Drive//effect_fireball_hit.png", frame_w=100, frame_h=100)  # 預載特效圖
-        self.crashed_rock_frames = self.load_effect_assets(path="..//Assets_Drive//crashed_rock.png",frame_w=384, frame_h=384)  # 預載特效圖
+        self.crashed_rock_frames = self.load_effect_assets(path="..//Assets_Drive//crashed_rock.png",frame_w=192, frame_h=192)  # 預載特效圖
         #def load_effect_assets(self, ):
         self.map_h = map_h
         self.shake_timer = 0
@@ -567,7 +567,7 @@ class SceneManager:
         elif type == 'crashed_rock':
             new_effect = VisualEffect(x, y, z, self.crashed_rock_frames,
                                       anim_speed=kwargs.get('anim_speed', 6),
-                                      alpha=kwargs.get('alpha', 180))
+                                      alpha=kwargs.get('alpha', 160))
 
         if new_effect:
             self.visual_effects.append(new_effect)
@@ -1194,17 +1194,32 @@ class SceneManager:
                     # 一般技能：維持原本的友軍保護
                     if is_friendly:
                         continue
-                box2 = victim.get_hurtbox()
-                if attacker.name == 'fireball' and abs(atk_box['x1'] - box2['x1']) <= 0.1:
-                    diffs_st = f'{victim.name}: \n'
-                    for key in ['x1','x2','y1','y2','z1','z2','z_abs']:
-                        diffs_st += "\t{}:({:.3f},{:.2f}) \n".format(key, atk_box[key],box2[key])
-                    print(diffs_st)
+                #box2 = victim.get_hurtbox()
+                # if attacker.name == 'fireball' and abs(atk_box['x1'] - box2['x1']) <= 0.1:
+                #     diffs_st = f'{victim.name}: \n'
+                #     for key in ['x1','x2','y1','y2','z1','z2','z_abs']:
+                #         diffs_st += "\t{}:({:.3f},{:.2f}) \n".format(key, atk_box[key],box2[key])
+                #     print(diffs_st)
+                # if attacker.attack_state:
+                #     atk_box_str = 'X({:.2f},{:.2f}), Y({:.2f},{:.2f}), Z({:.2f},{:.2f})'.format(atk_box['x1'],atk_box['x2'],atk_box['y1'],atk_box['y2'],atk_box['z1'],atk_box['z2'])
+                #     hurt_box = victim.get_hurtbox()
+                #     hurt_box_str = 'X({:.2f},{:.2f}), Y({:.2f},{:.2f}), Z({:.2f},{:.2f})'.format(hurt_box['x1'],
+                #                                                                                 hurt_box['x2'],
+                #                                                                                 hurt_box['y1'],
+                #                                                                                 hurt_box['y2'],
+                #                                                                                 hurt_box['z1'],
+                #                                                                                 hurt_box['z2'])
+                #     print(f"Atker: {attacker.name}, atk_box={atk_box_str}\nvictim={victim.name}, hurt_box={hurt_box_str}")
+                #     print("="*50)
+
                 if is_box_overlap(atk_box, victim.get_hurtbox(), victim.height):
                     # A. 處理受擊對象是角色 (Character)
+                    #print(f'attacker: {attacker.name} victim: {victim.name}')
                     if getattr(victim, 'unit_type', None) == 'character':
                         # 1. 如果是正常的招式攻擊 (有 attack_state)
+                        #print(f'attacker: {attacker.name} victim: {victim.name} 1')
                         if attacker.attack_state and attacker.attack_state.should_trigger_hit():
+                            #a=input(f'attacker: {attacker.name} victim: {victim.name} 2')
                             if victim not in attacker.attack_state.has_hit:
                                 victim.on_hit(attacker, attacker.attack_state.data)
 
@@ -1301,7 +1316,7 @@ class FloatingText:
         # 🟢 拋物線物理參數
         # x 方向隨機噴射 (-0.05 ~ 0.05)
         #self.timer = self.duration
-        self.vel_x = random.uniform(-0.08, 0.08)
+        self.vel_x = random.uniform(-0.15, 0.15)
         # y 方向向上初速 (負值代表向上)
         self.vel_y = 0.15
         # 重力常數

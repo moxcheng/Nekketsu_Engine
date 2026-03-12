@@ -32,6 +32,9 @@ def is_box_overlap(box1, box2, z_threshold=1.5):
         z1_a -= z_threshold * 0.5
 
     z_overlap = max(z1_a, z1_b) <= min(z2_a, z2_b)
+    x11, x12 = box1['x1'], box1['x2']
+    x21, x22 = box2['x1'], box2['x2']
+    #print(f'is_box_overlap: x = {x_overlap}, ({x11:.2f},{x12:.2f}), ({x21:.2f},{x22:.2f})')
 
     return x_overlap and y_overlap and z_overlap
 
