@@ -48,6 +48,9 @@ class AttackType(Enum):
     SPEAR=auto()
     MAHAHSPEAR=auto()
     SPECIAL_SPEAR=auto()
+    BACKFLIP_SHOT=auto()
+    DOWN_HAMMER=auto()
+    FEATHER_BOMB=auto()
 #攻擊特效
 class AttackEffect(Enum):
     FORCE_DOWN = auto()        # 強制倒地

@@ -67,11 +67,9 @@ def update_passive_physics(unit):
         #     current_gravity = GRAVITY * 0.5
 
         if not is_flying_projectile:
-            current_gravity = GRAVITY
-            #current_gravity = 0.25*GRAVITY if -0.15 < unit.vz < 0 else GRAVITY
-            print(f'[{unit.current_frame}] vz={unit.vz}, gravity={current_gravity}, jump_z={unit.jump_z}')
-            #增加最高點璇停
-            unit.vz -= current_gravity
+            # 🟢 修正：引入重力縮放 (預設為 1.0)
+            g_scale = getattr(unit, 'gravity_scale', 1.0)
+            unit.vz -= GRAVITY * g_scale
         else:
             #不受重力影響
             unit.vz = 0

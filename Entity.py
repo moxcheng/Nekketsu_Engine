@@ -32,6 +32,8 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.vel_x = 0.0  # 統一整合
         self.vz = 0.0  # 統一整合
         self.hitting = []   #物品碰撞
+        #重力縮放
+        self.gravity_scale = 1.0
 
 
 

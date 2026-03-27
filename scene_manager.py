@@ -762,10 +762,17 @@ class SceneManager:
     def unregister_unit(self, unit):
         if unit in self.interactables:
             self.interactables.remove(unit)
+        else:
+            a=input(f"{unit.name} 不存在 interactables")
         unit.scene = None
         for c in unit.components.values():
             c.owner = None
 
+    def print_interactiables(self):
+        st = ''
+        for u in self.interactables:
+            st = st + f'{u.name},'
+        print(f'interables [{st}]')
     def update_all(self):
         self.frame_count+=1
         enemy_remove_count = 0
@@ -858,11 +865,15 @@ class SceneManager:
             text.update()
         self.floating_texts = [t for t in self.floating_texts if t.is_alive()]  # 自動清除結束的
         # 🔸移除所有標記為移除的物件
+
+
         for unit in self.to_be_removed:
+            self.print_interactiables()
             self.unregister_unit(unit)
             if unit.side == 'enemy_side':
                 enemy_remove_count += 1
             print(f'scene_manager: 註銷{unit.name}')
+            self.print_interactiables()
         self.to_be_removed.clear()
         # 對話泡泡
         for bubble in self.speech_bubbles:
@@ -1128,7 +1139,9 @@ class SceneManager:
                 # 跳過 CONTEXTUAL_ATTACK
                 continue
 
+            #print(f'u1={u1.name}')
             box1 = u1.get_hitbox()
+
             for u2 in all_units:
                 # 排除：自己、同陣營、或對方也沒在生效幀
                 if u1 == u2 or u1.side == u2.side or (u1, u2) in clashed_pairs:

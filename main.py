@@ -1003,8 +1003,8 @@ def main():
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
     selected_player = selection_menu()
-    scene_mato(win, font, clear_font, player_config=selected_player)
-    #scene_sandbox(win, font, clear_font, player_config=selected_player)
+    #scene_mato(win, font, clear_font, player_config=selected_player)
+    scene_sandbox(win, font, clear_font, player_config=selected_player)
 
 
 main()

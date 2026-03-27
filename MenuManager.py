@@ -16,7 +16,7 @@ COLOR_HIGHLIGHT = (74, 14, 14) # Dark Burgundy
 class CharacterSelectMenu:
     def __init__(self, screen, background_img):
         self.screen = screen
-        self.choices = [PLAYER_REN_128_CONFIG, PLAYER_KONOMI_CONFIG, PLAYER_MIRA_CONFIG, PLAYER_HUBUKI_CONFIG]
+        self.choices = [PLAYER_REN_128_CONFIG, PLAYER_KONOMI_CONFIG, PLAYER_MIRA_CONFIG, PLAYER_HUBUKI_CONFIG, BOSS_KUSETSU_CONFIG]
         self.index = 0
         self.background = background_img
         self.font = pygame.font.SysFont("Microsoft JhengHei", 24, bold=True)

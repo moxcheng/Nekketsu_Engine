@@ -80,7 +80,7 @@ def trigger_clone_skill(owner, duration):
 
     # 視覺回饋：在生成點產生煙霧或爆氣特效
     owner.scene.create_effect(clone.x, clone.y, clone.z, "brust", alpha=180)
-    owner.say("分身術！")
+    #owner.say("分身術！")
 
 
 # --- 數據庫實例 ---
@@ -94,6 +94,7 @@ ABILITY_DATA = {
     #演出類:
     "super_move": SystemAbilityData("stand", 3, 0),
 }
+ABILITY_REPEATABLE = ['clone']
 
 # === Attack State ===
 class AttackState:
@@ -125,8 +126,27 @@ class AttackState:
             new_x = self.character.x + dir_vec * self.data.force_move
             # 限制在 [0, MAP_WIDTH - 角色寬度] 之間
             self.character.x = max(0, min(new_x, self.character.map_w - self.character.width))
+        # 🟢 屬於特殊遠程招式
+
+        if self.data.attack_type == AttackType.BACKFLIP_SHOT:
+            # --- 核心修正：處理滯空物理 ---
+            # 假設第 10 幀開始進入滯空射擊
+            if 10 <= self.frame_index <= 40:
+                self.character.gravity_scale = 0.0  # 關閉重力
+                self.character.vz = 0.0  # 🟢 必須將向上速度清零，否則會持續上升
+            else:
+                self.character.gravity_scale = 1.0  # 恢復重力
+
+            # --- 射擊事件觸發 ---
+            if self.frame_index in self.data.contextual_trigger_frames:
+                # 直接呼叫 Character 的生成函式
+                #print("execute_backflip_shoot")
+                #self.character.scene.print_interactiables()
+                self.character.execute_backflip_shoot(speed_x = 0.5-self.frame_index/200)
+                #self.character.scene.print_interactiables()
+                #print("="*50)
         # 2. 🟢 核心重構：處理「情境式/對齊類」傷害
-        if self.data.attack_type in CONTEXTUAL_ATTACK:
+        elif self.data.attack_type in CONTEXTUAL_ATTACK:
             # 從 owner (發動者) 身上抓取我們在 resolve_attack_table 時存好的目標
             target = getattr(self.character, 'interact_target', None)
             if target and target.is_alive():
@@ -488,7 +508,7 @@ SWING_ATTACKS = [AttackType.SWING]
 THROW_ATTACKS = [AttackType.THROW]
 #FIREBALL_ATTACKS = [AttackType.FIREBALL]
 FLYING_OBJECT_ATTACKS = [AttackType.FIREBALL, AttackType.BULLET]
-CONTEXTUAL_ATTACK =[AttackType.DOWN_STOMP]
+CONTEXTUAL_ATTACK =[AttackType.DOWN_STOMP, AttackType.DOWN_HAMMER, AttackType.BACKFLIP_SHOT]
 attack_data_dict = {
     AttackType.SLASH: AttackData(
         attack_type=AttackType.SLASH,
@@ -802,5 +822,44 @@ attack_data_dict = {
         damage=8,
         knock_back_power=[0.0, -3.0],
         frame_map_ratio=[5]*9
+    ),
+    AttackType.DOWN_HAMMER: AttackData(
+        attack_type=AttackType.DOWN_HAMMER,
+        effects=[],
+        duration=40,
+        trigger_frame=0,
+        contextual_trigger_frames=[10],
+        recovery=1,
+        hitbox_func=None,
+        damage=18,
+        knock_back_power=[0.0, -3.0],
+        frame_map_ratio=[10,30],
+    ),
+    AttackType.BACKFLIP_SHOT: AttackData(
+        attack_type=AttackType.BACKFLIP_SHOT,
+        duration=90,
+        trigger_frame=0,  # 🟢 支援三連射
+        contextual_trigger_frames = [20, 30, 40],
+        recovery=10,
+        hitbox_func=None,  # 角色本體沒有判定，判定在飛行道具上
+        #condition_func=lambda actor: actor.jump_z == 0, # 限制地面發動
+        # 🟢 核心物理：向上躍起 + 向後推力 (假設重量 1.0)
+        physical_change={
+            'vz': 0.45,
+            'vel_x': -0.3 # 向後噴射
+        },
+        effects=[AttackEffect.AFTER_IMAGE], # 加上殘影視覺效果
+        frame_map_ratio=[20, 30, 40],
+        hit_stop_frames=0
+    ),
+    AttackType.FEATHER_BOMB: AttackData(
+        attack_type=AttackType.FEATHER_BOMB,
+        effects=[AttackEffect.SHORT_STUN],
+        duration=2,
+        trigger_frame=1,
+        recovery=0,
+        hitbox_func=item_hitbox,
+        damage=10,
+        frame_map_ratio = [2]
     )
 }

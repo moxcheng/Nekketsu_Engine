@@ -259,7 +259,7 @@ class CharacterBase(Entity):
             self.enable_super_move()
         else:
         # 1. 檢查是否已經在該技能狀態中 (避免重複註冊)
-            if self.get_component(comp_key):
+            if self.get_component(comp_key) and ability_key not in ABILITY_REPEATABLE:
                 print(f"[LOG] {self.name}的{data.name} 正在冷卻或持續中，無法重複使用")
                 return False
             if ability_key in ['stand'] and self.stand_config:
@@ -405,7 +405,7 @@ class CharacterBase(Entity):
             AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
             AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
             AttackType.BRUST:"brust",AttackType.PUSH:"push",AttackType.DOWN_STOMP:"down_attack",AttackType.SPEAR:"spear",
-            AttackType.SPECIAL_SPEAR:"special_spear",AttackType.MAHAHSPEAR:"mahahspear"
+            AttackType.SPECIAL_SPEAR:"special_spear",AttackType.MAHAHSPEAR:"mahahspear",AttackType.BACKFLIP_SHOT:"backflip_shot"
         }
         move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run", MoveState.GUARD:"guard"}
         common_anim_material = ['burn']
@@ -433,6 +433,8 @@ class CharacterBase(Entity):
         # 進行例外處理
         if anim_name == "knockback" and not self.animator.anim_map.get("knockback"):
             anim_name = "on_fly"
+
+
 
         frame_index = 0
         st = ''
@@ -473,6 +475,9 @@ class CharacterBase(Entity):
             #print(f'[draw_anim]{self.name} has no {anim_name} frame, change to stand')
             anim_name = 'stand'
             anim_stage_frames = self.animator.anim_map.get(anim_name)
+
+        # if self.name=='player':
+        #     print(f'[{self.current_frame}], anim_name={anim_name}')
 
         if anim_name in common_anim_material:
             if anim_name == 'burn':
@@ -524,7 +529,7 @@ class CharacterBase(Entity):
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
             if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust','push',
                              'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw', 'meteofall',
-                             'spear','special_spear','mahahspear']:
+                             'spear','special_spear','mahahspear','backflip_shot']:
                 index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, anim_stage_frames)
                 use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
                 frame_index = index_map[use_index]
@@ -861,17 +866,17 @@ class CharacterBase(Entity):
 
 
 
-        #處理技能的動量變化
-        if attack is not None:
-            atk_data = attack_data_dict[attack]
-            if atk_data.physical_change is not None:
-                for attr_name, value in atk_data.physical_change.items():
-                    print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
-                    ori_val = getattr(self, attr_name)
-                    new_val = ori_val + value
-                    #print(f'before value {ori_val}')
-                    setattr(self, attr_name, new_val)
-                    #print(f'after value {new_val}')
+        # #處理技能的動量變化
+        # if attack is not None:
+        #     atk_data = attack_data_dict[attack]
+        #     if atk_data.physical_change is not None:
+        #         for attr_name, value in atk_data.physical_change.items():
+        #             print(f"[PHYSICS] 角色 {self.name} 套用 {attr_name} = {value}")
+        #             ori_val = getattr(self, attr_name)
+        #             new_val = ori_val + value
+        #             #print(f'before value {ori_val}')
+        #             setattr(self, attr_name, new_val)
+        #             #print(f'after value {new_val}')
         return attack
 
 
@@ -1839,6 +1844,7 @@ class CharacterBase(Entity):
     def get_hitbox(self):
         if self.attack_state and self.attack_state.data.attack_type not in CONTEXTUAL_ATTACK:
             xy_hitbox =self.attack_state.get_hitbox(self.x+self.width/2, self.y, self.facing, self)
+            #print(f'self.z={self.z}, self.jump_z={self.jump_z}')
             xy_hitbox['z1'] = self.z+self.jump_z
             xy_hitbox['z2'] = self.z+self.jump_z+self.height
             xy_hitbox['z_abs'] = self.z+self.jump_z
@@ -2029,6 +2035,9 @@ class CharacterBase(Entity):
         if atk_data is not None:
             if atk_data.can_use(self):
                 custom_config = self.skill_overrides.get(skill)
+                # 🟢 關鍵：在真正建立 AttackState 並切換 state 後執行
+                success = False
+
                 if skill in SWING_ATTACKS:
                     item = self.get_component("holdable").held_object
                     if item:
@@ -2072,6 +2081,15 @@ class CharacterBase(Entity):
                 # --- 修正：套用特效組件邏輯 ---
                 if atk_data and atk_data.effect_component_config:
                     self.apply_skill_effect_components(atk_data)
+                if atk_data and atk_data.physical_change is not None:
+                    for attr_name, value in atk_data.physical_change.items():
+                        print(f"[set_attack_by_skill] 角色 {self.name} 套用 {attr_name} = {value}")
+                        ori_val = getattr(self, attr_name)
+                        if attr_name == 'vel_x' and self.facing == DirState.LEFT:
+                            value = -1.0*value
+                        new_val = ori_val + value
+                        setattr(self, attr_name, new_val)
+
 
     def draw_hp_bar(self, win, px, py):
         # 若死亡則不顯示血條
@@ -2094,7 +2112,7 @@ class CharacterBase(Entity):
         pygame.draw.rect(win, (255, 200, 200), (draw_x, bar_y, bar_width, bar_height), 1)
 
     def create_flying_object(self, item_to_create='fireball'):
-        from Items import Fireball, Bullet
+        from Items import Fireball, Bullet, Feather
         rebuild_map_info = [self.terrain, self.map_w, self.map_h]
         flying_object = None
         create_func = None
@@ -2102,8 +2120,12 @@ class CharacterBase(Entity):
             create_func = Fireball
         elif item_to_create == 'bullet':
             create_func = Bullet
+        elif item_to_create == 'feather':
+            create_func = Feather
         if create_func:
             flying_object = create_func(self.x, self.y, rebuild_map_info, owner=self)
+            flying_object.scene = self.scene
+            flying_object.jump_z = self.jump_z
             if item_to_create == 'fireball':
                 flying_object.on_picked_up(self)
             self.scene.register_unit(flying_object, side=self.side, tags=['item', 'temp_object'], type='item')
@@ -2374,6 +2396,20 @@ class CharacterBase(Entity):
                 # 膽小者血越少越消極
             elif self.personality == 'cautious':
                 self.aggresive = min(0.7, max(0.3, self.morale))
+
+    # Characters.py
+
+    def execute_backflip_shoot(self, speed_x=0.5):
+        """由 AttackState 在特定影格調用"""
+        # 1. 呼叫現有的飛行道具工廠
+        feather = self.create_flying_object('feather')
+
+        if feather:
+            # 2. 設定子彈初速 (俯衝彈道)
+            #print(f'backflip_shot_z = {bullet.z}')
+            feather.vel_x = speed_x if self.facing == DirState.RIGHT else -speed_x
+            feather.vz = 0.0
+
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):
         super().__init__(x, y, map_info)
@@ -2648,6 +2684,9 @@ class Player(CharacterBase):
                 acts = self.super_ability.get("action", [])
                 mp_cost = self.super_ability.get("mp", 11)
                 print(f"mp:{self.mp} cost:{mp_cost}")
+                serihu = self.super_ability.get('serihu', None)
+                if serihu:
+                    self.say(serihu)
                 if self.mp >= mp_cost:
                     success = True
                     self.input_lock_timer = 15  # 鎖定 15 幀 (約 0.25秒)

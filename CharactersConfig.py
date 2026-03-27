@@ -275,13 +275,74 @@ PLAYER_MIRA_CONFIG={
             }
         }},
     },
-    "super_ability": {"action":["clone"], "mp":1},
+    "super_ability": {"action":["clone"], "mp":1, "serihu":"緋色連隊！"},
     "display_name": "二番組組長 上運天 美羅",
     "neon_color": (0, 255, 255), # 青色霓虹
     "description": "「緋紅連隊」",
     "skill_info": " [MP:1] ",
     "preview_tachie": "..\\Assets_Drive\\mira_full.png", # 大立繪路徑
     "strength": 13.0,
+    "ui_layout": "right_tachie",  # 新增：標記立繪在右邊
+}
+
+BOSS_KUSETSU_CONFIG={
+    "name": "player",
+    "image_path": "..//Assets_Drive//kusetsu_grid_p1.png",
+    "stand_config": None,
+    "animator_config":{
+        "frame_width": 192,
+        "frame_height": 192,
+        "anim_map": {
+            "stand": [[15,16,17,18,19,20]],
+            "walk": [[0,1,2,4,5,6]],
+            "run": [[9,10,11,12,13,14]],
+            "jump": [[21,22]],  # 須修正與Z軸的關係
+            "fall": [[21]],
+            "flykick": [[31]],
+            "punch": [[15], [40], [41]],
+            "special_punch":[[50], [48], [49]],
+            "kick": [[32,33,34], [35]],
+            "special_kick": [[29], [30]],
+            "bash": [[22,23], [24]],
+            "pose_1": [[15]],
+            "on_hit": [[58]],
+            "knockback": [[63,64,65,66,67,68], [69, 60]],
+            "on_fly": [[64]],
+            "weak": [[62]],
+            "down": [[61]],
+            "dead": [[57]],
+            "brust": [[25,26], [27,28]],
+            "slash": [[50,51],[52],[53]],
+            "backflip_shot": [[54],[55],[56]],
+            "meteofall": [[59]],
+            #"swing": [[51], [52]],
+            #"throw": [[53], [54]],
+            "guard":[[45]],
+            "down_attack":[[70,71,72],[73]],
+            #"hold_item":[[50]]
+        },
+        "anim_map_varient":{
+            "punch": [[44], [42], [43]],
+            "kick":[[36,37,38],[39]],
+        }
+    },
+    "popup":[],
+    "stand":None,
+    "unable_to_grab_item":True,
+    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':AttackType.DOWN_HAMMER, 'special':AttackType.SPECIAL_PUNCH},
+                             'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'special':AttackType.SPECIAL_KICK},
+                             'c_attack':{'default': AttackType.SLASH, 'jump':AttackType.BACKFLIP_SHOT},
+                    #'swing_item': {'default': AttackType.SWING},
+                    #'throw_item': {'default': AttackType.THROW, 'jump': AttackType.THROW}
+                    },
+    "skill_overrides": {},
+    "super_ability": {"action":["haste"], "mp":0, "serihu":"美麗的神之技!"},
+    "display_name": "八雷神 空折",
+    "neon_color": (0, 255, 255), # 青色霓虹
+    "description": "「美麗的神之技」",
+    "skill_info": " [MP:1] ",
+    "preview_tachie": "..\\Assets_Drive\\kusetsu_full.png", # 大立繪路徑
+    "strength": 18.0,
     "ui_layout": "right_tachie",  # 新增：標記立繪在右邊
 }
 # 定義每種狀態的 frame index list

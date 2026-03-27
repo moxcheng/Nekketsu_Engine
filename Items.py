@@ -350,8 +350,12 @@ class ProjectileItem(Item):
     def update(self):
         super().update()
         #消滅條件: 撞擊、超出邊界、壽命終了
+        #print(f'[{self.name}] z={self.z}')
         if self.hit_someone or self.is_out_of_bounds() or self.timer <= 0 or self.x <= self.width/2 or self.x > self.map_w-self.width/2 or self.jump_z <= 0:
-            self.scene.mark_for_removal(self)
+            if self.scene is not None:  # 🟢 關鍵修正：檢查 scene 是否存在
+                self.scene.mark_for_removal(self)
+            # else:
+            #     print(f"DEBUG: {self.name} 已經失去場景引用，跳過 mark_for_removal")
 
 class Fireball(ProjectileItem):
     def __init__(self, x, y, map_info, **kwargs):
@@ -457,6 +461,79 @@ class Bullet(ProjectileItem):
         frame_map = [0]*1 + [1]*47,   #必須與duration等長
         frame_map_ratio = [1,47]
     )
+
+class ExplosiveItem(Item):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    def on_touched_me(self, unit):
+        print(f'{self.name}被{unit.name}碰到')
+        return
+    def update(self):
+        super().update()
+        all_units = self.scene.get_all_units()
+        for unit in all_units:
+            if unit.type == "character" and unit.side not in self.ignore_side:
+                if is_box_overlap(self.get_interact_box(), unit.get_hurtbox()):
+                    self.on_touched_me(unit)
+                    if not self.breakthrough:
+                        self.scene.mark_for_removal(self)
+                    break
+        if self.timer <= 0:
+            self.scene.mark_for_removal(self)
+class Feather(ExplosiveItem):
+    def __init__(self, x, y, map_info, **kwargs):
+        super().__init__(name='羽毛', x=x, y=y, map_info=map_info, weight=0.03)
+        owner = kwargs.get("owner", None)
+        self.owner = owner
+        self.facing = owner.facing if owner else DirState.RIGHT
+        self.speed = 0.2  # 自訂速度
+        self.timer = 180  # 最多存活幀數
+        self.width = 0.6
+        self.height = 0.6
+        self.vz = 0
+        self.breakthrough = False
+        self.throw_damage = 5
+        self.swing_damge = 0
+        self.sheet = pygame.image.load("..\\Assets_Drive\\feather_grid.png").convert_alpha()
+        self.frame_width = 48
+        self.frame_height = 48
+        self.num_frames = 4
+        self.frames = [
+            self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            for i in range(self.num_frames)
+        ]
+        self.image = self.frames[0]
+        self.ignore_side = [owner.side]
+        if self.facing == DirState.LEFT:
+            self.image = pygame.transform.flip(self.image, True, False)
+        if self.owner:
+            #self.attacker_attack_data = self.owner.attack_state.data
+            self.x = self.owner.x + self.owner.width / 2
+            self.y = self.owner.y + self.owner.height / 2
+
+    def draw(self, win, cam_x, cam_y, tile_offset_y=0):
+        # 3. 計算當前應該顯示哪一幀
+        elapsed_ticks = 180 - self.timer
+        # 計算索引：
+        # // 是整數除法，% 是取餘數
+        frame_index = (elapsed_ticks // 15) % self.num_frames
+        # 4. 更新圖片
+        self.image = self.frames[frame_index]
+        cx, cy = self.calculate_cx_cy(cam_x, cam_y, tile_offset_y)
+        rect = self.image.get_rect(center=(cx, cy))
+        win.blit(self.image, rect)
+        pygame.draw.rect(win, (255, 0, 0), rect, 1)
+
+    def on_touched_me(self, unit):
+        print(f'[{self.name}] 被 {unit.name} 碰到了')
+        if unit.side not in self.ignore_side:
+            #deal damage to touched_by unit
+            unit.on_hit_by_power(attacker=self, attack_data=attack_data_dict[AttackType.FEATHER_BOMB])
+    def update(self):
+        super().update()
+        if self.jump_z <= 0:
+            self.scene.mark_for_removal(self)
+
 
 from PhysicsUtils import is_box_overlap
 
