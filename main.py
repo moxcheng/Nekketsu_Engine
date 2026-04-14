@@ -8,6 +8,7 @@ from Config import *
 from scene_manager import SceneManager, SpeechBubble
 from Items import Rock
 from Component import HoldableComponent
+from MapConfig import *
 
 # ========= 通關顯示 / 畫面變暗控制 =========
 SCENE_DARKEN_ENABLED = True  # True: 照原本邏輯變暗 / False: 停止變暗
@@ -104,6 +105,27 @@ def load_terrain_map(csv_path="..\\Assets_Drive\\map.csv", flip_vertical=True):
         terrain = np.flipud(terrain)
     return [terrain, terrain.shape[1], terrain.shape[0]]
 
+
+def load_stage(config):
+    # 1. 載入 CSV 資料
+    df = pd.read_csv(config["map_csv"], header=None)
+    terrain = np.flipud(df.values.astype(int))  # 配合遊戲 2.5D 座標翻轉
+
+    # 2. 根據矩陣大小自動載入並縮放背景圖
+    map_h, map_w = terrain.shape
+    raw_bg = pygame.image.load(config["background_img"]).convert()
+    bg_img = pygame.transform.scale(
+        raw_bg, (map_w * TILE_SIZE, map_h * TILE_SIZE)
+    )
+
+    return {
+        "terrain": terrain,
+        "width": map_w,
+        "height": map_h,
+        "background": bg_img,
+        "background_path": config["background_img"],
+        #"tile_size": config["tile_size"]
+    }
 
 
 # 計算落差大的區域（可視為斷崖 cliff）
@@ -649,6 +671,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
     enemy_popup_latency = 8
     enemy_popup_cooldown = 0
+    scene.sound_manager.play_bgm("_BGM_01.ogg")
     #a=input('press to start')
     while True:
         current_enemy = len(scene.get_units_by_side('enemy_side'))
@@ -710,6 +733,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 ]
                 scene.script_runner.load(scr)
                 phase = 1
+                scene.sound_manager.play_bgm("_BGM_03.ogg")
                 # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
                 #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
                 px, py = player.x, player.y
@@ -729,6 +753,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
         elif phase == 1:
             boss_list = scene.get_units_by_name('boss')
+
             for boss in boss_list:
                 if boss.health <= 150:
                     scr = [
@@ -809,7 +834,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         pygame.display.update()
         clock.tick(FPS)
 
-def scene_sandbox(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png", player_config = PLAYER_REN_128_CONFIG):
+def scene_sandbox(win, font, clear_font, stage_config = STAGE_1_CONFIG, player_config = PLAYER_REN_128_CONFIG):
 
     # === 搖桿初始化 ===
     joystick = None
@@ -828,12 +853,21 @@ def scene_sandbox(win, font, clear_font, backgroung_path="..\\Assets_Drive\\mado
 
 
     # 地圖資訊化
-    map_info = load_terrain_map(flip_vertical=True)
-    terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
+    #map_info = load_terrain_map(flip_vertical=True)
+    #terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
+    map_infos = load_stage(STAGE_1_CONFIG)
+    terrain = map_infos.get('terrain', None)
+    MAP_WIDTH = map_infos.get('width',  None)
+    MAP_HEIGHT = map_infos.get('height', None)
+    #TILE_SIZE = map_info.get('tile_size', None)
+    background_path = map_infos.get('background_path', None)
+    map_info = [terrain, MAP_WIDTH, MAP_HEIGHT]
+
+
     transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
 
     global background_img
-    background_img = pygame.image.load(backgroung_path).convert()
+    background_img = pygame.image.load(background_path).convert()
     background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
 
     clock = pygame.time.Clock()
@@ -842,14 +876,14 @@ def scene_sandbox(win, font, clear_font, backgroung_path="..\\Assets_Drive\\mado
 
 
     #宣告場景
-    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=backgroung_path)
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=background_path)
     scene.set_clear_font(clear_font)
     scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
     stage_cleared = False
+    scene.sound_manager.play_bgm("_BGM_00.ogg")
     #宣告玩家單位
     tile_offset_y = 0
     px, py = 16.0, 2.0
-
 
     player = Player(px, py, map_info, player_config)
 

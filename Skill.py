@@ -131,7 +131,7 @@ class AttackState:
         if self.data.attack_type == AttackType.BACKFLIP_SHOT:
             # --- 核心修正：處理滯空物理 ---
             # 假設第 10 幀開始進入滯空射擊
-            if 10 <= self.frame_index <= 40:
+            if self.data.contextual_trigger_frames[0] <= self.frame_index <= self.data.contextual_trigger_frames[-1]:
                 self.character.gravity_scale = 0.0  # 關閉重力
                 self.character.vz = 0.0  # 🟢 必須將向上速度清零，否則會持續上升
             else:
@@ -839,7 +839,7 @@ attack_data_dict = {
         attack_type=AttackType.BACKFLIP_SHOT,
         duration=90,
         trigger_frame=0,  # 🟢 支援三連射
-        contextual_trigger_frames = [20, 30, 40],
+        contextual_trigger_frames = [10, 25, 40, 55, 70, 85],
         recovery=10,
         hitbox_func=None,  # 角色本體沒有判定，判定在飛行道具上
         #condition_func=lambda actor: actor.jump_z == 0, # 限制地面發動
@@ -849,7 +849,7 @@ attack_data_dict = {
             'vel_x': -0.3 # 向後噴射
         },
         effects=[AttackEffect.AFTER_IMAGE], # 加上殘影視覺效果
-        frame_map_ratio=[20, 30, 40],
+        frame_map_ratio=[30, 40, 50],
         hit_stop_frames=0
     ),
     AttackType.FEATHER_BOMB: AttackData(

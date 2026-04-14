@@ -179,7 +179,7 @@ class CharacterSelectMenu:
             self.screen.blit(tachie_img, (tachie_x, HEIGHT - tachie_img.get_height() + 20))
 
         # 2. 繪製遊戲內動畫格 (同步更新位置)
-        target_screen_y = 630
+        target_screen_y = 570
         fake_cam_x = -target_screen_x + 24
         fake_cam_y = -target_screen_y + 32
         self.preview_unit.draw(self.screen, fake_cam_x, fake_cam_y, 0)  #

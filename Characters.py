@@ -405,7 +405,8 @@ class CharacterBase(Entity):
             AttackType.METEOFALL:"meteofall",AttackType.SWING:"swing",AttackType.THROW:"throw",AttackType.PUNCH:"punch",
             AttackType.MAHAHPUNCH:"mahahpunch", AttackType.SPECIAL_PUNCH:"special_punch", AttackType.SPECIAL_KICK:"special_kick",
             AttackType.BRUST:"brust",AttackType.PUSH:"push",AttackType.DOWN_STOMP:"down_attack",AttackType.SPEAR:"spear",
-            AttackType.SPECIAL_SPEAR:"special_spear",AttackType.MAHAHSPEAR:"mahahspear",AttackType.BACKFLIP_SHOT:"backflip_shot"
+            AttackType.SPECIAL_SPEAR:"special_spear",AttackType.MAHAHSPEAR:"mahahspear",AttackType.BACKFLIP_SHOT:"backflip_shot",
+            AttackType.DOWN_HAMMER:"down_hammer"
         }
         move_state_anim_map = {MoveState.JUMP:"jump", MoveState.FALL:"fall",MoveState.WALK:"walk",MoveState.RUN:"run", MoveState.GUARD:"guard"}
         common_anim_material = ['burn']
@@ -524,12 +525,17 @@ class CharacterBase(Entity):
                     frame_period = 6
                     down_attack_index = int(self.attack_state.frame_index / frame_period) % len(self.animator.anim_map.get('down_attack')[0])
                     frame_index = frames[down_attack_index]
+                elif anim_name == 'down_hammer':
+                    a=input('ppppppp')
+                    frame_period = 6
+                    down_attack_index = int(self.attack_state.frame_index / frame_period) % len(self.animator.anim_map.get('down_attack')[0])
+                    frame_index = frames[down_attack_index]
         else:
             #多stage frame, 戰鬥動畫要從AttackData的frame_map_ratio與self.anim_map做出對應表
             #戰鬥動畫包括: punch, kick, bash, special_punch, palm, special_kick, slash, mahahpunch, ranbu, swing, throw
             if anim_name in ['punch', 'kick', 'bash', 'special_punch', 'palm','brust','push',
                              'special_kick', 'slash', 'mahahpunch', 'ranbu', 'swing', 'throw', 'meteofall',
-                             'spear','special_spear','mahahspear','backflip_shot']:
+                             'spear','special_spear','mahahspear','backflip_shot', 'down_hammer']:
                 index_map = self.generate_frame_index_from_ratio_map(self.attack_state.data.frame_map_ratio, anim_stage_frames)
                 use_index = self.attack_state.frame_index if self.attack_state.frame_index < len(index_map) else -1
                 frame_index = index_map[use_index]
@@ -1546,7 +1552,7 @@ class CharacterBase(Entity):
         # --- 7. 特效與 HitStop ---
         if attacker and attacker.get_hitbox():
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
-            self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
+            #self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
 
             if attack_data.hit_stop_frames > 0:
                 self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
@@ -1555,6 +1561,8 @@ class CharacterBase(Entity):
                 # 視覺化 Hitstop
                 flip = True if attacker.x < self.x else False
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
+            else:
+                self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
     # def on_hit_by_power(self, attacker, attack_data):
     #     # --- 1. 基礎防護檢查 ---
     #     if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
@@ -2403,12 +2411,12 @@ class CharacterBase(Entity):
         """由 AttackState 在特定影格調用"""
         # 1. 呼叫現有的飛行道具工廠
         feather = self.create_flying_object('feather')
-
+        random_speed = speed_x * random.uniform(0.8, 1.2)
         if feather:
             # 2. 設定子彈初速 (俯衝彈道)
             #print(f'backflip_shot_z = {bullet.z}')
-            feather.vel_x = speed_x if self.facing == DirState.RIGHT else -speed_x
-            feather.vz = 0.0
+            feather.vel_x = random_speed if self.facing == DirState.RIGHT else -random_speed
+            feather.vz = -0.05
 
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):

@@ -318,7 +318,7 @@ BOSS_KUSETSU_CONFIG={
             #"swing": [[51], [52]],
             #"throw": [[53], [54]],
             "guard":[[45]],
-            "down_attack":[[70,71,72],[73]],
+            "down_hammer":[[70,71,72],[73]],
             #"hold_item":[[50]]
         },
         "anim_map_varient":{

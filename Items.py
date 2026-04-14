@@ -189,7 +189,7 @@ class DestructibleMixin:
         if self.scene:
             #print('aaaaaaaaaaa')
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
-            self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
+            self.scene.create_effect(hit_x, hit_y, hit_z, 'hit', mute=True)
             self.scene.trigger_shake(5, 3)
 
         # 3. 毀滅判定
@@ -498,6 +498,7 @@ class Feather(ExplosiveItem):
         self.frame_width = 48
         self.frame_height = 48
         self.num_frames = 4
+        self.gravity_scale = 0.0
         self.frames = [
             self.sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
             for i in range(self.num_frames)
@@ -529,6 +530,7 @@ class Feather(ExplosiveItem):
         if unit.side not in self.ignore_side:
             #deal damage to touched_by unit
             unit.on_hit_by_power(attacker=self, attack_data=attack_data_dict[AttackType.FEATHER_BOMB])
+            self.scene.create_effect(self.x+self.width/2, self.y+self.height/2, self.z, "fireball_hit")
     def update(self):
         super().update()
         if self.jump_z <= 0:

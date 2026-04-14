@@ -4,7 +4,7 @@ from Config import *
 from State_enum import *
 import math
 import random
-
+from SoundManager import SoundManager
 
 #新增EnvironmentManager，用於控制圖片插入/高亮/前後景渲染
 class EnvironmentManager:
@@ -299,6 +299,7 @@ class SceneManager:
         self.attack_tokens = 3  # 同時最多敵人可以進攻
         self.token_holders = {}  # 紀錄目前持有權杖的單位
         self.frame_count = 0
+        self.sound_manager = SoundManager()
 
     # scene_manager.py
 
@@ -517,6 +518,7 @@ class SceneManager:
         支援透過 kwargs 覆蓋預設值：anim_speed, alpha, flip, color, max_radius, speed 等。
         """
         new_effect = None
+        mute = kwargs.get('mute', False)
 
         # 1. 向量繪製類
         if type == 'ring':
@@ -568,6 +570,13 @@ class SceneManager:
             new_effect = VisualEffect(x, y, z, self.crashed_rock_frames,
                                       anim_speed=kwargs.get('anim_speed', 6),
                                       alpha=kwargs.get('alpha', 160))
+
+        #使用音效
+        if not mute:
+            print(f'>>>create_effect {type}')
+            if type in self.sound_manager.sounds:
+                print(f'type={type}')
+                self.sound_manager.play(type)
 
         if new_effect:
             self.visual_effects.append(new_effect)
@@ -949,7 +958,7 @@ class SceneManager:
                 cx = (box['x1'] + box['x2']) / 2
                 cy = (box['y1'] + box['y2']) / 2
                 cz = (box['z1'] + box['z2']) / 2
-                self.create_effect(cx, cy, cz,'hit')
+                self.create_effect(cx, cy, cz,'hit', mute=True)
 
         # 3. 觸發全畫面劇烈震動
         self.trigger_shake(duration=30, intensity=15)
