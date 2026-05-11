@@ -286,7 +286,7 @@ PLAYER_MIRA_CONFIG={
 }
 
 BOSS_KUSETSU_CONFIG={
-    "name": "player",
+    "name": "kusetsu",
     "image_path": "..//Assets_Drive//kusetsu_grid_p1.png",
     "stand_config": None,
     "animator_config":{
@@ -326,7 +326,6 @@ BOSS_KUSETSU_CONFIG={
             "kick":[[36,37,38],[39]],
         }
     },
-    "popup":[],
     "stand":None,
     "unable_to_grab_item":True,
     "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':AttackType.DOWN_HAMMER, 'special':AttackType.SPECIAL_PUNCH},
@@ -344,6 +343,78 @@ BOSS_KUSETSU_CONFIG={
     "preview_tachie": "..\\Assets_Drive\\kusetsu_full.png", # 大立繪路徑
     "strength": 18.0,
     "ui_layout": "right_tachie",  # 新增：標記立繪在右邊
+    #敵人用設定
+    "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH, AttackType.KICK, AttackType.SPECIAL_KICK,
+               AttackType.SLASH],
+    "popup": [],
+    "ai_move_speed": 0.25,
+    "attack_cooldown": 25,
+    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.4, "near_speed":0.2, "special_attack": {"ratio": 0.1, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
+                   "able_to_burst":True}
+}
+BOSS_KUSETSU_P2_CONFIG={
+    "name": "kusetsu",
+    "image_path": "..//Assets_Drive//kusetsu_grid_p2.png",
+    "stand_config": None,
+    "animator_config":{
+        "frame_width": 192,
+        "frame_height": 192,
+        "anim_map": {
+            "stand": [[15,16,17,18,19,20]],
+            "walk": [[0,1,2,4,5,6]],
+            "run": [[9,10,11,12,13,14]],
+            "jump": [[21,22]],  # 須修正與Z軸的關係
+            "fall": [[21]],
+            "flykick": [[31]],
+            "punch": [[15], [40], [41]],
+            "special_punch":[[50], [48], [49]],
+            "kick": [[32,33,34], [35]],
+            "special_kick": [[29], [30]],
+            "bash": [[22,23], [24]],
+            "pose_1": [[15]],
+            "on_hit": [[58]],
+            "knockback": [[63,64,65,66,67,68], [69, 60]],
+            "on_fly": [[64]],
+            "weak": [[62]],
+            "down": [[61]],
+            "dead": [[57]],
+            "brust": [[25,26], [27,28]],
+            "slash": [[50,51],[52],[53]],
+            "backflip_shot": [[54],[55],[56]],
+            "meteofall": [[59]],
+            #"swing": [[51], [52]],
+            #"throw": [[53], [54]],
+            "guard":[[45]],
+            "down_hammer":[[70,71,72],[73]],
+            #"hold_item":[[50]]
+        },
+        "anim_map_varient":{
+            "punch": [[44], [42], [43]],
+            "kick":[[36,37,38],[39]],
+        }
+    },
+    "stand":None,
+    "unable_to_grab_item":True,
+    "attack_table":{'z_attack':{'default': AttackType.PUNCH, 'run': AttackType.BASH, 'highjump_fall': AttackType.METEOFALL, 'down_action':AttackType.DOWN_HAMMER, 'special':AttackType.SPECIAL_PUNCH},
+                             'x_attack':{'default': AttackType.KICK, 'jump': AttackType.FLY_KICK, 'special':AttackType.SPECIAL_KICK},
+                             'c_attack':{'default': AttackType.SLASH, 'jump':AttackType.BACKFLIP_SHOT},
+                    #'swing_item': {'default': AttackType.SWING},
+                    #'throw_item': {'default': AttackType.THROW, 'jump': AttackType.THROW}
+                    },
+    "skill_overrides": {},
+    "super_ability": {"action":["haste"], "mp":0, "serihu":"美麗的神之技!"},
+    "display_name": "八雷神 空折",
+    "neon_color": (0, 255, 255), # 青色霓虹
+    "description": "「美麗的神之技」",
+    "skill_info": " [MP:1] ",
+    "strength": 30.0,
+    #敵人用設定
+    "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH, AttackType.KICK, AttackType.SPECIAL_KICK,
+               AttackType.SLASH],
+    "popup": [],
+    "attack_cooldown": 21,
+    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.5, "near_speed":0.25, "special_attack": {"ratio": 0.3, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
+                   "able_to_burst":True}
 }
 # 定義每種狀態的 frame index list
 basic_anim_map1 = {
@@ -560,6 +631,7 @@ NPC_SHUKI_BOSS_CONFIG={
     "ai_move_speed":0.15,
     "attack_cooldown":30,
     "is_blocking":True,
+    "ai_strategy":{"personality":"brave", "far_speed":0.6, "near_speed":0.3}
 }
 NPC_SHUKI_NEW_1_CONFIG={
     'name': "shuki_new1",
@@ -599,5 +671,7 @@ NPC_SHUKI_NEW_1_CONFIG={
     "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH,AttackType.KICK,AttackType.SPECIAL_KICK, AttackType.SLASH],
     "popup":["anim"],
     "ai_move_speed": 0.25,
-    "attack_cooldown": 35
+    "attack_cooldown": 35,
+    "ai_strategy": {"personality": "brave", "far_speed": 0.5, "near_speed": 0.25}
+
 }

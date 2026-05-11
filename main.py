@@ -3,8 +3,9 @@ import pygame
 import sys
 import numpy as np
 import pandas as pd
-from Characters import Player, Enemy, Ally
+from Characters import Player, Enemy, Ally, ClonePlayer
 from Config import *
+#from lightning_utilities.core import inheritance
 from scene_manager import SceneManager, SpeechBubble
 from Items import Rock
 from Component import HoldableComponent
@@ -245,8 +246,8 @@ def scene_test(win, font):
     player.name='player'
     #掛載component
     player.add_component("holdable", HoldableComponent(player))
-    enemy = Enemy(px + 1, py +2, terrain[int(py), int(px)], map_info, "..\\Assets_Drive\\Character_red_24frame_96.png")
-    enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info, "..\\Assets_Drive\\Iwasato_24frame_96.png", 1.5)
+    enemy = Enemy(px + 1, py +2, map_info, "..\\Assets_Drive\\Character_red_24frame_96.png")
+    enemy2 = BigEnemy(px + 3, py + 2, map_info, "..\\Assets_Drive\\Iwasato_24frame_96.png", 1.5)
     enemy.name = 'enemy'
     enemy2.name ='enemy2'
     #enemy2.dummy = True
@@ -489,7 +490,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
         rng = random.Random()  # 自動用系統 entropy seed
         x_dis = random.randint(0,9)
         y_dis = random.randint(-1, 1)
-        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
+        e = Enemy(px+x_dis, py+y_dis,map_info, f"..\\Assets_Drive\\common_enemy\\{head}_body0_yellow_sheet.png")
         e.name = f'enemy{i}'
         e.scene=scene
         enemy_list.append(e)
@@ -525,7 +526,7 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
                 ]
                 scene.script_runner.load(scr)
                 phase = 1
-                enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
+                enemy2 = BigEnemy(px + 3, py + 2, map_info,
                                   "..\\Assets_Drive\\Iwasato_24frame_96.png", 1.5)
                 enemy2.name = 'boss'
                 # enemy2.dummy = True
@@ -576,7 +577,53 @@ def scene_1(win, font, clear_font, backgroung_path="..\\Assets_Drive\\background
 
 from CharactersConfig import *
 from Items import *
-def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\7thTeam.png", player_config = PLAYER_REN_128_CONFIG):
+#def scene_sandbox(win, font, clear_font, stage_config = STAGE_1_CONFIG, player_config = PLAYER_REN_128_CONFIG):
+def load_stage_config(stage_config):
+    # 地圖資訊化
+    map_infos = load_stage(stage_config)
+    terrain = map_infos.get('terrain', None)
+    MAP_WIDTH = map_infos.get('width',  None)
+    MAP_HEIGHT = map_infos.get('height', None)
+    background_path = map_infos.get('background_path', None)
+    map_info = [terrain, MAP_WIDTH, MAP_HEIGHT]
+    transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
+    global background_img
+    background_img = pygame.image.load(background_path).convert()
+    background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
+    return map_info, transition_zone_mask, background_path
+
+def register_player(player_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3):
+    player = Player(px, py, map_info, player_config)
+    player.name=name
+    player.add_component("holdable", HoldableComponent(player))
+    player.scene = scene
+    player.health=health
+    player.max_hp = max_hp
+    player.mp=mp
+    scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    return player
+
+def create_character(type, character_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3, attack_cooldown=45):
+    legal_types = {'player':Player, 'enemy':Enemy, 'clone':ClonePlayer, 'ally':Ally}
+    if type not in ['player', 'enemy', 'clone', 'ally']:
+        return None
+    else:
+        init_func = legal_types[type]
+    character = init_func(px, py, map_info, character_config)
+    character.name=name
+    character.add_component("holdable", HoldableComponent(character))
+    character.scene = scene
+    character.health=health
+    character.max_hp = max_hp
+    character.mp=mp
+    if getattr(character, 'attack_cooldown_duration', False):
+        character.attack_cooldown_duration = attack_cooldown
+    # sides = {'player':'player_side', 'enemy':'enemy_side', 'clone':'player_side', 'ally':'player_side'}
+    # scene.register_unit(character, side=sides[type], tags=[type, 'interactable'], type='character')
+    return character
+
+
+def scene_mato(win, font, clear_font, player_config = PLAYER_REN_128_CONFIG, stage_config = STAGE_1_CONFIG):
 
     # === 搖桿初始化 ===
     joystick = None
@@ -595,13 +642,9 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
 
     # 地圖資訊化
-    map_info = load_terrain_map(flip_vertical=True)
-    terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
-    transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
+    map_info, transition_zone_mask, background_path = load_stage_config(stage_config)
+    terrain, MAP_WIDTH, MAP_HEIGHT = map_info
 
-    global background_img
-    background_img = pygame.image.load(backgroung_path).convert()
-    background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
 
     clock = pygame.time.Clock()
 
@@ -609,36 +652,34 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
 
     #宣告場景
-    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=backgroung_path)
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=background_path)
     scene.set_clear_font(clear_font)
     scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
     stage_cleared = False
     #宣告玩家單位
     tile_offset_y = 0
-    #px, py = find_start_position(terrain, MAP_WIDTH, MAP_HEIGHT)
     px, py = 16.0, 2.0
-    #player = Player(px, py, map_info, "..\\Assets_Drive\\Character_white_24frame_96.png")
-    #player = Player(px, py, map_info, "..//Assets_Drive//konomi_test_42frame.png", super_move_material="..//Assets_Drive//yamashiro_super_move_96.png")
-    #player = Player(px, py, map_info, PLAYER_KONOMI_CONFIG)
 
-    player = Player(px, py, map_info, player_config)
 
-    player.name='player'
-    #掛載component
-    player.health=500
-    player.max_hp = 500
-    player.mp=3
-    player.add_component("holdable", HoldableComponent(player))
-    player.scene = scene
+
+    #player = register_player(player_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3)
+    player = create_character('player', player_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3)
     scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
-    #scene.register_item(item1)  # 未來可新增的 item 類
-    bubble = SpeechBubble(player, "場景1開始！", 120)
-    scene.speech_bubbles = [bubble]
-    boss_barserker = False
+    player.say('場1開始!')
 
-    # rock = Rock(x=player.x - 1.5, y=player.y, map_info=map_info)
-    # rock.scene=scene
-    # scene.register_unit(rock, side='netural', tags=['item', 'interactable'], type='item')
+    # player = Player(px, py, map_info, player_config)
+    # player.name='player'
+    # #掛載component
+    # player.health=500
+    # player.max_hp = 500
+    # player.mp=3
+    # player.add_component("holdable", HoldableComponent(player))
+    # player.scene = scene
+    # scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    # bubble = SpeechBubble(player, "場景1開始！", 120)
+    # scene.speech_bubbles = [bubble]
+
+    boss_barserker = False
     big_rock = BigRock(x=player.x - 1.5, y=player.y, map_info=map_info, scene=scene)
     scene.register_unit(big_rock, side='netural', tags=['item', 'interactable'], type='item')
 
@@ -652,8 +693,6 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
     phase = 0
     #產生小兵list
     import random
-    #shuki_list = [['shuki0_96.png', 7/4],['shuki1_96.png',5/4],['shuki2_96.png',6/4],['shuki3_96.png',1.0]]
-    #shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, ]
     shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, NPC_SHUKI_NEW_1_CONFIG]
     x_pool = list(range(-1*total_enemy, total_enemy))
     random.shuffle(x_pool)
@@ -662,17 +701,14 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
         choosed_idx = random.randint(0,4)
         x_dis = x_pool[i]
         y_dis = random.randint(-1, 1)
-        e = Enemy(px+x_dis, py+y_dis, terrain[int(py), int(px)], map_info, config_dict = shuki_list[choosed_idx])
-        e.attack_cooldown = random.randint(40, 50)
-        e.max_hp = e.health = int(40*(shuki_list[choosed_idx].get("scale", 1.0)))
-        e.name = f'enemy{i}'
-        e.scene=scene
+        scaled_hp = int(40*(shuki_list[choosed_idx].get("scale", 1.0)))
+        atk_cooldown = random.randint(40, 50)
+        e = create_character('enemy', shuki_list[choosed_idx], px+x_dis, py+y_dis, map_info, scene,
+                             name = f'enemy{i}', health=scaled_hp, max_hp = scaled_hp, attack_cooldown = atk_cooldown)
         enemy_list.append(e)
-        #scene.register_unit(e, side='enemy_side', tags=['enemy', 'interactable'], type='character')
     enemy_popup_latency = 8
     enemy_popup_cooldown = 0
-    scene.sound_manager.play_bgm("_BGM_01.ogg")
-    #a=input('press to start')
+    scene.sound_manager.play_bgm("_BGM_00.ogg")
     while True:
         current_enemy = len(scene.get_units_by_side('enemy_side'))
         max_enemy = 3+destroyed_enemy
@@ -726,21 +762,15 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
         if phase == 0:
             if created_enemy == total_enemy and current_enemy == 0:
-                #scene.say('player', 'enemy clear!')
                 scr = [
                 {"type": "say", "target": "player", "text": "Phase 1結束！"},
                 {"type": "wait", "duration": 180},
                 ]
                 scene.script_runner.load(scr)
                 phase = 1
-                scene.sound_manager.play_bgm("_BGM_03.ogg")
-                # enemy2 = BigEnemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
-                #                   "..\\Assets_Drive\\madou\\shuki_boss_96.png", 2)
+                scene.sound_manager.play_bgm("_BGM_01.ogg")
                 px, py = player.x, player.y
-                # enemy2 = Enemy(px + 3, py + 2, terrain[int(py), int(px)], map_info,
-                #                    "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name='boss', popup=["landing","shake"], ai_move_speed=0.15, attack_cooldown=30)
-                enemy2 = Enemy(px + 3, py, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
-                # enemy2.dummy = True
+                enemy2 = Enemy(px + 3, py, map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
                 enemy2.max_hp = 300
                 enemy2.health = 300
                 enemy2.scene=scene
@@ -769,16 +799,14 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                             x_dis = random.randint(-10, 0)
                         y_dis = random.randint(0, 2)
                         px, py = player.x, player.y
-                        # e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info,
-                        #                "..\\Assets_Drive\\madou\\shuki_boss_96.png", scale=2, name=f'fantom{i}',
-                        #                popup=["landing", "shake"], ai_move_speed=0.25, attack_cooldown=45)
-                        e = Enemy(player.x + x_dis, player.y + y_dis, terrain[int(py), int(px)], map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
+                        e = Enemy(player.x + x_dis, player.y + y_dis, map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
                         e.scale=2.0
                         e.name=f'fantom{i}'
                         e.attack_cooldown=45
                         e.ai_move_speed=0.3
                         scene.register_unit(e, side='enemy_side', tags=['enemy'], type='character')
                         print('summon boss fantom')
+                    scene.sound_manager.play_bgm("_BGM_02.ogg")
                     phase = 2
         elif phase == 2:
             if len(scene.get_units_by_side('enemy_side')) == 0:
@@ -786,10 +814,6 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
                 stage_cleared = True
                 phase = 3
 
-
-
-        #if len(scene.get_units_by_side('player_side')) == 0:
-        #print(f'player jump block {player.jump_key_block}')
         if not is_player_alive(scene):
             print('no player left, game over')
             stage_cleared = True
@@ -799,9 +823,6 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
             else:
                 result = 'FAIL'
             scene.trigger_clear(f"SCENE MATO {result}", 360)
-            # scene.darken_enabled = True
-            #scene.trigger_scene_end()
-        #print(f'main: scene end countdown={scene.scene_end_countdown}')
 
         if scene.scene_end_countdown == 0:
             print('scene end')
@@ -827,10 +848,7 @@ def scene_mato(win, font, clear_font, backgroung_path="..\\Assets_Drive\\madou\\
 
         # --- 接下來進行繪圖 ---
         win.fill(WHITE)
-        #draw_map(win, cam_x, cam_y, font, tile_offset_y)
         scene.draw_all(win, cam_x, cam_y, tile_offset_y)
-
-        #pygame.draw.rect(win, (255, 0, 0), (WIDTH // 2 - 5, HEIGHT // 2 - 5, 10, 10))  # 中心點
         pygame.display.update()
         clock.tick(FPS)
 
@@ -855,17 +873,14 @@ def scene_sandbox(win, font, clear_font, stage_config = STAGE_1_CONFIG, player_c
     # 地圖資訊化
     #map_info = load_terrain_map(flip_vertical=True)
     #terrain, MAP_WIDTH, MAP_HEIGHT = map_info[0], map_info[1], map_info[2]
-    map_infos = load_stage(STAGE_1_CONFIG)
+    map_infos = load_stage(stage_config)
     terrain = map_infos.get('terrain', None)
     MAP_WIDTH = map_infos.get('width',  None)
     MAP_HEIGHT = map_infos.get('height', None)
     #TILE_SIZE = map_info.get('tile_size', None)
     background_path = map_infos.get('background_path', None)
     map_info = [terrain, MAP_WIDTH, MAP_HEIGHT]
-
-
     transition_zone_mask = create_transition_mask(terrain, MAP_WIDTH, MAP_HEIGHT)
-
     global background_img
     background_img = pygame.image.load(background_path).convert()
     background_img = pygame.transform.scale(background_img, (MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE))
@@ -904,7 +919,7 @@ def scene_sandbox(win, font, clear_font, stage_config = STAGE_1_CONFIG, player_c
     scene.register_unit(big_rock, side='netural', tags=['item', 'interactable'], type='item')
 
 
-    e = Enemy(px+3, py, terrain[int(py), int(px)], map_info, config_dict = NPC_SHUKI_NEW_1_CONFIG)
+    e = Enemy(px+3, py, map_info, config_dict = NPC_SHUKI_NEW_1_CONFIG)
     e.dummy = True
     e.health = 99999
     e.max_hp = 99999
@@ -1028,6 +1043,492 @@ def selection_menu():
 
     return selected_config
 
+def create_item(item_config, player, scene, map_info):
+    init_funcs = {"bigrock":BigRock, "rock":Rock}
+    item_name = item_config.get('name', None)
+    if item_name not in init_funcs:
+        return None
+    else:
+        init_func = init_funcs[item_name]
+    offset_x = item_config.get('x', 1)
+    offset_y = item_config.get('y', 0)
+    ix = player.x+offset_x
+    iy = player.y+offset_y
+    #    big_rock = BigRock(x=player.x - 1.5, y=player.y, map_info=map_info, scene=scene)
+    item = init_func(ix, iy, map_info=map_info, scene=scene)
+    return item
+
+
+class Phase_Entity:
+    def __init__(self, phase_config, enemy_queue, scene, player, map_info, inherbitance_info=None):
+        self.enemy_total = phase_config.get('enemies', {}).get('total', 0)
+        self.enemy_list = phase_config.get('enemies', {}).get('configs', [])
+        self.enemy_max_active = phase_config.get('enemies', {}).get('max_active', 0)
+        self.boss_config = phase_config.get('boss', {}).get('config', None)
+        self.boss_hp = phase_config.get('boss', {}).get('hp', 0)
+        self.condition = phase_config.get('condition', {})
+        self.on_start_script = phase_config.get('on_start_script', None)
+        self.on_enter_bgm = phase_config.get('on_enter_bgm', None)
+        self.bgm_volume = phase_config.get('bgm_volume', 0.5)
+        self.on_end_script = phase_config.get('on_end_script', None)
+        self.scene = scene
+        self.player = player
+        self.map_info = map_info
+        self.enemy_queue = enemy_queue + self.enemy_list
+        #counters
+        self.destroyed_enemy = 0
+        self.boss_entity = None
+        self.frame = 0
+        self.popup_cooldown = 0
+        self.inherbitance_info = inherbitance_info
+        self.need_inherbitance = phase_config.get('output_inherbitance', False)
+        #
+        #將phase_config的enemy enqueue
+        #self.enemy_queue = enemy_queue + self.enemy_list
+
+        if self.on_enter_bgm:
+            self.scene.sound_manager.play_bgm(self.on_enter_bgm, volume=self.bgm_volume)
+
+    def check_end_condition(self):
+        result = False
+        for case in self.condition:
+            #print(f'check condition:{case}')
+            critiria = case.get("criteria", "DESTROY_ENEMY")
+            if critiria == "DESTROY_ENEMY":
+                if self.destroyed_enemy >= case.get("value", self.enemy_total):
+                    result = True
+            elif critiria == "BOSS_HP":
+                if self.boss_entity:
+                    if self.boss_entity.health <= case.get("value", self.boss_entity.max_hp/2):
+                        result = True
+            elif critiria == "KILL_BOSS":
+                if len(self.scene.get_units_by_name("boss")) == 0:
+                    result = True
+        if result:
+            if self.on_end_script:
+                self.scene.script_runner.load(self.on_end_script)
+                self.on_end_script = None
+        return result
+
+    def update(self, destroyed_enemy):
+        self.destroyed_enemy = destroyed_enemy
+        current_enemy = len(self.scene.get_units_by_side('enemy_side'))
+        player = self.player
+        map_info = self.map_info
+        scene = self.scene
+        #如果現有敵人少於max_active
+        if current_enemy < self.enemy_max_active and self.popup_cooldown <= 0:
+            if len(self.enemy_queue)> 0:
+                enemy_cfg = self.enemy_queue.pop(0)
+                x_dis = random.randint(-4, 4)
+                y_dis = random.randint(-1, 1)
+                scaled_hp = int(40 * (enemy_cfg.get("scale", 1.0)))
+                atk_cooldown = random.randint(40, 50)
+                enemy_char = create_character('enemy', enemy_cfg, player.x + x_dis, player.y + y_dis, map_info, scene,
+                                     name=f'enemy{self.frame}', health=scaled_hp, max_hp=scaled_hp, attack_cooldown=atk_cooldown)
+                self.scene.register_unit(enemy_char, side='enemy_side', tags=['enemy', 'interactable'], type='character')
+                self.popup_cooldown = 10 #最少需要10tick
+            if self.boss_config and self.boss_entity is None:
+                boss_x = player.x + 1.0
+                boss_y = player.y
+                if self.inherbitance_info:
+                    if 'boss.x' in self.inherbitance_info:
+                        boss_x = self.inherbitance_info['boss.x']
+                        boss_y = self.inherbitance_info['boss.y']
+                boss_char = create_character('enemy', self.boss_config, boss_x, boss_y, map_info, scene, name=f'boss', health=self.boss_hp, max_hp=self.boss_hp)
+                self.scene.register_unit(boss_char, side='enemy_side', tags=['enemy', 'interactable'], type='character')
+                self.boss_entity = boss_char
+            #popup enemy from queue
+        if self.popup_cooldown > 0: self.popup_cooldown -= 1
+        self.frame += 1
+        if self.on_start_script:
+            self.scene.script_runner.load(self.on_start_script)
+            self.on_start_script=None
+    def end_phase(self, empty_enemy=False, empty_boss=True):
+        if empty_enemy:
+            self.enemy_queue = []
+            enemyies = self.scene.get_units_by_side('enemy_side')
+            if len(enemyies) > 0:
+                for e in enemyies:
+                    self.scene.mark_for_removal(e)
+        inherbitance_info={"boss.x":self.boss_entity.x, "boss.y":self.boss_entity.y}
+        if empty_boss:
+            if self.boss_entity:
+                self.scene.mark_for_removal(self.boss_entity)
+                self.boss_entity = None
+
+        return inherbitance_info if self.need_inherbitance else None
+
+
+
+
+
+
+
+
+
+test_scene_script={
+    "stage_config":STAGE_2_CONFIG,
+    "end_cuts":["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"],
+    "stage_items":["bigrock", "rock"],
+    "base_bgm":"_BGM_00.ogg",
+}
+
+def scene_runner(win, font, clear_font, player_config, scene_script):
+    # === 搖桿初始化 ===
+    joystick = None
+    joy_buttons_prev = []
+    pygame.joystick.init()
+    if pygame.joystick.get_count() > 0:
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        print(f"[JOYPAD] 使用搖桿: {joystick.get_name()}")
+        joy_buttons_prev = [0] * joystick.get_numbuttons()
+    else:
+        print("[JOYPAD] 沒有偵測到搖桿，維持鍵盤操作")
+
+    #flags
+    joy_axis_left = False
+    joy_axis_right = False
+    stage_cleared = False
+    boss_barserker = False
+
+    # === 搖桿初始化 ===
+
+    # 抽取資訊
+
+    stage_config = scene_script.get('stage_config', STAGE_1_CONFIG)
+    end_cuts = scene_script.get('end_cuts', [])
+    stage_items = scene_script.get('stage_items', [])
+    base_bgm = scene_script.get('base_bgm', '_BGM_00.ogg')
+    bg_path = stage_config.get('background_img', None)
+
+    # 地圖資訊化
+    map_info, transition_zone_mask, background_path = load_stage_config(stage_config)
+    terrain, MAP_WIDTH, MAP_HEIGHT = map_info
+    clock = pygame.time.Clock()
+
+    #宣告場景
+
+
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = end_cuts, bg_path=bg_path)
+    scene.set_clear_font(clear_font)
+    scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
+
+    #宣告玩家單位
+    tile_offset_y = 0
+    px, py = 16.0, 2.0
+    player = create_character('player', player_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3)
+    scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    player.say(player_config.get('perform', '場景開始'))
+
+    #宣告物件
+    for item in stage_items:
+        item_entity = create_item(item, player, scene, map_info)
+        if item_entity:
+            scene.register_unit(item_entity, side='netural', tags=['item', 'interactable'], type='item')
+            print('{} created'.format(item_entity.name))
+
+    scene.sound_manager.play_bgm(base_bgm)
+    #進入phase循環
+    #經phase讀入圍phsae_list，從list中抓取stage phase資料並在while True中控制
+    # scene_script = {
+    #     "phases": [
+    #         {
+    #             "id": 0,
+    #             "enemies": {"total": 10, "configs": [NPC_SHUKI_0_CONFIG], "max_active": 4},
+    #             "condition": {"type": "ALL_ENEMY_DEAD"},
+    #             "on_enter_script": [{"type": "say", "target": "player", "text": "Phase 0 開始！"}],
+    #               ""on_enter_bgm": "_BGM_00.ogg"
+
+    #         },
+    #         {
+    #             "id": 1,
+    #             "enemies": {"total": 3, "configs": [NPC_SHUKI_1_CONFIG], "max_active": 4},
+    #             "boss": {"config": NPC_SHUKI_BOSS_CONFIG, "hp": 300},
+    #             "condition": {"type": "OR", "sub": ["ALL_ENEMY_DEAD", "BOSS_HP_UNDER_50"]},
+    #             "on_enter_bgm": "_BGM_01.ogg"
+    #         }
+    #     ]
+    # }
+    phase_list = scene_script.get('phases', [])
+    current_phase = 0
+    destroyed_enemy = 0
+    
+    enemy_queue = []
+
+    for ps in phase_list:
+        ps['initialized']=False
+    phase_entity = None
+    psz = len(phase_list)
+    inheritance_info = None
+    while True:
+        kb_keys = pygame.key.get_pressed()
+        if 'joystick' in locals() and joystick is not None:
+            keys, joy_axis_left, joy_axis_right, joy_buttons_prev = input_joypad_handler(player, joystick,
+                                                                                         joy_axis_left, joy_axis_right,
+                                                                                         kb_keys, joy_buttons_prev)
+        else:
+            keys = kb_keys
+            # --- 在這裡檢查 Enter ---
+        if kb_keys[pygame.K_RETURN]:
+            print('Enter is being held!')
+        player.handle_input(keys)
+
+        if len(scene.get_units_by_side('player_side')) > 0:
+            destroyed_enemy += scene.update_all()  # 這會更新所有註冊單位
+
+        #phase切換
+        if stage_cleared == False:
+            ps = phase_list[current_phase]
+        if current_phase < psz:
+            if ps['initialized'] == False:
+                phase_entity = Phase_Entity(ps, enemy_queue, scene, player, map_info, inheritance_info)
+                ps['initialized'] = True
+            else:
+                phase_entity.update(destroyed_enemy)
+                if phase_entity.check_end_condition():
+                    destroyed_enemy = 0
+                    current_phase += 1
+                    inheritance_info = phase_entity.end_phase(ps.get('is_empty_enemy', False), ps.get('is_empty_boss', False))
+
+        #<--
+
+
+        if not is_player_alive(scene):
+            print('no player left, game over')
+            stage_cleared = True
+        if current_phase >= psz:
+            stage_cleared = True
+            print('all phases done')
+
+        if stage_cleared == True and scene.scene_end_countdown < 0:
+            if is_player_alive(scene):
+                result = 'CLEAR'
+            else:
+                result = 'FAIL'
+            scene.trigger_clear(f"SCENE MATO {result}", 360)
+
+        if scene.scene_end_countdown == 0:
+            print('scene end')
+            break
+
+        # main.py 的 scene_madou 迴圈內
+
+        # 1. 先根據角色位置計算基礎攝影機座標
+        base_cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        base_cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+
+        # 2. 進行地圖邊界限制 (Clamp)，確保基礎背景座標不越界
+        base_cam_x = max(0, min(base_cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        base_cam_y = max(0, min(base_cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+
+        # 3. 取得震動偏移量
+        ox, oy = scene.get_camera_offset()
+
+        # 4. 最終繪製用的 cam_x/y 等於「基礎座標」加上「震動偏移」
+        # 注意：這裡不要再做一次邊界限制，否則震動會被擋住
+        cam_x = base_cam_x + ox
+        cam_y = base_cam_y + oy
+
+        # --- 接下來進行繪圖 ---
+        win.fill(WHITE)
+        scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+        pygame.display.update()
+        clock.tick(FPS)
+
+
+
+
+
+def scene_common_test(win, font, clear_font, player_config = PLAYER_REN_128_CONFIG, stage_config = STAGE_1_CONFIG):
+
+    # === 搖桿初始化 ===
+    joystick = None
+    joy_buttons_prev = []
+    pygame.joystick.init()
+    if pygame.joystick.get_count() > 0:
+        joystick = pygame.joystick.Joystick(0)
+        joystick.init()
+        print(f"[JOYPAD] 使用搖桿: {joystick.get_name()}")
+        joy_buttons_prev = [0] * joystick.get_numbuttons()
+    else:
+        print("[JOYPAD] 沒有偵測到搖桿，維持鍵盤操作")
+    joy_axis_left = False
+    joy_axis_right = False
+    # === 搖桿初始化 ===
+
+
+    # 地圖資訊化
+    map_info, transition_zone_mask, background_path = load_stage_config(stage_config)
+    terrain, MAP_WIDTH, MAP_HEIGHT = map_info
+    clock = pygame.time.Clock()
+
+    #宣告場景
+    scene = SceneManager(MAP_HEIGHT, MAP_WIDTH, terrain, end_cuts = ["..\\Assets_Drive\\madou\\end_cut0.png","..\\Assets_Drive\\madou\\end_cut.png"], bg_path=background_path)
+    scene.set_clear_font(clear_font)
+    scene.reset_overlay()   # 如果你希望每次進這個場景都從 0 開始變暗
+    stage_cleared = False
+    #宣告玩家單位
+    tile_offset_y = 0
+    px, py = 16.0, 2.0
+    player = create_character('player', player_config, px, py, map_info, scene, name='player', health=500, max_hp=500, mp=3)
+    scene.register_unit(player, side='player_side', tags=['player', 'interactable'], type='character')
+    player.say('場1開始!')
+    boss_barserker = False
+    #宣告物件
+    big_rock = BigRock(x=player.x - 1.5, y=player.y, map_info=map_info, scene=scene)
+    scene.register_unit(big_rock, side='netural', tags=['item', 'interactable'], type='item')
+
+
+    #小兵清單
+    enemy_list = []
+    total_enemy = 10
+    created_enemy = 0
+    current_enemy = 0
+    destroyed_enemy = 0
+    phase = 0
+    #產生小兵list
+    import random
+    shuki_list = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, NPC_SHUKI_NEW_1_CONFIG]
+    x_pool = list(range(-1*total_enemy, total_enemy))
+    random.shuffle(x_pool)
+    for i in range(total_enemy):
+        rng = random.Random()  # 自動用系統 entropy seed
+        choosed_idx = random.randint(0,4)
+        x_dis = x_pool[i]
+        y_dis = random.randint(-1, 1)
+        scaled_hp = int(40*(shuki_list[choosed_idx].get("scale", 1.0)))
+        atk_cooldown = random.randint(40, 50)
+        e = create_character('enemy', shuki_list[choosed_idx], px+x_dis, py+y_dis, map_info, scene,
+                             name = f'enemy{i}', health=scaled_hp, max_hp = scaled_hp, attack_cooldown = atk_cooldown)
+        enemy_list.append(e)
+    enemy_popup_latency = 8
+    enemy_popup_cooldown = 0
+    scene.sound_manager.play_bgm("_BGM_00.ogg")
+    while True:
+        current_enemy = len(scene.get_units_by_side('enemy_side'))
+        max_enemy = 3+destroyed_enemy
+        enemy_popup_cooldown -= 1
+        if created_enemy < total_enemy and current_enemy < max_enemy and enemy_popup_cooldown <= 0:
+            enemy_to_add = max_enemy-current_enemy
+            for i in range(enemy_to_add):
+                print(f'加入{enemy_list[created_enemy].name} ({created_enemy}/{total_enemy}), 現在{current_enemy} enemy_to_add{enemy_to_add}')
+                scene.register_unit(enemy_list[created_enemy], side='enemy_side', tags=['enemy', 'interactable'], type='character')
+                created_enemy += 1
+                current_enemy += 1
+                enemy_popup_cooldown = enemy_popup_latency
+                if created_enemy >= total_enemy:
+                    break
+
+
+
+        kb_keys = pygame.key.get_pressed()
+        if 'joystick' in locals() and joystick is not None:
+            keys, joy_axis_left, joy_axis_right, joy_buttons_prev = input_joypad_handler(player, joystick, joy_axis_left, joy_axis_right,kb_keys, joy_buttons_prev)
+        else:
+            keys = kb_keys
+            # --- 在這裡檢查 Enter ---
+        if kb_keys[pygame.K_RETURN]:
+            print('Enter is being held!')
+
+        player.handle_input(keys)
+
+        if len(scene.get_units_by_side('player_side')) > 0:
+            destroyed_enemy += scene.update_all()  # 這會更新所有註冊單位
+
+        if phase == 0:
+            if created_enemy == total_enemy and current_enemy == 0:
+                scr = [
+                {"type": "say", "target": "player", "text": "Phase 1結束！"},
+                {"type": "wait", "duration": 180},
+                ]
+                scene.script_runner.load(scr)
+                phase = 1
+                scene.sound_manager.play_bgm("_BGM_01.ogg")
+                px, py = player.x, player.y
+                enemy2 = Enemy(px + 3, py, map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
+                enemy2.max_hp = 300
+                enemy2.health = 300
+                enemy2.scene=scene
+                scene.register_unit(enemy2, side='enemy_side', tags=['enemy', 'boss'], type='character')
+                scr = [
+                    {"type": "say", "target": "boss", "text": "嘎!!!"},
+                    {"type": "wait", "duration": 30},
+                ]
+                scene.script_runner.load(scr)
+
+        elif phase == 1:
+            boss_list = scene.get_units_by_name('boss')
+
+            for boss in boss_list:
+                if boss.health <= 150:
+                    scr = [
+                        {"type": "say", "target": "boss", "text": "嘎啊啊啊啊!!!"},
+                        {"type": "wait", "duration":30}
+                    ]
+                    scene.script_runner.load(scr)
+                    for i in range(3):
+                        rng = random.Random()  # 自動用系統 entropy seed
+                        if i%2==0:
+                            x_dis = random.randint(0, 10)
+                        else:
+                            x_dis = random.randint(-10, 0)
+                        y_dis = random.randint(0, 2)
+                        px, py = player.x, player.y
+                        e = Enemy(player.x + x_dis, player.y + y_dis, map_info, config_dict=NPC_SHUKI_BOSS_CONFIG)
+                        e.scale=2.0
+                        e.name=f'fantom{i}'
+                        e.attack_cooldown=45
+                        e.ai_move_speed=0.3
+                        scene.register_unit(e, side='enemy_side', tags=['enemy'], type='character')
+                        print('summon boss fantom')
+                    scene.sound_manager.play_bgm("_BGM_02.ogg")
+                    phase = 2
+        elif phase == 2:
+            if len(scene.get_units_by_side('enemy_side')) == 0:
+                print('清除敵人')
+                stage_cleared = True
+                phase = 3
+
+        if not is_player_alive(scene):
+            print('no player left, game over')
+            stage_cleared = True
+        if stage_cleared == True and scene.scene_end_countdown < 0:
+            if is_player_alive(scene):
+                result = 'CLEAR'
+            else:
+                result = 'FAIL'
+            scene.trigger_clear(f"SCENE MATO {result}", 360)
+
+        if scene.scene_end_countdown == 0:
+            print('scene end')
+            break
+
+        # main.py 的 scene_madou 迴圈內
+
+        # 1. 先根據角色位置計算基礎攝影機座標
+        base_cam_x = int((player.x + 0.5) * TILE_SIZE - WIDTH // 2)
+        base_cam_y = int((MAP_HEIGHT - player.y - 0.5) * TILE_SIZE - HEIGHT // 2 + tile_offset_y)
+
+        # 2. 進行地圖邊界限制 (Clamp)，確保基礎背景座標不越界
+        base_cam_x = max(0, min(base_cam_x, MAP_WIDTH * TILE_SIZE - WIDTH))
+        base_cam_y = max(0, min(base_cam_y, MAP_HEIGHT * TILE_SIZE - HEIGHT))
+
+        # 3. 取得震動偏移量
+        ox, oy = scene.get_camera_offset()
+
+        # 4. 最終繪製用的 cam_x/y 等於「基礎座標」加上「震動偏移」
+        # 注意：這裡不要再做一次邊界限制，否則震動會被擋住
+        cam_x = base_cam_x + ox
+        cam_y = base_cam_y + oy
+
+        # --- 接下來進行繪圖 ---
+        win.fill(WHITE)
+        scene.draw_all(win, cam_x, cam_y, tile_offset_y)
+        pygame.display.update()
+        clock.tick(FPS)
+
 
 def main():
     pygame.init()
@@ -1037,8 +1538,48 @@ def main():
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
     selected_player = selection_menu()
-    #scene_mato(win, font, clear_font, player_config=selected_player)
-    scene_sandbox(win, font, clear_font, player_config=selected_player)
+    #scene_mato(win, font, clear_font, player_config=selected_player, stage_config = STAGE_1_CONFIG)
+    #scene_sandbox(win, font, clear_font, player_config=selected_player, stage_config = STAGE_2_CONFIG)
+    enemy_list1 = [NPC_SHUKI_0_CONFIG]*10
+    enemy_list2 = [NPC_SHUKI_1_CONFIG,NPC_SHUKI_2_CONFIG,NPC_SHUKI_0_CONFIG]
+    test_scene_script1 = {
+        "stage_config": STAGE_2_CONFIG,
+        "end_cuts": ["..\\Assets_Drive\\madou\\end_cut0.png", "..\\Assets_Drive\\madou\\end_cut.png"],
+        "stage_items": [{"name":"bigrock", "x":-2, "y":0}],
+        "base_bgm": "_BGM_03.ogg",
+        "phases": [
+            # {
+            #     "id": 0,
+            #     "enemies": {"total": 10, "configs": enemy_list1, "max_active": 5},
+            #     "condition": [{"criteria": "DESTROY_ENEMY", "value":10}],
+            #     "on_enter_script": [{"type": "say", "target": "player", "text": "Phase 0 開始！"}],
+            #     "on_enter_bgm": "_BGM_庫吉新之戰.ogg"
+            #
+            # },
+            {
+                "id": 0,
+                "enemies": {"total": 3, "configs": enemy_list2, "max_active": 4},
+                "boss": {"config": BOSS_KUSETSU_CONFIG, "hp": 300},
+                "condition": [{"criteria": "BOSS_HP", "value": 150}],
+                "on_enter_bgm": "_BGM_mizuzu.ogg",
+                "bgm_volume": 0.3,
+                "is_empty_enemy":False,
+                "is_empty_boss":True,
+                "output_inherbitance":True,
+                "on_end_script": [{"type": "say", "target": "boss", "text": "好大的狗膽..!"}],
+            },
+            {
+                "id": 1,
+                "enemies": {"total": 0, "configs": [], "max_active": 4},
+                "boss": {"config": BOSS_KUSETSU_P2_CONFIG, "hp": 300},
+                "condition": [{"criteria":"KILL_BOSS","value":0 }],
+                "on_enter_bgm": "_FF6_死鬥_cutted.ogg",
+                "on_start_script": [{"type": "say", "target": "boss", "text": "美麗的真正姿態!"}],
+                "bgm_volume": 0.3
+            }
+        ]
+    }
+    scene_runner(win, font, clear_font, selected_player, test_scene_script1)
 
 
 main()

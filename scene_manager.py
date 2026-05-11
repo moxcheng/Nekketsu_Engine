@@ -300,6 +300,7 @@ class SceneManager:
         self.token_holders = {}  # 紀錄目前持有權杖的單位
         self.frame_count = 0
         self.sound_manager = SoundManager()
+        self.enemy_queue = []   #新的enemy控制用
 
     # scene_manager.py
 
@@ -482,7 +483,10 @@ class SceneManager:
         #print(f'SCENE [{self.frame_count}], TOKEN [{token_holders}]')
         if len(self.token_holders) == 0:
             enemies = self.get_units_by_side('enemy_side')
-            alive_enemies = [e for e in enemies if e.is_alive()]
+            if len(enemies) > 0:
+                alive_enemies = [e for e in enemies if e.is_alive() and e.type == "character"]
+            else:
+                alive_enemies = False
 
             if alive_enemies:
                 # 隨機挑選一名幸運兒，無視其性格強制發放
@@ -1140,6 +1144,7 @@ class SceneManager:
         # 1. 拼招判定 (Hitbox vs Hitbox)
         for u1 in all_units:
             # 🟢 修正點：只有在攻擊生效幀 (should_trigger_hit) 才算
+
             if not (u1.attack_state and u1.attack_state.should_trigger_hit()):
                 continue
             if u1.attack_state.has_clashed:  # 🟢 限制一招一次
@@ -1150,6 +1155,7 @@ class SceneManager:
 
             #print(f'u1={u1.name}')
             box1 = u1.get_hitbox()
+
 
             for u2 in all_units:
                 # 排除：自己、同陣營、或對方也沒在生效幀
@@ -1216,25 +1222,8 @@ class SceneManager:
                     # 一般技能：維持原本的友軍保護
                     if is_friendly:
                         continue
-                #box2 = victim.get_hurtbox()
-                # if attacker.name == 'fireball' and abs(atk_box['x1'] - box2['x1']) <= 0.1:
-                #     diffs_st = f'{victim.name}: \n'
-                #     for key in ['x1','x2','y1','y2','z1','z2','z_abs']:
-                #         diffs_st += "\t{}:({:.3f},{:.2f}) \n".format(key, atk_box[key],box2[key])
-                #     print(diffs_st)
-                # if attacker.attack_state:
-                #     atk_box_str = 'X({:.2f},{:.2f}), Y({:.2f},{:.2f}), Z({:.2f},{:.2f})'.format(atk_box['x1'],atk_box['x2'],atk_box['y1'],atk_box['y2'],atk_box['z1'],atk_box['z2'])
-                #     hurt_box = victim.get_hurtbox()
-                #     hurt_box_str = 'X({:.2f},{:.2f}), Y({:.2f},{:.2f}), Z({:.2f},{:.2f})'.format(hurt_box['x1'],
-                #                                                                                 hurt_box['x2'],
-                #                                                                                 hurt_box['y1'],
-                #                                                                                 hurt_box['y2'],
-                #                                                                                 hurt_box['z1'],
-                #                                                                                 hurt_box['z2'])
-                #     print(f"Atker: {attacker.name}, atk_box={atk_box_str}\nvictim={victim.name}, hurt_box={hurt_box_str}")
-                #     print("="*50)
-
-                if is_box_overlap(atk_box, victim.get_hurtbox(), victim.height):
+                #123456789
+                if is_box_overlap(atk_box, victim.get_hurtbox(), victim.height) and victim.invincible_timer == 0:
                     # A. 處理受擊對象是角色 (Character)
                     #print(f'attacker: {attacker.name} victim: {victim.name}')
                     if getattr(victim, 'unit_type', None) == 'character':
@@ -1252,7 +1241,7 @@ class SceneManager:
                             impact_velocity = abs(attacker.vel_x)
                             if attacker.weight > 0:
                                 momentum = impact_velocity * attacker.weight
-                                impact_power = momentum * 80.0
+                                impact_power = momentum * 200.0
                             else:
                                 atk_data = getattr(attacker, 'attacker_attack_data', None)
                                 impact_power = getattr(atk_data, 'power', 100)  # 火球預設 200
@@ -1260,12 +1249,14 @@ class SceneManager:
                             # 3. 建立動態碰撞專用的 AttackData (利用 Skill.py 中的 AttackData 類別)
                             # 我們設定低吸收率 (absorption=0.3)，讓被撞的人飛得比受傷更遠
                             from Skill import AttackData, AttackType
+                            print(f'impact_power = {impact_power}')
                             crash_data = AttackData(
                                 attack_type=AttackType.THROW_CRASH,  # 需在你的 AttackType 定義
                                 duration=1,
                                 power=impact_power,
-                                absorption=0.3,  # 30% 轉傷害，70% 轉位移
-                                impact_angle=20  # 被撞到後稍微往斜上方彈
+                                absorption=0.1,  # 30% 轉傷害，70% 轉位移
+                                impact_angle=20,  # 被撞到後稍微往斜上方彈
+                                knock_back_power = [0.2, 0.2]
                             )
                             # 3. 🔴 修正：讓「雙方」都受傷
                             # 被撞者受傷

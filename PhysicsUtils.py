@@ -108,27 +108,47 @@ def update_passive_physics(unit):
 
     return events
 
+# def check_wall_collision(unit, next_x):
+#     """偵測 next_x 是否撞牆或超出地圖邊界"""
+#     # 1. 檢查地圖左右邊界
+#     if next_x < 0 or next_x+unit.width > unit.map_w:
+#         return True
+#
+#     # 2. 檢查地形高度差 (牆壁)
+#     # 取得角色當前高度與前方地塊高度
+#     if hasattr(unit, "vel_x"):
+#         vel_x = unit.vel_x
+#     else:
+#         vel_x = unit.vel_x
+#     tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
+#     ty = int(unit.y + 0.5)
+#
+#     target_z = unit.get_tile_z(tx, ty)
+#     if target_z is None:
+#         return True  # 超出索引視同撞牆
+#     if target_z is not None:
+#         # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
+#         if target_z - unit.z >= 2:
+#             return True
+#     return False
 def check_wall_collision(unit, next_x):
-    """偵測 next_x 是否撞牆或超出地圖邊界"""
     # 1. 檢查地圖左右邊界
-    if next_x < 0 or next_x+unit.width > unit.map_w:
+    if next_x < 0 or next_x + unit.width > unit.map_w:
         return True
 
-    # 2. 檢查地形高度差 (牆壁)
-    # 取得角色當前高度與前方地塊高度
-    if hasattr(unit, "vel_x"):
-        vel_x = unit.vel_x
+    # 2. 檢查地形高度差
+    # 根據移動方向，取「最前方」的邊界座標進行偵測
+    if unit.vel_x > 0:
+        # 向右走，檢查右邊界 (next_x + width)
+        tx = int(next_x + unit.width)
     else:
-        vel_x = unit.vel_x
-    tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
-    ty = int(unit.y + 0.5)
+        # 向左走，檢查左邊界 (next_x)
+        tx = int(next_x)
 
+    ty = int(unit.y + 0.5)
     target_z = unit.get_tile_z(tx, ty)
-    if target_z is None:
-        return True  # 超出索引視同撞牆
+
     if target_z is not None:
-        # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
         if target_z - unit.z >= 2:
             return True
     return False
-

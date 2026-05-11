@@ -112,7 +112,10 @@ def get_component_class(name):
     return class_map.get(name)
 class CharacterBase(Entity):
     #Entity的初始化def __init__(self, x, y, map_info, width=1.0, height=1.0, weight=0.1):
-    def __init__(self, x, y, map_info, width=1.5, height=2.5, weight = 1.0):
+    def __init__(self, x, y, map_info, config_dict):
+        width = config_dict.get('width', 1.5)
+        height = config_dict.get('height', 2.5)
+        weight = config_dict.get('weight', 1.0)
         super().__init__(x=x, y=y, map_info=map_info, width=width, height=height, weight=weight)
         self.unit_type = "character"
 
@@ -225,7 +228,7 @@ class CharacterBase(Entity):
         # AI行為控制
         self.morale = 1.0  # 士氣：1.0 是正常，低於 0.3 會恐慌
         self.aggressiveness = 0.8  # 攻擊性：影響進攻距離的判斷
-        self.personality = random.choice(['brave', 'coward', 'cautious'])
+        #self.personality = random.choice(['brave', 'coward', 'cautious'])
         self.ai_target_cache = None
         self.ai_recalc_timer = 0
         self.draw_alpha=255
@@ -236,6 +239,12 @@ class CharacterBase(Entity):
         self.unable_to_grab_item = None
 
         self.attack_cooldown = 0  # 攻擊冷卻倒數
+
+        self.ai_strategy = config_dict.get('ai_strategy', {'personality':'random','far_speed':0.2,'near_speed':0.1, 'actor':'Attacker'})
+        if self.ai_strategy['personality'] == 'random':
+            self.ai_strategy['personality'] = random.choice(['brave', 'coward', 'cautious'])
+        self.special_attack = self.ai_strategy.get('special_attack', None)
+
 
 
     def take_contextual_attack(self, attacker_attack_state):
@@ -860,7 +869,7 @@ class CharacterBase(Entity):
                 self.x + check_dist, self.y, radius=2.0, side=enemy_side
             )
             # 檢查是否有任何敵人處於 WEAK 狀態
-            has_weak_target = any(e.combat_state == CombatState.WEAK for e in nearby_enemies)
+            has_weak_target = any(e.combat_state == CombatState.WEAK for e in nearby_enemies if e.type == "character")
             if has_weak_target:
                 atk_table = self.attack_table.get(real_intent, None)
                 # z_table = self.attack_table.get("z_attack", None)
@@ -1033,7 +1042,7 @@ class CharacterBase(Entity):
         # 🟢 修正後的門檻邏輯
         # 主動跳躍：門檻極高 (例如 150)，除非從懸崖跳下否則不扣血
         # 被動摔落：門檻低 (例如 30)，體現重摔感
-        current_threshold = 18 if is_passive else 50
+        current_threshold = 8 if is_passive else 20
         print(f'{self.name} on_land_reaction: TH {current_threshold}, energy {impact_energy}, passive {is_passive}')
 
         # 建立一個虛擬的落地傷害 AttackData
@@ -1359,7 +1368,7 @@ class CharacterBase(Entity):
             if not self.attack_state.should_trigger_hit() and self.attack_state.frame_index < ON_GUARD_MAX_WINDOW:
                 #前搖狀態中才能格擋
                 basic_guard_rate = 1.0 if self.name == 'player' else self.morale
-                bonus_rate = 0.2 if self.personality == 'cautious' else 0.0
+                bonus_rate = 0.2 if self.ai_strategy['personality'] == 'cautious' else 0.0
                 if random.random() < (basic_guard_rate + bonus_rate):
                     self.trigger_guard_success(attacker, attack_data)
                     print(f'{self.name} 成功招架')
@@ -1368,9 +1377,9 @@ class CharacterBase(Entity):
         damage_st, damage = self.take_damage(attacker, attack_data)
         #士氣系統調整
         morale_decay = (damage/self.max_hp)
-        if self.personality == 'brave':
+        if self.ai_strategy['personality'] == 'brave':
             morale_decay /= 2
-        elif self.personality == 'coward':
+        elif self.ai_strategy['personality'] == 'coward':
             morale_decay *= 1.3
         self.morale -= morale_decay
 
@@ -1468,8 +1477,9 @@ class CharacterBase(Entity):
         if can_guard:
             # 前搖狀態中 (frame_index 較小) 才能觸發格擋
             if not self.attack_state.should_trigger_hit() and self.attack_state.frame_index < ON_GUARD_MAX_WINDOW:
+                personality = self.ai_strategy['personality']
                 basic_guard_rate = 1.0 if self.name == 'player' else getattr(self, 'morale', 0.5)
-                bonus_rate = 0.2 if getattr(self, 'personality', '') == 'cautious' else 0.0
+                bonus_rate = 0.2 if personality == 'cautious' else 0.0
 
                 if random.random() < (basic_guard_rate + bonus_rate):
                     self.trigger_guard_success(attacker, attack_data)
@@ -1495,7 +1505,7 @@ class CharacterBase(Entity):
 
         # B. 士氣系統調整 (根據傷害比例扣除)
         morale_decay = (damage / max(1, self.max_hp))
-        pers = getattr(self, 'personality', 'normal')
+        pers = self.ai_strategy.get('personality', 'normal')
         if pers == 'brave':
             morale_decay /= 2
         elif pers == 'coward':
@@ -1552,8 +1562,6 @@ class CharacterBase(Entity):
         # --- 7. 特效與 HitStop ---
         if attacker and attacker.get_hitbox():
             hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
-            #self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
-
             if attack_data.hit_stop_frames > 0:
                 self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
                 self.scene.trigger_shake(duration=attack_data.hit_stop_frames, intensity=3)
@@ -1563,69 +1571,9 @@ class CharacterBase(Entity):
                 self.scene.create_effect(hit_x, hit_y, hit_z, "hitstop", flip=flip)
             else:
                 self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
-    # def on_hit_by_power(self, attacker, attack_data):
-    #     # --- 1. 基礎防護檢查 ---
-    #     if self.is_invincible() and AttackEffect.IGNORE_INVINCIBLE not in attack_data.effects:
-    #         return
-    #     if self.super_armor_timer > 0:
-    #         pass  # 鋼體僅不跳動畫，傷害照吃
-    #
-    #     self.hit = True
-    #     self.hit_timer = 20
-    #     if attacker and attacker.attack_state:
-    #         attacker.attack_state.has_hit.append(self)
-    #
-    #     # --- 2. 🟢 動能傳導核心結算 ---
-    #     # 取得 Power (支援 callable 公式)
-    #     if callable(attack_data.power):
-    #         raw_power = attack_data.power(attacker)
-    #     else:
-    #         raw_power = attack_data.power
-    #
-    #     # A. 傷害結算 (做功 x 吸收率)
-    #     final_damage = int(raw_power * attack_data.absorption)
-    #     _, damage = self.take_damage(attacker, attack_data, manual_damage=final_damage)
-    #
-    #     # B. 位移結算 (殘餘能量 / 體重)
-    #     residual_energy = raw_power * (1 - attack_data.absorption)
-    #     # 🟢 修正 1：引入一個「動量轉換率」常數 (例如 0.2 ~ 0.3)
-    #     # 這樣 100 Power 的招式才不會產生 100 速度
-    #     KINETIC_CONVERSION_RATE = 0.1
-    #
-    #     # 🟢 修正 2：加強重量的影響力 (平方或加乘)
-    #     resistance = max(0.2, self.weight)
-    #     impulse = (residual_energy * KINETIC_CONVERSION_RATE) / resistance
-    #
-    #     # C. 角度分解
-    #     import math
-    #     rad = math.radians(attack_data.impact_angle)
-    #     dir_x = self.get_knock_direction(attacker, attack_data)
-    #
-    #     new_vx = impulse * math.cos(rad) * dir_x
-    #     new_vz = impulse * math.sin(rad)
-    #
-    #     print(f'{attack_data.attack_type}: {attack_data.damage}->{final_damage:.3f} impulse{impulse:.3f} ({new_vx:.3f},{new_vz:.3f})')
-    #
-    #     # --- 3. 狀態套用與物理緩衝 ---
-    #     if self.combat_state != CombatState.DEAD:
-    #         self.resolve_combat_state_on_hit(attack_data)
-    #         # 這裡套用重構後的狀態鎖
-    #         #self.into_knockback_state(new_vx, new_vz)
-    #         self.apply_attack_effects(attacker, attack_data)
-    #
-    #
-    #     # --- 4. 清理與特效 ---
-    #     if self.attack_state:
-    #         self.attack_state = None
-    #         self.state = MoveState.STAND
-    #     self.on_hit_count += 1
-    #
-    #     # 產生打擊火花與 HitStop
-    #     if attacker and attacker.get_hitbox():
-    #         hit_x, hit_y, hit_z = get_overlap_center(attacker.get_hitbox(), self.get_hurtbox())
-    #         self.scene.create_effect(hit_x, hit_y, hit_z, 'hit')
-    #         if attack_data.hit_stop_frames > 0:
-    #             self.scene.trigger_hit_stop(attack_data.hit_stop_frames)
+        else:
+            self.scene.create_effect(self.x+self.width/2, self.y, self.z, 'hit')
+
     def update(self):
         self.current_frame += 1
         if self.rigid_timer > 0:
@@ -1934,7 +1882,8 @@ class CharacterBase(Entity):
             new_x = max(0, min(new_x, self.map_w - self.width))
 
             prev_x, prev_y = self.x, self.y
-            foot_x = new_x + self.width / 2
+            facing_vec = 1.0 if self.facing==DirState.RIGHT else -1.0
+            foot_x = new_x + facing_vec*self.width / 2
             foot_y = new_y + self.height * 0.1
             nx, ny = int(foot_x), int(foot_y)
             target_z = self.get_tile_z(nx, ny)
@@ -2267,7 +2216,10 @@ class CharacterBase(Entity):
         dy = target.y - self.y
         return (dx ** 2 + dy ** 2) ** 0.5
 
-    def ai_move_logic(self, target, intent, far_speed=0.5, near_speed=0.3):
+    def ai_move_logic(self, target, intent):
+        #far_speed=0.5, near_speed=0.3
+        far_speed = self.ai_strategy.get('far_speed', 0.5)
+        near_speed = self.ai_strategy.get('near_speed', 0.3)
         if self.attack_state or self.is_locked() or self.state == MoveState.ATTACK:
             return
 
@@ -2298,6 +2250,7 @@ class CharacterBase(Entity):
             move_speed = far_speed
 
             if dist_to_player < (self.width+target.width)/2: move_speed = 0  # 抵達出招距離
+            elif dist_to_player <= 2.0: move_speed = near_speed
         else:
             # 2. 沒 Token：執行繞背路徑邏輯
             # 判斷是否需要重新計算目標 (冷卻結束 或 距離玩家過遠)
@@ -2305,7 +2258,7 @@ class CharacterBase(Entity):
 
             if need_recalc:
                 # 計算新目標點：環繞半徑 4.0 ~ 6.0
-                orbit_radius = 4.5 if self.personality == 'brave' else 6.0
+                orbit_radius = 4.5 if self.ai_strategy['personality'] == 'brave' else 6.0
                 # 50% 機率計算玩家背後，50% 玩家側面
                 angle_offset = random.uniform(math.pi * 0.6,
                                               math.pi * 1.4) if random.random() < 0.5 else random.uniform(0.3, 1.2)
@@ -2361,7 +2314,8 @@ class CharacterBase(Entity):
             intent['dx'], intent['dy'] = 0, 0
             intent['horizontal'] = MoveState.STAND
 
-    def ai_attack_logic(self, target, intent, act='support'):
+    def ai_attack_logic(self, target, intent):
+        actor = self.ai_strategy.get('actor', 'support')
         attack_chance = self.aggressiveness
         if self.morale < 0.3:
             attack_chance *= 0.5
@@ -2369,23 +2323,50 @@ class CharacterBase(Entity):
         dy = target.y - self.y
         dz = abs((target.z) - (self.z))
         dist = (dx ** 2 + dy ** 2) ** 0.5
-        if act == 'support':
-            if dy < 0.5 and dz < 1.5 and unit.attack_cooldown <= 0:
+        if actor == 'support':
+            if dy < 0.5 and dz < 1.5 and self.attack_cooldown <= 0:
                 if dist > 1:
                     intent['action'] = AttackType.BULLET
                 else:
                     intent['action'] = AttackType.SLASH
                 self.attack_cooldown = self.attack_cooldown_duration
                 self.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
-                self.attack_cooldown = self.attack_cooldown_duration
+                #self.attack_cooldown = self.attack_cooldown_duration
         else:
+            print(f'======{self.name}=======')
             if random.random() < attack_chance:
+                print(f'ai name={self.name}')
+                # 如果有特殊攻擊就先判定
+                sp_atk_data = self.ai_strategy.get('special_attack', None)
+                if sp_atk_data:
+                    if random.random() < sp_atk_data.get('ratio', 0):
+                        cond = sp_atk_data.get("condition", None)
+                        condition_pass = True
+                        if cond:
+                            if "distance" in cond:
+                                if dist < cond["distance"][0] or dist > cond["distance"][1]:
+                                    condition_pass = False
+                            if "hp" in cond:
+                                if cond["hp"][0] > self.health or self.health > cond["hp"][1]:
+                                    condition_pass = False
+                        if condition_pass:
+                            intent['action'] = sp_atk_data.get('skill', self.combos[-1])
+                            self.attack_cooldown = self.attack_cooldown_duration
+                            return
+                if self.ai_strategy.get('able_to_burst', False):
+                    if self.health < self.max_hp/4:
+                        if random.random()<attack_chance:
+                            intent['action'] = AttackType.BRUST
+                            self.attack_cooldown = self.attack_cooldown_duration
+                            return
+
+
                 if hasattr(self, "scale"):
                     attack_range = 2.5 * self.scale
                 else:
                     attack_range = 2.5
                 if dist <= attack_range and dz < 1.0:
-                    #print(f'<<<<<dist = {dist}>>>>>>')
+
                     if self.attack_cooldown <= 0:
                         intent['action'] = self.combos[int(self.combo_count) % len(self.combos)]
                         self.combo_count += 1
@@ -2393,16 +2374,17 @@ class CharacterBase(Entity):
                         # unit.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
 
     def ai_mental_logic(self, target):
+        pers = self.ai_strategy.get('personality', 'brave')
         emotional_change = 0.05
-        if self.personality:
-            if self.personality == 'brave':
+        if pers:
+            if pers == 'brave':
                 # unit.morale = min(1.0, unit.morale + emotional_change*(unit.max_hp - unit.health)/unit.max_hp)
                 self.aggressive = min(1.0, 0.5 + emotional_change * (self.max_hp - self.health) / self.max_hp)
                 # 勇敢者血越少越進取
-            elif self.personality == 'coward':
+            elif pers == 'coward':
                 self.aggresive = max(0.2, 0.5 - (self.max_hp - self.health) / self.max_hp)
                 # 膽小者血越少越消極
-            elif self.personality == 'cautious':
+            elif pers == 'cautious':
                 self.aggresive = min(0.7, max(0.3, self.morale))
 
     # Characters.py
@@ -2420,7 +2402,7 @@ class CharacterBase(Entity):
 
 class Player(CharacterBase):
     def __init__(self, x, y, map_info, config):
-        super().__init__(x, y, map_info)
+        super().__init__(x, y, map_info, config)
         self.key_buffer = {dir: None for dir in [DirState.LEFT, DirState.RIGHT]}
         self.step_pending = {dir: -9999 for dir in [DirState.LEFT, DirState.RIGHT]}
         self.color = (255, 100, 100)
@@ -2880,7 +2862,7 @@ class Player(CharacterBase):
 
 
 class Ally(CharacterBase):
-    def __init__(self, x, y, z, map_info, config_dict):
+    def __init__(self, x, y, map_info, config_dict):
         super().__init__(x, y, map_info)
         move_speed = config_dict.get("move_speed", 0.5)
         attack_cooldown_duration = config_dict.get("attack_cooldown",240)
@@ -2899,6 +2881,7 @@ class Ally(CharacterBase):
         self.ai_move_speed = move_speed
         self.popup = config_dict.get("popup")
         self.scale = config_dict.get("scale",1.0)
+        self.ai_strategy['actor'] = 'support'
 
 
     # ally的update
@@ -2959,8 +2942,8 @@ class Ally(CharacterBase):
         # 分開邏輯模組處理
         self.ai_mental_logic(target)
         intent['direction'] = self.facing
-        self.ai_attack_logic(target, intent, act='support')
-        self.ai_move_logic(target, intent, far_speed = self.ai_move_speed, near_speed = self.ai_move_speed*0.6)
+        self.ai_attack_logic(target, intent)
+        self.ai_move_logic(target, intent)
         return intent
 
     def attack(self, skill):
@@ -3036,11 +3019,11 @@ class StandEntity(Ally):
 from CharactersConfig import *
 class Enemy(CharacterBase):
     #def __init__(self, x, y, z, map_info, config_dict,scale=1.0, combos=DEFAULT_COMBOS, name='enemy', ai_move_speed = 0.2, attack_cooldown = 45, popup=None):
-    def __init__(self, x, y, z, map_info, config_dict):
-        super().__init__(x, y, map_info)
+    def __init__(self, x, y, map_info, config_dict):
+        super().__init__(x, y, map_info, config_dict)
         # 1) 放大碰撞尺寸
         scale = config_dict.get("scale", 1.0)
-        ai_move_speed = config_dict.get("ai_move_speed", 0.2)
+        #ai_move_speed = config_dict.get("ai_move_speed", 0.2)
         attack_cooldown = config_dict.get("attack_cooldown", 45)
         self.width = self.width * scale
         self.height = self.height * scale
@@ -3058,7 +3041,7 @@ class Enemy(CharacterBase):
         self.stand_image = pygame.image.load("..\\Assets_Drive\\star_p.png").convert_alpha()
         self.side = 'enemy_side'
         self.money = 10 #loot
-        self.ai_move_speed = ai_move_speed
+        #self.ai_move_speed = ai_move_speed
         self.popup = config_dict.get("popup")
         self.is_blocking = config_dict.get("is_blocking", False)
         if self.popup and "landing" in self.popup:
@@ -3121,7 +3104,7 @@ class Enemy(CharacterBase):
 
         # 2. 如果沒有權杖，且士氣高昂/性格勇敢，嘗試申請
         has_token = self in scene.token_holders
-        if not has_token and (self.morale > 0.4 or self.personality == 'brave'):
+        if not has_token and (self.morale > 0.4 or self.ai_strategy['personality'] == 'brave'):
             players = self.scene.get_units_by_side('player_side')
             if players and abs(players[0].x - self.x) < 8:  # 靠近玩家才申請
                 scene.request_token(self)
@@ -3160,8 +3143,8 @@ class Enemy(CharacterBase):
         # 分開邏輯模組處理
         self.ai_mental_logic(target)
         self.ai_mental_logic(target)
-        self.ai_attack_logic(target, intent, act='Enemy')
-        self.ai_move_logic(target, intent, far_speed=self.ai_move_speed, near_speed=self.ai_move_speed*0.6)
+        self.ai_attack_logic(target, intent)
+        self.ai_move_logic(target, intent)
 
         return intent
 
@@ -3299,8 +3282,8 @@ class ClonePlayer(Player):
                     'z': False, 'x': False, 'c': False,
                     'dirs': (False, False, False, False)
                 }
-                self.ai_attack_logic(target, intent, act='Enemy')
-                self.ai_move_logic(target, intent, far_speed=0.4, near_speed=0.2)
+                self.ai_attack_logic(target, intent)
+                self.ai_move_logic(target, intent)
                 self.handle_input(intent)
 
         # 4. 🟢 物理位移更新

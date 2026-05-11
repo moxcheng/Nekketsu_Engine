@@ -5,3 +5,10 @@ STAGE_1_CONFIG = {
     #"tile_size": 40,
     "display_name": "南海道 - 街區 01"
 }
+
+STAGE_2_CONFIG = {
+    "map_csv": "..\\Assets_Drive\\background_field1a_map.csv",
+    "background_img": "..\\Assets_Drive\\background_field1a.png",
+    #"tile_size": 40,
+    "display_name": "橫濱-郊外"
+}

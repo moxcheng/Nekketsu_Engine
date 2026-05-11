@@ -54,6 +54,7 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         self.hitting_cache = []
         self.is_blocking = False  # 🟢 預設不阻擋
         self.is_destructible = False  # 預設不可破壞
+        self.invincible_timer = 0
 
     def get_tile_z(self, x, y):
         """通用高度獲取，增加邊界夾緊保護"""
@@ -153,3 +154,5 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         hy2 = int((self.map_h - hurtbox['y1']) * TILE_SIZE - self.jump_z * TILE_SIZE - terrain_z_offset) - cam_y + tile_offset_y
 
         pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)
+    def is_alive(self):
+        pass
