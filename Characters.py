@@ -243,7 +243,9 @@ class CharacterBase(Entity):
         self.ai_strategy = config_dict.get('ai_strategy', {'personality':'random','far_speed':0.2,'near_speed':0.1, 'actor':'Attacker'})
         if self.ai_strategy['personality'] == 'random':
             self.ai_strategy['personality'] = random.choice(['brave', 'coward', 'cautious'])
-        self.special_attack = self.ai_strategy.get('special_attack', None)
+        #self.special_attack = self.ai_strategy.get('special_attack', None)
+        self.special_attack_cooldown = 0
+        self.forced_skill = self.ai_strategy.get('intro_skill', None)
 
 
 
@@ -1596,6 +1598,8 @@ class CharacterBase(Entity):
             self.combat_timer -= 1
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
+        if self.special_attack_cooldown > 0:
+            self.special_attack_cooldown -= 1
 
         # 每禎遞減攻擊計時器
         #死亡消失
@@ -1671,8 +1675,6 @@ class CharacterBase(Entity):
     #     #受創狀態判定
     #     self.update_combat_state()
     #     self.update_hit_timer()
-    #
-    #     #123456
     #     if self.attack_state:
     #         #print(f'update_common_opponent: [({self.current_frame}){self.attack_state.timer}] self.attack_state={self.attack_state} ({self.x:.2f}, {self.y:.2f})')
     #         # self.attack_state.update()
@@ -1918,17 +1920,6 @@ class CharacterBase(Entity):
                     self.z = self.get_tile_z(self.x, self.y)
 
 
-            # if target_z is None:
-            #     # 如果目標位置超出地圖，不更新座標 (或是執行擋牆邏輯)
-            #     moved = False
-            # else:
-            #     if abs(target_z - self.z) <= 1 or (self.jump_z > 0 and self.z + self.jump_z >= target_z):
-            #         self.x, self.y = new_x, new_y
-            #         if self.jump_z > 0:
-            #             self.z = target_z
-            #         else:
-            #             self.z = target_z
-
             moved = (self.x != prev_x or self.y != prev_y)
             if moved and not self.is_falling():
                 self.state = intent['horizontal'] if intent['horizontal'] in [MoveState.WALK, MoveState.RUN,
@@ -1945,22 +1936,14 @@ class CharacterBase(Entity):
             self.clean_input_buffer()
         #elif intent_act == 'down_attack':
         elif intent_act is not None:
-            print('{} 出招 {}'.format(self.name, intent['action']))
+            if self.name != 'player':
+                #劫持AI強制出招行為
+                if self.forced_skill:
+                    intent_act = self.forced_skill
+                    self.forced_skill = None
+            print('{} 出招 {}'.format(self.name, intent_act))
             self.attack(intent_act)
             self.attack_intent = None
-        # if intent_act == 'pickup_item':
-        #     for comp in self.components.values():
-        #         if hasattr(comp, "handle_action"):
-        #             comp.handle_action('pickup_item')
-        #             self.attack_intent = None
-        #             self.clean_input_buffer()
-        # elif intent_act is not None:
-        #     #打出對應招式
-        #     print('{} 出招 {}'.format(self.name, intent['action']))
-        #     self.attack(intent['action'])
-        #     if hasattr(self.attack_state, "data"):
-        #         print(f'[{self.current_frame}]{self.name}打出{self.attack_state.data.attack_type.name}')
-        #     self.attack_intent = None  # ✅ 清除
 
     def set_attack_by_skill(self, skill):
         # 1. 取得原始模板數據
@@ -2323,6 +2306,7 @@ class CharacterBase(Entity):
         dy = target.y - self.y
         dz = abs((target.z) - (self.z))
         dist = (dx ** 2 + dy ** 2) ** 0.5
+
         if actor == 'support':
             if dy < 0.5 and dz < 1.5 and self.attack_cooldown <= 0:
                 if dist > 1:
@@ -2333,13 +2317,13 @@ class CharacterBase(Entity):
                 self.facing = DirState.LEFT if dx < 0 else DirState.RIGHT
                 #self.attack_cooldown = self.attack_cooldown_duration
         else:
-            print(f'======{self.name}=======')
+            #print(f'======{self.name}=======')
             if random.random() < attack_chance:
-                print(f'ai name={self.name}')
+                #print(f'ai name={self.name}')
                 # 如果有特殊攻擊就先判定
                 sp_atk_data = self.ai_strategy.get('special_attack', None)
                 if sp_atk_data:
-                    if random.random() < sp_atk_data.get('ratio', 0):
+                    if random.random() < sp_atk_data.get('ratio', 0) and self.special_attack_cooldown <= 0:
                         cond = sp_atk_data.get("condition", None)
                         condition_pass = True
                         if cond:
@@ -2352,6 +2336,7 @@ class CharacterBase(Entity):
                         if condition_pass:
                             intent['action'] = sp_atk_data.get('skill', self.combos[-1])
                             self.attack_cooldown = self.attack_cooldown_duration
+                            self.special_attack_cooldown = sp_atk_data.get("cooldown", 600)
                             return
                 if self.ai_strategy.get('able_to_burst', False):
                     if self.health < self.max_hp/4:
@@ -2360,13 +2345,11 @@ class CharacterBase(Entity):
                             self.attack_cooldown = self.attack_cooldown_duration
                             return
 
-
                 if hasattr(self, "scale"):
                     attack_range = 2.5 * self.scale
                 else:
                     attack_range = 2.5
                 if dist <= attack_range and dz < 1.0:
-
                     if self.attack_cooldown <= 0:
                         intent['action'] = self.combos[int(self.combo_count) % len(self.combos)]
                         self.combo_count += 1
@@ -2947,7 +2930,6 @@ class Ally(CharacterBase):
         return intent
 
     def attack(self, skill):
-        # 123456
         if self.state == MoveState.ATTACK:
             return
         if self.attack_state:
@@ -3149,7 +3131,6 @@ class Enemy(CharacterBase):
         return intent
 
     def attack(self, skill):
-        # 123456
         if self.state == MoveState.ATTACK:
             return
         if self.attack_state:

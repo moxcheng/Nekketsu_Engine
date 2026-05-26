@@ -1082,6 +1082,7 @@ class Phase_Entity:
         self.popup_cooldown = 0
         self.inherbitance_info = inherbitance_info
         self.need_inherbitance = phase_config.get('output_inherbitance', False)
+        self.is_ending = False
         #
         #將phase_config的enemy enqueue
         #self.enemy_queue = enemy_queue + self.enemy_list
@@ -1090,6 +1091,16 @@ class Phase_Entity:
             self.scene.sound_manager.play_bgm(self.on_enter_bgm, volume=self.bgm_volume)
 
     def check_end_condition(self):
+        if self.is_ending:
+            # 如果已經在演出結束腳本，檢查腳本跑完沒
+            # if not self.scene.script_runner.active:
+            #     return True  # 真正結束 Phase
+            # return False
+            # 🟢 修正：檢查新版時間軸是否播放完畢
+            if not self.scene.timeline_script_runner.is_running:
+                return True  # 真正結束 Phase
+            return False
+
         result = False
         for case in self.condition:
             #print(f'check condition:{case}')
@@ -1106,9 +1117,14 @@ class Phase_Entity:
                     result = True
         if result:
             if self.on_end_script:
-                self.scene.script_runner.load(self.on_end_script)
+                #self.scene.script_runner.load(self.on_end_script)
+                self.scene.timeline_script_runner.start_script(self.on_end_script)
                 self.on_end_script = None
-        return result
+                self.is_ending = True  # 🟢 標記進入演出狀態
+                return False  # 🔴 暫時不讓 Phase 切換，繼續待在當前 Phase
+            else:
+                return True  # 沒有結束腳本，直接切換
+        return False
 
     def update(self, destroyed_enemy):
         self.destroyed_enemy = destroyed_enemy
@@ -1136,14 +1152,19 @@ class Phase_Entity:
                         boss_x = self.inherbitance_info['boss.x']
                         boss_y = self.inherbitance_info['boss.y']
                 boss_char = create_character('enemy', self.boss_config, boss_x, boss_y, map_info, scene, name=f'boss', health=self.boss_hp, max_hp=self.boss_hp)
+                boss_char.invincible_timer = 90
                 self.scene.register_unit(boss_char, side='enemy_side', tags=['enemy', 'interactable'], type='character')
                 self.boss_entity = boss_char
             #popup enemy from queue
         if self.popup_cooldown > 0: self.popup_cooldown -= 1
         self.frame += 1
         if self.on_start_script:
-            self.scene.script_runner.load(self.on_start_script)
+            #self.scene.script_runner.load(self.on_start_script)
+            self.scene.timeline_script_runner.start_script(self.on_start_script)
             self.on_start_script=None
+        # 🟢 防禦機制：如果新舊任何一個劇本器正在運作，凍結小兵生成邏輯
+        if self.scene.timeline_script_runner.is_running or self.scene.script_runner.active:
+            return
     def end_phase(self, empty_enemy=False, empty_boss=True):
         if empty_enemy:
             self.enemy_queue = []
@@ -1151,7 +1172,9 @@ class Phase_Entity:
             if len(enemyies) > 0:
                 for e in enemyies:
                     self.scene.mark_for_removal(e)
-        inherbitance_info={"boss.x":self.boss_entity.x, "boss.y":self.boss_entity.y}
+        inherbitance_info = None
+        if self.boss_entity and self.need_inherbitance:
+            inherbitance_info={"boss.x":self.boss_entity.x, "boss.y":self.boss_entity.y}
         if empty_boss:
             if self.boss_entity:
                 self.scene.mark_for_removal(self.boss_entity)
@@ -1230,27 +1253,6 @@ def scene_runner(win, font, clear_font, player_config, scene_script):
             print('{} created'.format(item_entity.name))
 
     scene.sound_manager.play_bgm(base_bgm)
-    #進入phase循環
-    #經phase讀入圍phsae_list，從list中抓取stage phase資料並在while True中控制
-    # scene_script = {
-    #     "phases": [
-    #         {
-    #             "id": 0,
-    #             "enemies": {"total": 10, "configs": [NPC_SHUKI_0_CONFIG], "max_active": 4},
-    #             "condition": {"type": "ALL_ENEMY_DEAD"},
-    #             "on_enter_script": [{"type": "say", "target": "player", "text": "Phase 0 開始！"}],
-    #               ""on_enter_bgm": "_BGM_00.ogg"
-
-    #         },
-    #         {
-    #             "id": 1,
-    #             "enemies": {"total": 3, "configs": [NPC_SHUKI_1_CONFIG], "max_active": 4},
-    #             "boss": {"config": NPC_SHUKI_BOSS_CONFIG, "hp": 300},
-    #             "condition": {"type": "OR", "sub": ["ALL_ENEMY_DEAD", "BOSS_HP_UNDER_50"]},
-    #             "on_enter_bgm": "_BGM_01.ogg"
-    #         }
-    #     ]
-    # }
     phase_list = scene_script.get('phases', [])
     current_phase = 0
     destroyed_enemy = 0
@@ -1534,48 +1536,174 @@ def main():
     pygame.init()
     pygame.font.init()
     font = pygame.font.SysFont(None, 18)
-    clear_font = pygame.font.SysFont(None, 48)
+    #clear_font = pygame.font.SysFont(None, 48)
+    clear_font = pygame.font.SysFont(["microsoftjhenghei", "microsoftyahei", "simsun"], 48)
     win = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("熱血引擎")
     selected_player = selection_menu()
     #scene_mato(win, font, clear_font, player_config=selected_player, stage_config = STAGE_1_CONFIG)
     #scene_sandbox(win, font, clear_font, player_config=selected_player, stage_config = STAGE_2_CONFIG)
-    enemy_list1 = [NPC_SHUKI_0_CONFIG]*10
+    enemy_list1 = [NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG, NPC_SHUKI_0_CONFIG, NPC_SHUKI_1_CONFIG, NPC_SHUKI_2_CONFIG, NPC_SHUKI_3_CONFIG]
     enemy_list2 = [NPC_SHUKI_1_CONFIG,NPC_SHUKI_2_CONFIG,NPC_SHUKI_0_CONFIG]
+    enemy_list_boss_add = [NPC_SHUKI_BOSS_CONFIG]*3
+    #_BGM_BloodyTears 前奏8秒=480
+    #_BGM_FestivalOfServants 7秒=420
+    #_BGM_往幽深奈洛 20秒=1200
+
     test_scene_script1 = {
         "stage_config": STAGE_2_CONFIG,
         "end_cuts": ["..\\Assets_Drive\\madou\\end_cut0.png", "..\\Assets_Drive\\madou\\end_cut.png"],
         "stage_items": [{"name":"bigrock", "x":-2, "y":0}],
         "base_bgm": "_BGM_03.ogg",
         "phases": [
-            # {
-            #     "id": 0,
-            #     "enemies": {"total": 10, "configs": enemy_list1, "max_active": 5},
-            #     "condition": [{"criteria": "DESTROY_ENEMY", "value":10}],
-            #     "on_enter_script": [{"type": "say", "target": "player", "text": "Phase 0 開始！"}],
-            #     "on_enter_bgm": "_BGM_庫吉新之戰.ogg"
-            #
-            # },
             {
                 "id": 0,
-                "enemies": {"total": 3, "configs": enemy_list2, "max_active": 4},
+                "enemies": {"total": 8, "configs": enemy_list1, "max_active": 5},
+                "condition": [{"criteria": "DESTROY_ENEMY", "value":8}],
+                # "on_start_script": [
+                #     {"type": "show_text", "text": "- SCENE YOKOHAMA -"},
+                #     {"type": "wait", "duration": 90},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     #yokohama_p0_0.png
+                #     {"type": "show_tachie", "path": "..\\Assets_Drive\\madou\\yokohama_p0_0_pxl.png"},
+                #     {"type": "show_text", "text": "- 橫濱連續失蹤案件 -"},
+                #     {"type": "wait", "duration": 90},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "hide_tachie"},
+                #     {"type": "show_tachie", "path": "..\\Assets_Drive\\madou\\yokohama_p0_1.png"},
+                #     {"type": "show_text", "text": "- 可疑對象 -"},
+                #     {"type": "wait", "duration": 90},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "hide_tachie"},
+                #     {"type": "say", "target": "player", "text": "很多醜鬼..."},
+                #     {"type": "wait", "duration": 120},
+                # ],
+                "on_start_script":{
+                    "total_duration": 570,
+                    "text_track":[
+                        {"start":0, "end":150, "text":"- SCENE YOKOHAMA -"},
+                        {"start": 180, "end": 310, "text": "- 橫濱連續失蹤案件 -"},
+                        {"start": 340, "end": 470, "text": "- 可疑對象 -"},
+                    ],
+                    "tachie_track":[
+                        {"start":150, "end":320, "path":"..\\Assets_Drive\\madou\\yokohama_p0_0_pxl.png"},
+                        {"start": 330, "end": 480, "path": "..\\Assets_Drive\\madou\\yokohama_p0_1.png"},
+                    ],
+                    "bubble_events":[
+                        {"tick": 500, "target":"player", "text":"很多醜鬼...", "duration":70},
+                    ],
+                },
+
+                "on_enter_bgm": "_BGM_BloodyTears.ogg"
+            },
+            {
+                "id": 1,
+                "enemies": {"total": 3, "configs": enemy_list_boss_add, "max_active": 4},
                 "boss": {"config": BOSS_KUSETSU_CONFIG, "hp": 300},
                 "condition": [{"criteria": "BOSS_HP", "value": 150}],
-                "on_enter_bgm": "_BGM_mizuzu.ogg",
+                "on_enter_bgm": "_BGM_FestivalOfServants.ogg",
                 "bgm_volume": 0.3,
                 "is_empty_enemy":False,
                 "is_empty_boss":True,
                 "output_inherbitance":True,
-                "on_end_script": [{"type": "say", "target": "boss", "text": "好大的狗膽..!"}],
+                # "on_start_script": [
+                #     {"type": "show_text", "text": "-八雷神-"},
+                #     {"type": "wait", "duration": 90},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "show_tachie", "path": "..\\Assets_Drive\\madou\\yokohama_p1_0.png"},
+                #     {"type": "wait", "duration": 120},
+                #     {"type": "hide_tachie"},
+                #     {"type": "say", "target": "boss", "text": "神罰降臨...!"},
+                #     {"type": "wait", "duration": 120},
+                # ],
+                "on_start_script":{
+                    "total_duration": 300,
+                    "text_track": [
+                        {"start": 0, "end": 120, "text": "???「是誰敢搶神的供品！」"},
+                    ],
+                    "tachie_track": [
+                        {"start": 70, "end": 200, "path": "..\\Assets_Drive\\madou\\yokohama_p1_0.png"},
+                    ],
+                    "bubble_events": [
+                        {"tick": 210, "target": "boss", "text": "接受神罰吧！", "duration": 90},
+                    ],
+
+                },
+                # "on_end_script": [{"type": "say", "target": "boss", "text": "我不會在大意了..!"},
+                #                   {"type": "show_tachie", "path": "..\\Assets_Drive\\kusetsu_p2_00_pixel.png"},
+                #                   {"type": "wait", "duration": 120},
+                #                   {"type": "hide_tachie"},
+                #                   ],
+                "on_end_script":{
+                    "total_duration": 210,
+                    "bubble_events": [
+                        {"tick": 0, "target": "boss", "text": "我不會再大意了！", "duration": 90},
+                    ],
+                    "tachie_track": [
+                        {"start": 90, "end": 200, "path": "..\\Assets_Drive\\kusetsu_p2_00_pixel.png"},
+                    ],
+                }
             },
             {
-                "id": 1,
+                "id": 2,
                 "enemies": {"total": 0, "configs": [], "max_active": 4},
-                "boss": {"config": BOSS_KUSETSU_P2_CONFIG, "hp": 300},
-                "condition": [{"criteria":"KILL_BOSS","value":0 }],
-                "on_enter_bgm": "_FF6_死鬥_cutted.ogg",
-                "on_start_script": [{"type": "say", "target": "boss", "text": "美麗的真正姿態!"}],
-                "bgm_volume": 0.3
+                "boss": {"config": BOSS_KUSETSU_P2_CONFIG, "hp": 600},
+                "condition": [{"criteria":"BOSS_HP","value":200 }],
+                "on_enter_bgm": "_BGM_往幽深奈洛.ogg",
+                # "on_start_script": [
+                #                   {"type": "say", "target": "boss", "text": "見識真正的姿態..!"},
+                #     {"type": "wait", "duration": 120},
+                #                     {"type": "show_tachie", "path": "..\\Assets_Drive\\kusetsu_p2_01_pixel.png"},
+                #                     {"type": "wait", "duration": 120},
+                #                     {"type": "hide_tachie"}
+                #                     ],
+                "on_start_script":{
+                    "total_duration":210,
+                    "bubble_events": [
+                        {"tick": 0, "target": "boss", "text": "見識神的真正姿態..!", "duration": 90},
+                    ],
+                    "tachie_track": [
+                        {"start": 90, "end": 200, "path": "..\\Assets_Drive\\kusetsu_p2_01_pixel.png"},
+                    ],
+                },
+                "bgm_volume": 0.5,
+                # "on_end_script":[
+                #     {"type": "show_text", "text": "妳為了民眾浪費太多力量..."},
+                #     {"type": "wait", "duration": 120},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "show_tachie", "path": "..\\Assets_Drive\\madou\\kusetsu_p2_02.png"},
+                #     {"type": "show_text", "text": "我是八雷神 空折"},
+                #     {"type": "wait", "duration": 120},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "hide_tachie"},
+                #     {"type": "wait", "duration": 90},
+                #     {"type": "show_tachie", "path": "..\\Assets_Drive\\madou\\kusetsu_p2_03.png"},
+                #     {"type": "show_text", "text": "二番隊隊長上運天 美蘿"},
+                #     {"type": "wait", "duration": 120},
+                #     {"type": "hide_text"},  # 讓文字平滑淡出
+                #     {"type": "wait", "duration": 30},
+                #     {"type": "hide_tachie"},
+                # ]
+                "on_end_script":{
+                    "total_duration": 800,
+                    "tachie_track":[
+                        {"start": 300, "end": 480, "path": "..\\Assets_Drive\\madou\\kusetsu_p2_02.png"},
+                        {"start": 510, "end": 690, "path": "..\\Assets_Drive\\madou\\kusetsu_p2_03.png"},
+                    ],
+                    "text_track":[
+                        {"start": 30, "end": 120, "text": "???「妳為了民眾浪費太多力量..."},
+                        {"start": 150, "end": 270, "text": " 但我承認那姿態十分美麗」"},
+                        {"start": 320, "end": 450, "text": "我是八雷神 空折"},
+                        {"start": 530, "end": 670, "text": "二番隊隊長上運天 美羅"},
+                    ],
+
+                }
             }
         ]
     }

@@ -266,30 +266,30 @@ Z_TORRENCE = 10.0
 class HoldFlyLogicMixin:
     #被拾取/被投擲共通邏輯
 
-    def check_wall_collision(self, next_x):
-        """偵測 next_x 是否撞牆或超出地圖邊界"""
-        # 1. 檢查地圖左右邊界
-        if next_x < 0 or next_x+self.width > self.map_w:
-            return True
-
-        # 2. 檢查地形高度差 (牆壁)
-        # 取得角色當前高度與前方地塊高度
-        if hasattr(self, "vel_x"):
-            vel_x = self.vel_x
-        else:
-            vel_x = self.vel_x
-        tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
-        ty = int(self.y + 0.5)
-
-        target_z = self.get_tile_z(tx, ty)
-        if target_z is None:
-            return True  # 超出索引視同撞牆
-        if target_z is not None:
-            # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
-            if target_z - self.z >= 2:
-                return True
-
-        return False
+    # def check_wall_collision(self, next_x):
+    #     """偵測 next_x 是否撞牆或超出地圖邊界"""
+    #     # 1. 檢查地圖左右邊界
+    #     if next_x < 0 or next_x+self.width > self.map_w:
+    #         return True
+    #
+    #     # 2. 檢查地形高度差 (牆壁)
+    #     # 取得角色當前高度與前方地塊高度
+    #     if hasattr(self, "vel_x"):
+    #         vel_x = self.vel_x
+    #     else:
+    #         vel_x = self.vel_x
+    #     tx = int(next_x + (0.8 if vel_x > 0 else 0.2))
+    #     ty = int(self.y + 0.5)
+    #
+    #     target_z = self.get_tile_z(tx, ty)
+    #     if target_z is None:
+    #         return True  # 超出索引視同撞牆
+    #     if target_z is not None:
+    #         # 如果目標地塊比當前位置高出 2 階以上，視為撞牆
+    #         if target_z - self.z >= 2:
+    #             return True
+    #
+    #     return False
 
 
     def on_held_location(self):

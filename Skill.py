@@ -125,7 +125,8 @@ class AttackState:
                 # --- 修正：計算新座標並檢查邊界 ---
             new_x = self.character.x + dir_vec * self.data.force_move
             # 限制在 [0, MAP_WIDTH - 角色寬度] 之間
-            self.character.x = max(0, min(new_x, self.character.map_w - self.character.width))
+            if self.character.is_legal_to_move(new_x, self.character.y):
+                self.character.x = max(0, min(new_x, self.character.map_w - self.character.width))
         # 🟢 屬於特殊遠程招式
 
         if self.data.attack_type == AttackType.BACKFLIP_SHOT:

@@ -22,17 +22,17 @@ class EnvironmentManager:
 
         # 權限管理：Step 2 預留
         self.highlight_units = set()
+        self.clear_text = ""
+        self.clear_font = None
+        self.text_alpha = 0
+        self.STAY_TIME = 120
 
         #end cut用
-        self.cutscene_images = []
-        self.image_alpha = 0
         self.cutscene_timer = 0
         self.current_img_idx = 0
         self.fade_in_speed = 5
         # 演算法常數 (參考原 SceneManager 的邏輯)
-        self.clear_text = ""
-        self.clear_font = None
-        self.text_alpha = 0
+
 
         # 演算法常數 (還原原 SceneManager 的邏輯)
         self.STAY_TIME = 120
@@ -42,52 +42,89 @@ class EnvironmentManager:
 
         self.freeze_timer = 0
 
+        # 新增：腳本專用立繪
+        self.script_tachie = None
+        self.current_tachie_path = None
+        self.tachie_alpha = 0
+        self.tachie_target_alpha = 0
+        # 🟢 新增腳本全螢幕文字狀態
+        self.script_text = ""
+        self.script_text_alpha = 0
+        self.script_text_target_alpha = 0
+        self.script_text_font = None
+
+
+
     def set_freeze(self, duration):
         """設定時停時間 (單位：frame)"""
         self.freeze_timer = duration
     def update(self):
-        # 處理變暗漸變
+        # 1. 處理背景變暗濾鏡漸變
         if self.dim_alpha < self.target_dim_alpha:
             self.dim_alpha = min(self.target_dim_alpha, self.dim_alpha + 15)
         elif self.dim_alpha > self.target_dim_alpha:
             self.dim_alpha = max(self.target_dim_alpha, self.dim_alpha - 15)
 
-        # 處理插畫漸變 (Fade in)
-        # 🟢 通關圖片時序演算法還原
-        if self.cutscene_images:
-            self.cutscene_timer += 1
+        # 2. 處理全螢幕文字軌 Alpha 漸變
+        if self.script_text_alpha < self.script_text_target_alpha:
+            self.script_text_alpha = min(self.script_text_target_alpha, self.script_text_alpha + 15)
+        elif self.script_text_alpha > self.script_text_target_alpha:
+            self.script_text_alpha = max(self.script_text_target_alpha, self.script_text_alpha - 15)
+            if self.script_text_alpha == 0:
+                self.script_text = ""  # 完全淡出後清空字串
 
-            # 判斷目前進度決定 alpha (模仿原本 draw_overlay 的邏輯)
-            # 假設每張圖循環週期 = FADE_TIME + STAY_TIME
-            cycle_time = self.STAY_TIME + self.FADE_TIME
-            progress = self.cutscene_timer % cycle_time
+        # 3. 處理立繪軌 Alpha 漸變
+        if self.tachie_alpha < self.tachie_target_alpha:
+            self.tachie_alpha = min(self.tachie_target_alpha, self.tachie_alpha + 15)
+        elif self.tachie_alpha > self.tachie_target_alpha:
+            self.tachie_alpha = max(self.tachie_target_alpha, self.tachie_alpha - 15)
+            if self.tachie_alpha == 0:
+                self.script_tachie = None
+                self.current_tachie_path = None
 
-            if progress < self.FADE_TIME:
-                # 淡入階段
-                self.image_alpha = int((progress / self.FADE_TIME) * 255)
-            else:
-                # 停留階段 (維持全亮)
-                self.image_alpha = 255
+        # # 處理插畫漸變 (Fade in)
+        # # 🟢 通關圖片時序演算法還原
+        # if self.cutscene_images:
+        #     self.cutscene_timer += 1
+        #
+        #     # 判斷目前進度決定 alpha (模仿原本 draw_overlay 的邏輯)
+        #     # 假設每張圖循環週期 = FADE_TIME + STAY_TIME
+        #     cycle_time = self.STAY_TIME + self.FADE_TIME
+        #     progress = self.cutscene_timer % cycle_time
+        #
+        #     if progress < self.FADE_TIME:
+        #         # 淡入階段
+        #         self.image_alpha = int((progress / self.FADE_TIME) * 255)
+        #     else:
+        #         # 停留階段 (維持全亮)
+        #         self.image_alpha = 255
+        #
+        #     # 切換下一張圖
+        #     if self.cutscene_timer > 0 and progress == 0:
+        #         self.current_img_idx = (self.current_img_idx + 1) % len(self.cutscene_images)
+        #
+        # if self.freeze_timer > 0:
+        #     self.freeze_timer -= 1
+        #     # 🟢 如果計時器剛好在此幀歸零，自動觸發「變亮」
+        #     if self.freeze_timer in [60, 120, 180]:
+        #         seconds = int(self.freeze_timer/60)
+        #         for unit in self.highlight_units:
+        #             if unit.is_alive():
+        #                 unit.say(f"{seconds}..", duration=45)
+        #     if self.freeze_timer == 0:
+        #         for unit in self.highlight_units:
+        #             if unit.is_alive():
+        #                 unit.say("然後時間開始流動")
+        #         self.set_dim(False)  # 讓 target_dim_alpha 變 0
+        #         self.highlight_units.clear()  # 清空高亮名單
+        #         print("⏰ 時停結束，自動恢復光明與流動")
 
-            # 切換下一張圖
-            if self.cutscene_timer > 0 and progress == 0:
-                self.current_img_idx = (self.current_img_idx + 1) % len(self.cutscene_images)
+        # if self.tachie_alpha < self.tachie_target_alpha:
+        #     self.tachie_alpha = min(self.tachie_target_alpha, self.tachie_alpha + 15)
+        # elif self.tachie_alpha > self.tachie_target_alpha:
+        #     self.tachie_alpha = max(self.tachie_target_alpha, self.tachie_alpha - 15)
 
-        if self.freeze_timer > 0:
-            self.freeze_timer -= 1
-            # 🟢 如果計時器剛好在此幀歸零，自動觸發「變亮」
-            if self.freeze_timer in [60, 120, 180]:
-                seconds = int(self.freeze_timer/60)
-                for unit in self.highlight_units:
-                    if unit.is_alive():
-                        unit.say(f"{seconds}..", duration=45)
-            if self.freeze_timer == 0:
-                for unit in self.highlight_units:
-                    if unit.is_alive():
-                        unit.say("然後時間開始流動")
-                self.set_dim(False)  # 讓 target_dim_alpha 變 0
-                self.highlight_units.clear()  # 清空高亮名單
-                print("⏰ 時停結束，自動恢復光明與流動")
+
 
     def set_dim(self, active, alpha=160):
         self.target_dim_alpha = alpha if active else 0
@@ -101,8 +138,30 @@ class EnvironmentManager:
         self.cutscene_timer = 0
         self.image_alpha = 0
 
+    def set_script_tachie(self, image_path, active=True):
+        """由 ScriptRunner 呼叫：設定立繪路徑並啟動漸變"""
+        if active and image_path:
+            self.script_tachie = pygame.image.load(image_path).convert_alpha()
+            self.tachie_target_alpha = 255
+            self.set_dim(True, alpha=180)  # 自動打上黑色遮罩
+        else:
+            self.tachie_target_alpha = 0
+            self.set_dim(False)
+
+    def draw_script_tachie(self, win):
+        """繪製劇情立繪"""
+        if self.script_tachie and self.tachie_alpha > 0:
+            # 複製一份加上 Alpha 透明度
+            temp_surf = self.script_tachie.copy()
+            temp_surf.set_alpha(self.tachie_alpha)
+
+            # 置中或置於靠右下方 (依據你的遊戲畫面調整座標)
+            x = (WIDTH - temp_surf.get_width()) // 2
+            y = (HEIGHT - temp_surf.get_height()) // 2
+            win.blit(temp_surf, (x, y))
+
     def draw_filter(self, win):
-        """繪製變暗濾鏡 (位於背景單位與高亮單位之間)"""
+        """繪製全螢幕暗化濾鏡"""
         if self.dim_alpha > 0:
             self.dim_overlay.set_alpha(self.dim_alpha)
             win.blit(self.dim_overlay, (0, 0))
@@ -120,6 +179,33 @@ class EnvironmentManager:
         if self.clear_text and self.clear_font:
             txt = self.clear_font.render(self.clear_text, True, (255, 255, 0))
             outline = self.clear_font.render(self.clear_text, True, (0, 0, 0))
+            x = (WIDTH - txt.get_width()) // 2
+            y = (HEIGHT - txt.get_height()) // 2
+
+            # 繪製簡單外框
+            for dx, dy in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
+                win.blit(outline, (x + dx, y + dy))
+            win.blit(txt, (x, y))
+
+    def set_script_text(self, text, active=True, font=None):
+        """控制文字軌道，不影響立繪"""
+        if active and text:
+            self.script_text = text
+            self.script_text_target_alpha = 255
+            if font:
+                self.script_text_font = font
+        else:
+            self.script_text_target_alpha = 0
+
+    def draw_script_text(self, win):
+        """繪製全螢幕劇本文字"""
+        if self.script_text and self.script_text_alpha > 0 and self.script_text_font:
+            txt = self.script_text_font.render(self.script_text, True, (255, 255, 0))  # 黃色字體
+            outline = self.script_text_font.render(self.script_text, True, (0, 0, 0))
+
+            txt.set_alpha(self.script_text_alpha)
+            outline.set_alpha(self.script_text_alpha)
+
             x = (WIDTH - txt.get_width()) // 2
             y = (HEIGHT - txt.get_height()) // 2
 
@@ -229,6 +315,7 @@ class SceneManager:
         self.speech_bubbles = []    # 對話泡泡框
         # 劇情器-->
         self.script_runner = StoryScriptRunner(self)
+        self.timeline_script_runner = TimelineScriptRunner(self)
         self.script_controlled_units = set()  # 存放目前劇情控制角色
         self.lock_others_during_script = True  # 控制是否鎖定非劇情角色
         # ==== 新增：畫面變暗 / 通關相關狀態 ====
@@ -312,6 +399,11 @@ class SceneManager:
         if is_time_frozen and unit not in self.env_manager.highlight_units:
             return False
 
+        # 2. 🟢 修正：不論是舊劇本還是新時間軸劇本在跑，非受控單位全部靜止
+        if (self.script_runner.active or self.timeline_script_runner.is_running) and self.lock_others_during_script:
+            if unit not in self.script_controlled_units:
+                return False
+
         # 2. 劇情鎖定：非受控單位不可移動
         if self.script_runner.active and self.lock_others_during_script:
             if unit not in self.script_controlled_units:
@@ -335,7 +427,7 @@ class SceneManager:
 
         is_time_frozen = self.env_manager.freeze_timer > 0
         for unit in self.interactables:
-            # 🟢 被持有的物件不參與世界物理，因為其座標由 Entity.update 內的 on_held_location 強制控制
+            # 🟢 被持有的物件不參與世界物理，因為其座標由 Entity.update 內的 on_held_location 強制控制f draw_
             if unit.held_by:
                 continue
 
@@ -439,30 +531,6 @@ class SceneManager:
             self.env_manager.highlight_units.clear()
             #self.env_manager.set_freeze(0)
             #print("⏰ 時間恢復流動")
-    # def trigger_za_warudo(self, unit, duration):
-    #     self.toggle_highlight_test(unit)
-    #     if self.env_manager.freeze_timer <= 0:
-    #         seconds = int(duration/60)
-    #         unit.super_armor_timer = duration
-    #         unit.say(f'ZA WARUDO!{seconds}秒!')
-    #         self.env_manager.set_freeze(duration)
-    #         print(f"🔥 {unit.name} 【時之停頓】")
-    #     else:
-    #         self.env_manager.set_freeze(0)
-    #         print("⏰ 時間恢復流動")
-    # def trigger_haste(self, unit, duration):
-    #     self.toggle_highlight_test(unit, duration=230)
-    #     if self.env_manager.freeze_timer <= 0:
-    #         seconds = int(duration/60)
-    #         unit.super_armor_timer = duration
-    #         unit.say(f'ZA WARUDO!{seconds}秒!')
-    #         self.env_manager.set_freeze(duration)
-    #         print(f"🔥 {unit.name} 【時之停頓】")
-    #     else:
-    #         self.env_manager.set_freeze(0)
-    #         print("⏰ 時間恢復流動")
-
-
 
 
     def update_tokens(self):
@@ -844,12 +912,18 @@ class SceneManager:
 
 
         self.script_runner.update()
+        self.timeline_script_runner.update()
         self.update_tokens()
         for unit in self.interactables:
             # 🟢 如果時間停止，且該單位不在高亮名單內，跳過其 update()
             if is_time_frozen and unit not in self.env_manager.highlight_units:
                 # 非時停單位不能行動
                 continue
+                # 🟢 修正：加入新版時間軸判定。當時間軸在跑時，除非是受控單位，否則通通不准 update！
+            if (
+                    self.script_runner.active or self.timeline_script_runner.is_running) and self.lock_others_during_script:
+                if unit not in self.script_controlled_units:
+                    continue
 
             #如果劇情模式開啟，且這個單位不在受控名單中 → 跳過更新
             if self.script_runner.active and self.lock_others_during_script:
@@ -866,11 +940,12 @@ class SceneManager:
                 if hasattr(unit, "unit_type"):
                     if unit.unit_type == "character":
                         continue
-            unit.update()
-            # 🟢 [Step 3 邏輯]：如果具備「兩動」標記
-            if getattr(unit, "double_speed", False):
-                # 在同一幀內更新第二次，達成 2 倍速位移與攻擊
+            if self.scene_end_countdown <= 0:
                 unit.update()
+                # 🟢 [Step 3 邏輯]：如果具備「兩動」標記
+                if getattr(unit, "double_speed", False):
+                    # 在同一幀內更新第二次，達成 2 倍速位移與攻擊
+                    unit.update()
 
 
 
@@ -985,6 +1060,34 @@ class SceneManager:
         bubble = SpeechBubble(unit, text, duration, direction=direction)
         self.speech_bubbles.append(bubble)
 
+    # scene_manager.py -> SceneManager.draw_all() 內部的優化
+
+    def draw_shadow(self, win, entity, cam_x, cam_y, tile_offset_y):
+        """根據物件的實際腳底 X, Y 座標，在平面繪製一個橢圓陰影"""
+        # 1. 計算該物件在平面（Z=0）時的螢幕渲染座標
+        # 這裡必須扣除實體的 jump_z 與 tile_z，只留下純粹的 X 與 Y 縱深
+        screen_x = int((entity.x+entity.width/2) * TILE_SIZE - cam_x)
+        # 依據你的 Y 軸渲染公式還原地板座標
+        screen_y = int((self.map_h - entity.y) * TILE_SIZE - cam_y + tile_offset_y)
+
+        # 2. 建立一個支援 Alpha 的透明表面（避免直接畫橢圓無法控制透明度）
+        shadow_w, shadow_h = 40*entity.width, 16
+        shadow_surf = pygame.Surface((shadow_w, shadow_h), pygame.SRCALPHA)
+
+        # 3. 根據 Z 軸高度，讓陰影動態變小、變淡
+        current_z = getattr(entity, 'jump_z', 0)
+        alpha = max(40, 150 - int(current_z * 5))  # 越高越淡
+        scale = max(0.5, 1.0 - (current_z / 50.0))  # 越高越小
+
+        current_w = int(shadow_w * scale)
+        current_h = int(shadow_h * scale)
+
+        # 繪製黑色半透明橢圓
+        pygame.draw.ellipse(shadow_surf, (0, 0, 0, alpha), (0, 0, current_w, current_h))
+
+        # 4. 貼在地板上 (置中對齊實體腳底)
+        win.blit(shadow_surf, (screen_x - current_w // 2, screen_y - current_h // 2))
+
     def draw_all(self, win, cam_x, cam_y, tile_offset_y):
         # --- 準備工作 ---
         font = get_cjk_font(20, prefer='tc')
@@ -1008,6 +1111,10 @@ class SceneManager:
         # 根據 Y 軸排序，確保前後遮擋正確
         all_drawables.sort(key=lambda item: getattr(item[1], 'y', 0), reverse=True)
 
+        #繪製陰影
+        for item_type, obj in all_drawables:
+            self.draw_shadow(win, obj, cam_x, cam_y, tile_offset_y)
+
         # 3. 第二層：一般物件繪製 (濾鏡下方)
         # 這裡只畫「沒被高亮」的單位
         is_dimming = self.env_manager.dim_alpha > 0
@@ -1018,6 +1125,9 @@ class SceneManager:
         # 4. 第三層：環境變暗濾鏡 (Step 1 核心)
         # 這個遮罩會壓在一般單位與地圖上，但不會壓到高亮單位
         self.env_manager.draw_filter(win)
+
+        # 🟢 新增：在 Filter 之上繪製腳本立繪
+        self.env_manager.draw_script_tachie(win)
 
         # 5. 第四層：高亮物件繪製 (濾鏡上方)
         if is_dimming:
@@ -1050,6 +1160,10 @@ class SceneManager:
 
         # 通關插圖 (End Cuts) - 現在由 EnvironmentManager 接管
         self.env_manager.draw_cutscenes(win)
+
+        # 🟢 繪製通關插圖或全螢幕腳本文字
+        self.env_manager.draw_cutscenes(win)
+        self.env_manager.draw_script_text(win)  # 👈 注入在這裡，win 自然從主迴圈傳遞進來
 
         # UI 永遠在最前方
         self.draw_ui(win, font)
@@ -1222,7 +1336,6 @@ class SceneManager:
                     # 一般技能：維持原本的友軍保護
                     if is_friendly:
                         continue
-                #123456789
                 if is_box_overlap(atk_box, victim.get_hurtbox(), victim.height) and victim.invincible_timer == 0:
                     # A. 處理受擊對象是角色 (Character)
                     #print(f'attacker: {attacker.name} victim: {victim.name}')
@@ -1451,6 +1564,19 @@ class StoryScriptRunner:
             unit = self.find_unit(cmd['target'])
             if unit:
                 self.scene.say(unit, cmd['text'], duration=cmd.get('duration', 90))
+        elif cmd['type'] == 'show_tachie':
+            # 指令格式: {"type": "show_tachie", "path": "..\\Assets\\tachie_boss.png"}
+            self.scene.env_manager.set_script_tachie(cmd['path'], active=True)
+
+        elif cmd['type'] == 'hide_tachie':
+            # 指令格式: {"type": "hide_tachie"}
+            self.scene.env_manager.set_script_tachie(None, active=False)
+        elif cmd['type'] == 'show_text':
+            # 🟢 修正：只改狀態。字體直接向場景管理者拿現成的 clear_font
+            self.scene.env_manager.set_script_text(cmd['text'], active=True, font=self.scene.clear_font)
+        elif cmd['type'] == 'hide_text':
+            # 🟢 新增：關閉文字顯示，觸發 Fade out
+            self.scene.env_manager.set_script_text(None, active=False)
 
     def find_unit(self, name):
         for u in self.scene.get_all_units():
@@ -1458,6 +1584,110 @@ class StoryScriptRunner:
                 return u
         return None
 
+
+class TimelineScriptRunner:
+    def __init__(self, scene):
+        self.scene = scene
+        self.timeline_data = None
+        self.current_tick = 0
+        self.is_running = False
+
+        # 用於追蹤哪些單次觸發的事件已被執行，避免重複觸發
+        self.triggered_events = set()
+
+    def start_script(self, timeline_data):
+        """啟動時間軸"""
+        if not timeline_data:
+            return
+        self.timeline_data = timeline_data
+        self.current_tick = 0
+        self.is_running = True
+        self.triggered_events.clear()
+
+        # 演出開始自動將環境壓暗
+        self.scene.env_manager.target_dim_alpha = 180
+
+    def update(self):
+        if not self.is_running or not self.timeline_data:
+            return
+
+        # if active_text:
+        #     # 🟢 加入備援字型機制，確保 scene.clear_font 遺失時不會畫不出字
+        #     used_font = self.scene.clear_font if self.scene.clear_font else pygame.font.SysFont("microsoftjhenghei", 48)
+        #     self.scene.env_manager.set_script_text(active_text, active=True, font=used_font)
+
+        self.current_tick += 1
+
+        # 0. 邊界防禦：檢查是否到達總時長
+        if self.current_tick >= self.timeline_data.get("total_duration", 600):
+            self.end_script()
+            return
+
+        # -------------------------------------------------------------
+        # 軌道 1：全螢幕大字/旁白掃描 (區間判定 Range Query)
+        # -------------------------------------------------------------
+        active_text = None
+        for track in self.timeline_data.get("text_track", []):
+            if track["start"] <= self.current_tick <= track["end"]:
+                active_text = track["text"]
+                break
+
+        if active_text:
+            self.scene.env_manager.set_script_text(active_text, active=True, font=self.scene.clear_font)
+        else:
+            self.scene.env_manager.set_script_text(None, active=False)
+
+        # -------------------------------------------------------------
+        # 軌道 2：全螢幕立繪插畫掃描 (區間判定 Range Query)
+        # -------------------------------------------------------------
+        active_tachie_path = None
+        for track in self.timeline_data.get("tachie_track", []):
+            if track["start"] <= self.current_tick <= track["end"]:
+                active_tachie_path = track["path"]
+                break
+
+        if active_tachie_path:
+            # 只有當立繪路徑改變時才重新加載，避免每影格重複 load 造成卡頓
+            if self.scene.env_manager.current_tachie_path != active_tachie_path:
+                self.scene.env_manager.current_tachie_path = active_tachie_path
+                try:
+                    self.scene.env_manager.script_tachie = pygame.image.load(active_tachie_path).convert_alpha()
+                    self.scene.env_manager.tachie_target_alpha = 255
+                except Exception as e:
+                    print(f"[Timeline Error] 找不到立繪檔案: {active_tachie_path}, 錯誤: {e}")
+        else:
+            self.scene.env_manager.tachie_target_alpha = 0
+
+        # -------------------------------------------------------------
+        # 軌道 3：人物頭頂泡泡對話掃描 (點對點事件觸發 Point Event)
+        # -------------------------------------------------------------
+        for idx, ev in enumerate(self.timeline_data.get("bubble_events", [])):
+            if ev["tick"] == self.current_tick and idx not in self.triggered_events:
+                self.triggered_events.add(idx)  # 標記已觸發
+
+                target_type = ev.get("target")  # "player" 或 "boss"
+                text_content = ev.get("text", "")
+                duration = ev.get("duration", 90)
+
+                # 調用你現有的動態找人與泡泡掛載機制
+                target_unit = None
+                if target_type == "player":
+                    target_unit = self.scene.get_units_by_name('player')[0]
+                    #target_unit = self.scene.player
+                elif target_type == "boss":
+                    target_unit = self.scene.get_units_by_name('boss')[0]
+                    #target_unit = getattr(self.scene, "boss", None)
+
+                if target_unit:
+                    #self.scene.add_speech_bubble(target_unit, text_content, duration)
+                    target_unit.say(text_content, duration)
+
+    def end_script(self):
+        """時間軸壽終正寢，全面乾淨淡出，釋放世界控制權"""
+        self.is_running = False
+        self.scene.env_manager.set_script_text(None, active=False)
+        self.scene.env_manager.tachie_target_alpha = 0
+        self.scene.env_manager.target_dim_alpha = 0
 
 import pygame
 

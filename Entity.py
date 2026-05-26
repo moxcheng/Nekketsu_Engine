@@ -156,3 +156,11 @@ class Entity(ComponentHost, HoldFlyLogicMixin):
         pygame.draw.rect(win, (0, 0, 255), (hx1, hy1, hx2 - hx1, hy2 - hy1), 2)
     def is_alive(self):
         pass
+
+    def is_legal_to_move(self, next_x, next_y):
+        if next_x < 0 or next_x >= self.map_w or next_y < 0 or next_y >= self.map_h:
+            return False
+        if abs(self.terrain[int(next_y), int(next_x)] - self.terrain[int(self.y),int(self.x)]) > 1:
+            return False
+        return True
+

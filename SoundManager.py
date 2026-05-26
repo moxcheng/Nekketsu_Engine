@@ -17,7 +17,7 @@ class SoundManager:
         pygame.mixer.init()
         self.sounds = {
             #"shoot": pygame.mixer.Sound("..//Assets//sfx//laser.wav"),
-            "hit": pygame.mixer.Sound("..//Assets_Drive//sfx//hit1.wav"),
+            "hit": pygame.mixer.Sound("..//Assets_Drive//sfx//hit_soft.wav"),
             "hitstop": pygame.mixer.Sound("..//Assets_Drive//sfx//hitstop_edited.wav"),
             "brust": pygame.mixer.Sound("..//Assets_Drive//sfx//brust_edited.wav"),
             "guard": pygame.mixer.Sound("..//Assets_Drive//sfx//guard_edited.wav"),

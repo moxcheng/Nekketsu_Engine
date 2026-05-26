@@ -263,17 +263,6 @@ PLAYER_MIRA_CONFIG={
                     'swing_item': {'default': AttackType.SWING},
                     'throw_item': {'default': AttackType.THROW, 'jump': AttackType.THROW}},
     "skill_overrides": {
-        AttackType.SPECIAL_PUNCH: {"effect_component_config":{
-            "component_name": "AuraEffectComponent",
-            "component_key": "aura_effect",
-            "params": {
-                "image_path": "..//Assets_Drive//aura_snack.png", # 專屬靈氣圖
-                "expire_type": EffectExpireMode.ATTACK_END,
-                "alpha": 150,
-                "frame_width": 192,
-                "frame_height": 192
-            }
-        }},
     },
     "super_ability": {"action":["clone"], "mp":1, "serihu":"緋色連隊！"},
     "display_name": "二番組組長 上運天 美羅",
@@ -346,11 +335,11 @@ BOSS_KUSETSU_CONFIG={
     #敵人用設定
     "combos": [AttackType.PUNCH, AttackType.PUNCH, AttackType.SPECIAL_PUNCH, AttackType.KICK, AttackType.SPECIAL_KICK,
                AttackType.SLASH],
-    "popup": [],
+    "popup": ["landing"],
     "ai_move_speed": 0.25,
     "attack_cooldown": 25,
-    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.4, "near_speed":0.2, "special_attack": {"ratio": 0.1, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
-                   "able_to_burst":True}
+    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.4, "near_speed":0.2, "special_attack": {"ratio": 0.8, "cooldown":360, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
+                   "able_to_burst":True, "intro_skill": AttackType.BACKFLIP_SHOT}
 }
 BOSS_KUSETSU_P2_CONFIG={
     "name": "kusetsu",
@@ -413,8 +402,8 @@ BOSS_KUSETSU_P2_CONFIG={
                AttackType.SLASH],
     "popup": [],
     "attack_cooldown": 21,
-    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.5, "near_speed":0.25, "special_attack": {"ratio": 0.3, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
-                   "able_to_burst":True}
+    "ai_strategy":{"actor":"Attacker","personality":"cautious", "far_speed":0.5, "near_speed":0.25, "special_attack": {"ratio": 0.8, "cooldown":180, "skill": AttackType.BACKFLIP_SHOT, "condition":{'distance':(1.0, 5.0)}},
+                   "able_to_burst":True, "intro_skill": AttackType.BRUST}
 }
 # 定義每種狀態的 frame index list
 basic_anim_map1 = {
@@ -617,7 +606,7 @@ NPC_SHUKI_3_CONFIG={
     "attack_cooldown": 40
 }
 NPC_SHUKI_BOSS_CONFIG={
-    'name': "boss",
+    'name': "shuki_boss",
     "image_path": "..\\Assets_Drive\\madou\\shuki_boss_96.png",
     "scale": 2.0,
 "weight":1.5,
@@ -631,7 +620,7 @@ NPC_SHUKI_BOSS_CONFIG={
     "ai_move_speed":0.15,
     "attack_cooldown":30,
     "is_blocking":True,
-    "ai_strategy":{"personality":"brave", "far_speed":0.6, "near_speed":0.3}
+    "ai_strategy":{"personality":"brave", "far_speed":0.3, "near_speed":0.15, "actor":"Attacker"}
 }
 NPC_SHUKI_NEW_1_CONFIG={
     'name': "shuki_new1",

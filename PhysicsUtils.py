@@ -135,6 +135,9 @@ def check_wall_collision(unit, next_x):
     # 1. 檢查地圖左右邊界
     if next_x < 0 or next_x + unit.width > unit.map_w:
         return True
+    #!追加檢查格子高度!!
+    if unit.get_tile_z(next_x, unit.y) >= unit.jump_z:
+        return True
 
     # 2. 檢查地形高度差
     # 根據移動方向，取「最前方」的邊界座標進行偵測
